@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Recipes</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Meal Planning</h1>
+        <p class="subtitle" id="viewSubtitle">Recipes</p>
+        <div class="page-tabs" role="tablist" aria-label="Primary views">
+          <button class="page-tab-button active" type="button" data-view="recipes">
+            Recipes
+          </button>
+          <button class="page-tab-button" type="button" data-view="ingredients">
+            Ingredients
+          </button>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="search">
+          <input id="searchInput" type="search" placeholder="Search recipes..." />
+        </div>
+        <div class="create-menu">
+          <button
+            id="createButton"
+            class="primary"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+          >
+            Create New
+          </button>
+          <div id="createMenu" class="create-dropdown" role="menu" aria-label="Create new recipe">
+            <button type="button" role="menuitem" data-create="manual">
+              Enter manually
+            </button>
+            <button type="button" role="menuitem" data-create="import">
+              Import from URL
+            </button>
+            <button type="button" role="menuitem" data-create="ingredient">
+              Add ingredient
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="grid" class="grid"></section>
+    </main>
+
+    <div id="addModal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-add></div>
+      <div
+        class="modal-card modal-large"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="addModalTitle"
+      >
+        <button class="modal-close" data-close-add aria-label="Close">
+          ×
+        </button>
+        <div class="modal-body add-modal-body">
+          <section class="adder in-modal">
+            <div class="adder-header">
+              <div>
+                <h2 id="addModalTitle">Add a recipe</h2>
+                <p>Enter it manually or import from a URL.</p>
+              </div>
+              <div class="adder-tabs" role="tablist" aria-label="Recipe input modes">
+                <button class="tab-button active" type="button" data-tab="manual">
+                  Manual entry
+                </button>
+                <button class="tab-button" type="button" data-tab="import">
+                  Import from URL
+                </button>
+              </div>
+            </div>
+
+            <div class="adder-panels">
+              <form id="manualForm" class="adder-panel active" data-panel="manual">
+                <div class="form-grid">
+                  <label>
+                    Recipe name
+                    <input
+                      id="recipeName"
+                      type="text"
+                      placeholder="Hazelnut almond noodles"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Source URL
+                    <input
+                      id="sourceUrl"
+                      type="text"
+                      placeholder="https://example.com"
+                      pattern="^(https?://)?.+"
+                      title="Use http://, https://, or enter a plain domain"
+                    />
+                  </label>
+                  <label>
+                    Image URL
+                    <input
+                      id="imageUrl"
+                      type="text"
+                      placeholder="https://example.com/image.jpg"
+                      pattern="^(https?://)?.+"
+                      title="Use http://, https://, or enter a plain domain"
+                    />
+                  </label>
+                  <label>
+                    Servings
+                    <input id="servings" type="number" min="0" step="1" />
+                  </label>
+                  <label>
+                    Calories
+                    <input id="calories" type="number" min="0" step="1" />
+                  </label>
+                  <label>
+                    Protein (g)
+                    <input id="proteinGrams" type="number" min="0" step="1" />
+                  </label>
+                  <label>
+                    Fat (g)
+                    <input id="fatGrams" type="number" min="0" step="1" />
+                  </label>
+                  <label>
+                    Carbs (g)
+                    <input id="carbsGrams" type="number" min="0" step="1" />
+                  </label>
+                </div>
+                <label class="form-full">
+                  Ingredients
+                  <textarea id="ingredients" rows="6" placeholder="1 cup hazelnuts"></textarea>
+                </label>
+                <label class="form-full">
+                  Instructions
+                  <textarea id="instructions" rows="6" placeholder="Toast nuts, blend sauce..."></textarea>
+                </label>
+                <label class="form-full">
+                  Notes
+                  <textarea id="notes" rows="4"></textarea>
+                </label>
+                <div class="form-section">
+                  <div class="section-header">Nutrition (LLM estimate)</div>
+                  <div class="nutrition-grid">
+                    <label>
+                      OpenAI API key
+                      <input id="openaiKey" type="password" placeholder="sk-..." />
+                    </label>
+                    <label>
+                      Model
+                  <input id="openaiModel" type="text" value="gpt-5.2" />
+                    </label>
+                  </div>
+                  <label class="inline-checkbox">
+                    <input id="openaiRemember" type="checkbox" />
+                    Remember key in this browser
+                  </label>
+                  <div class="form-actions">
+                    <button id="estimateButton" class="secondary" type="button">
+                      Estimate macros
+                    </button>
+                    <span id="estimateStatus" class="status"></span>
+                  </div>
+                  <p class="helper">
+                    Uses the OpenAI API (not the ChatGPT web app) to estimate calories and macros
+                    from the ingredients list.
+                  </p>
+                  <pre id="estimateNotes" class="estimate-output"></pre>
+                </div>
+                <div class="form-actions">
+                  <button class="secondary" type="button" data-close-add>Cancel</button>
+                  <button class="primary" type="submit">Save recipe</button>
+                  <span id="manualStatus" class="status"></span>
+                </div>
+              </form>
+
+              <form id="importForm" class="adder-panel" data-panel="import">
+                <label>
+                  Recipe URL
+                    <input
+                      id="importUrl"
+                      type="text"
+                      placeholder="https://vancouverguardian.com/vancouver-recipe-hazelnut-almond-noodles/"
+                      pattern="^(https?://)?.+"
+                      title="Use http://, https://, or enter a plain domain"
+                      required
+                    />
+                </label>
+                <div class="form-actions">
+                  <button class="secondary" type="button" data-close-add>Cancel</button>
+                  <button class="primary" type="submit">Import</button>
+                  <span id="importStatus" class="status"></span>
+                </div>
+                <p class="helper">
+                  Import uses a readable-text proxy to extract title, ingredients, instructions,
+                  and the first image when available.
+                </p>
+              </form>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="ingredientModal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-ingredient></div>
+      <div
+        class="modal-card modal-small"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ingredientModalTitle"
+      >
+        <button class="modal-close" data-close-ingredient aria-label="Close">
+          ×
+        </button>
+        <div class="modal-body modal-body-single">
+          <form id="ingredientForm" class="ingredient-form">
+            <div>
+              <h2 id="ingredientModalTitle">Add ingredient</h2>
+              <p>Save a new ingredient to reuse as a tag.</p>
+            </div>
+            <label>
+              Ingredient name
+              <input id="ingredientName" type="text" placeholder="Garlic" required />
+            </label>
+            <div class="form-actions">
+              <button class="secondary" type="button" data-close-ingredient>Cancel</button>
+              <button class="primary" type="submit">Save ingredient</button>
+              <span id="ingredientStatus" class="status"></span>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-card" role="dialog" aria-modal="true">
+        <div class="recipe-menu modal-menu" id="modalRecipeMenu">
+          <button
+            id="modalRecipeMenuButton"
+            class="recipe-menu-button"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="Recipe actions"
+          >
+            ...
+          </button>
+          <div
+            id="modalRecipeMenuDropdown"
+            class="recipe-menu-dropdown"
+            role="menu"
+            aria-label="Recipe actions"
+          >
+            <button type="button" role="menuitem" data-action="edit">Edit</button>
+            <button type="button" role="menuitem" data-action="rename">Rename</button>
+            <button type="button" role="menuitem" data-action="duplicate">
+              Duplicate
+            </button>
+            <button type="button" role="menuitem" data-action="delete">Delete</button>
+            <button type="button" role="menuitem" data-action="copy-link">
+              Copy link
+            </button>
+          </div>
+        </div>
+        <button class="modal-close" data-close aria-label="Close">
+          ×
+        </button>
+        <div class="modal-body">
+          <div id="modalImage" class="modal-image"></div>
+          <div class="modal-content">
+            <h2 id="modalTitle"></h2>
+            <div class="meta">
+              <span id="modalServings"></span>
+              <span id="modalCalories"></span>
+              <span id="modalMacros"></span>
+            </div>
+            <div class="section">
+              <h3>Image</h3>
+              <div class="upload-row">
+                <input id="imageInput" type="file" accept="image/*" />
+                <button id="uploadButton" type="button">Upload image</button>
+                <span id="uploadStatus" class="upload-status"></span>
+              </div>
+            </div>
+            <div class="section">
+              <h3>Ingredients</h3>
+              <pre id="modalIngredients"></pre>
+            </div>
+            <div class="section">
+              <h3>Notes</h3>
+              <pre id="modalNotes"></pre>
+            </div>
+            <div class="section">
+              <h3>Instructions</h3>
+              <pre id="modalInstructions"></pre>
+            </div>
+            <a
+              id="modalSource"
+              class="source-link"
+              href="#"
+              target="_blank"
+              rel="noreferrer"
+              >Open source</a
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./supabase-config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

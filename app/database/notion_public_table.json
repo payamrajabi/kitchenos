@@ -1,0 +1,354 @@
+{
+  "headers": [
+    "Name",
+    "Calories/Serving",
+    "Carbs/Serving",
+    "Fat/Serving",
+    "Fiber",
+    "Freezer Friendly",
+    "Fresh Ingredients",
+    "ID"
+  ],
+  "rows": [
+    [
+      "https://www.notion.so/93c9cabdb50244dda9436b8fd8009da4?v=d6898bb3b41c41a3b7c7193e2fa8a03c&source=copy_link",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "",
+      "45"
+    ],
+    [
+      "Greek Yogurt with Berries",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "Strawberries\nRaspberries",
+      "44"
+    ],
+    [
+      "#31 Hazelnut-Almond Noodles",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "",
+      "43"
+    ],
+    [
+      "Mushroom Stew",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "Mushrooms\nCelery",
+      "42"
+    ],
+    [
+      "Lamb Stew",
+      "500",
+      "26.333333333333",
+      "31.666666666667",
+      "24",
+      "",
+      "Lamb (Stewing Meat)\nBeef Bone Broth\nCelery\nCarrots",
+      "41"
+    ],
+    [
+      "Liver",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "Liver",
+      "40"
+    ],
+    [
+      "White Jasmine Rice",
+      "280",
+      "53.333333333333",
+      "5.333333333333",
+      "4",
+      "",
+      "",
+      "38"
+    ],
+    [
+      "Roasted Vegetables for Rich Red Curry",
+      "151",
+      "25.666666666667",
+      "5.333333333333",
+      "18",
+      "",
+      "Broccoli\nRed Cabbage",
+      "37"
+    ],
+    [
+      "Rich Red Curry",
+      "220",
+      "23.4875",
+      "13.925",
+      "",
+      "",
+      "Ginger\nShallot\nBroccoli\nCauliflower\nRed Cabbage",
+      "36"
+    ],
+    [
+      "Cast Iron Pizza",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "Green Pepper\nMushrooms\nPizza Dough\nPepperoni",
+      "33"
+    ],
+    [
+      "Lemon-Tahini Dressing with Maple & Tamari",
+      "",
+      "",
+      "",
+      "4",
+      "",
+      "",
+      "30"
+    ],
+    [
+      "Overnight Oats",
+      "",
+      "",
+      "",
+      "1",
+      "",
+      "Strawberries\nBlueberries\nRaspberries",
+      "29"
+    ],
+    [
+      "Tempeh Breakfast Burrito",
+      "",
+      "",
+      "",
+      "6",
+      "",
+      "Jalapeños",
+      "28"
+    ],
+    [
+      "Tamago Kake Gohan with Salmon",
+      "",
+      "",
+      "",
+      "12",
+      "",
+      "Salmon",
+      "27"
+    ],
+    [
+      "Scrambled Eggs",
+      "",
+      "",
+      "",
+      "0",
+      "",
+      "",
+      "26"
+    ],
+    [
+      "Roasted Sweet Potatoes",
+      "",
+      "",
+      "",
+      "16",
+      "",
+      "",
+      "24"
+    ],
+    [
+      "Smoked Salmon",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "23"
+    ],
+    [
+      "Pickled Red Onions",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "",
+      "21"
+    ],
+    [
+      "Tuna Wrap",
+      "0",
+      "0",
+      "0",
+      "",
+      "",
+      "",
+      "20"
+    ],
+    [
+      "Creamy Chocolate Breakfast Shake",
+      "375",
+      "50",
+      "17.5",
+      "22",
+      "",
+      "Spinach",
+      "19"
+    ],
+    [
+      "Energy Balls",
+      "",
+      "",
+      "",
+      "35",
+      "",
+      "",
+      "18"
+    ],
+    [
+      "Grilled Chicken Breast",
+      "220",
+      "0",
+      "4.8",
+      "0",
+      "",
+      "Chicken Breasts",
+      "17"
+    ],
+    [
+      "Black Sesame Dressing",
+      "",
+      "",
+      "",
+      "4",
+      "",
+      "",
+      "16"
+    ],
+    [
+      "Saturday Fried Rice",
+      "",
+      "",
+      "",
+      "6",
+      "",
+      "",
+      "15"
+    ],
+    [
+      "Taco Night",
+      "",
+      "",
+      "",
+      "32",
+      "",
+      "Tortillas\nCauliflower\nAvocado\nJalapeños\nGround Beef\nBeyond Beef (Ground)",
+      "14"
+    ],
+    [
+      "Mushroom Bolognese",
+      "",
+      "",
+      "",
+      "30",
+      "",
+      "Mushrooms\nCarrots\nThyme\nBasil",
+      "13"
+    ],
+    [
+      "Zucchini Muffins",
+      "",
+      "",
+      "",
+      "25",
+      "",
+      "Zucchini",
+      "12"
+    ],
+    [
+      "Kale Fettuccine",
+      "575",
+      "60",
+      "27.5",
+      "25",
+      "",
+      "Lacinato Kale\nGoat Cheese",
+      "11"
+    ],
+    [
+      "3-6-9 dressing",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "10"
+    ],
+    [
+      "Lentil Soup",
+      "423",
+      "65.75",
+      "7.75",
+      "",
+      "",
+      "Spinach",
+      "9"
+    ],
+    [
+      "Porridge",
+      "231.666666666667",
+      "37",
+      "708",
+      "15",
+      "",
+      "",
+      "6"
+    ],
+    [
+      "Buddha Bowl with Sweet Potato & Chickpea",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "Brocolini\nKale",
+      "1"
+    ],
+    [
+      "Sunday Night Chili",
+      "",
+      "",
+      "",
+      "42",
+      "",
+      "Peppers\nGround Beef",
+      "2"
+    ],
+    [
+      "Coconut Curry with Shrimp",
+      "278.75",
+      "6.25",
+      "20.75",
+      "3",
+      "",
+      "Carrots\nRed Cabbage",
+      "3"
+    ]
+  ]
+}
