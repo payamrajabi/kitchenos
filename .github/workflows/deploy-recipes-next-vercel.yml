@@ -1,0 +1,57 @@
+# Deploy app/recipes-next to Vercel on every push to main.
+# One-time setup (repo admin):
+# 1. Create a Vercel project with Root Directory = app/recipes-next (import this Git repo).
+# 2. In Vercel: Project → Settings → Environment Variables, add:
+#    NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY (and optional NEXT_PUBLIC_SUPABASE_RECIPE_BUCKET).
+# 3. Or add GitHub secrets for this workflow:
+#    VERCEL_TOKEN        (https://vercel.com/account/tokens)
+#    VERCEL_ORG_ID       (.vercel/project.json after `vercel link` in app/recipes-next)
+#    VERCEL_PROJECT_ID   (same file)
+
+name: Deploy recipes-next (Vercel)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/recipes-next/**"
+      - ".github/workflows/deploy-recipes-next-vercel.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/recipes-next
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/recipes-next/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel env
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy prebuilt
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
