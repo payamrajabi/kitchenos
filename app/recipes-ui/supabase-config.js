@@ -1,10 +1,12 @@
+// Defaults only — add real credentials in supabase-config.local.js (gitignored).
+// See supabase-config.local.example.js and README. Email auth: Supabase → Authentication → Providers.
 window.SUPABASE_CONFIG = {
-  url: "https://ggwqnakrqttydigdsfko.supabase.co",
-  anonKey: "sb_publishable_YMd4Z4W-tZm3JvAyyJo8cg_UFIpfeFA",
+  url: "",
+  anonKey: "",
   bucket: "recipe-images",
 };
 
+// Optional: OpenAI model passed to the Edge Function (nutrition + meal plan).
 window.OPENAI_CONFIG = {
-  apiKey: "",
-  model: "",
+  model: "gpt-4o-mini",
 };

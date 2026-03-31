@@ -1,0 +1,14 @@
+.DS_Store
+**/xcuserdata/
+**/DerivedData/
+ios/.swiftpm/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Local Supabase anon URL/key (recipes-ui)
+app/recipes-ui/supabase-config.local.js
+
+# Supabase CLI local cache (do not commit)
+supabase/.temp/

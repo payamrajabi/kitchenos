@@ -1,0 +1,356 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03FA0A9496F4050F077D6485 /* RecipeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6650FCF59279561C0FC6A9 /* RecipeListView.swift */; };
+		0B1DCDB56787A04427693EF5 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 7277F27E9BC1405628A4A6E3 /* Supabase */; };
+		1AD065785D2B91D48B5045C2 /* AuthGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 363B885FF72E87F07915403B /* AuthGateView.swift */; };
+		2202560CD563F195127027B3 /* KitchenOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CFB52D4B3BC55D697E6586A /* KitchenOSApp.swift */; };
+		27DA868B3404890BAF0700F1 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBB8850AD18BD62881FA8F0 /* Models.swift */; };
+		2CB584E06687CC46CCA4C589 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42694402AAFD4D3D7CA1596 /* AppModel.swift */; };
+		31E34EFCF07869040798B893 /* KitchenOSConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7541B2085D84BE7815A371E2 /* KitchenOSConfig.swift */; };
+		9E0964C3FCEF340B036F5059 /* RecipeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A54D3E8EF46AB3827E975F8 /* RecipeDetailView.swift */; };
+		DC19B6FECC6AEC3A6B992721 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3566700E667CD421131E686 /* ContentView.swift */; };
+		E7A510D561F56AD955B8BC5F /* IngredientListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F34C3F0139EA7F8D95DAC823 /* IngredientListView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0A54D3E8EF46AB3827E975F8 /* RecipeDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeDetailView.swift; sourceTree = "<group>"; };
+		363B885FF72E87F07915403B /* AuthGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthGateView.swift; sourceTree = "<group>"; };
+		4CFB52D4B3BC55D697E6586A /* KitchenOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitchenOSApp.swift; sourceTree = "<group>"; };
+		7541B2085D84BE7815A371E2 /* KitchenOSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitchenOSConfig.swift; sourceTree = "<group>"; };
+		7BBB8850AD18BD62881FA8F0 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		9A6650FCF59279561C0FC6A9 /* RecipeListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeListView.swift; sourceTree = "<group>"; };
+		B0BE8BC6CE7F6F42963DBF11 /* KitchenOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KitchenOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B3566700E667CD421131E686 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		D42694402AAFD4D3D7CA1596 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		DD2415B3F8B24FCC9DCC9921 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F34C3F0139EA7F8D95DAC823 /* IngredientListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientListView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7775E295B1EB9BD2DDE7EE70 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0B1DCDB56787A04427693EF5 /* Supabase in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4041C2CB1CAD4EF6151D4DFE = {
+			isa = PBXGroup;
+			children = (
+				6076922C04686A3D72C96191 /* KitchenOS */,
+				5DF3636EE428F32038AB203F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5DF3636EE428F32038AB203F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B0BE8BC6CE7F6F42963DBF11 /* KitchenOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6076922C04686A3D72C96191 /* KitchenOS */ = {
+			isa = PBXGroup;
+			children = (
+				D42694402AAFD4D3D7CA1596 /* AppModel.swift */,
+				363B885FF72E87F07915403B /* AuthGateView.swift */,
+				B3566700E667CD421131E686 /* ContentView.swift */,
+				DD2415B3F8B24FCC9DCC9921 /* Info.plist */,
+				F34C3F0139EA7F8D95DAC823 /* IngredientListView.swift */,
+				4CFB52D4B3BC55D697E6586A /* KitchenOSApp.swift */,
+				7541B2085D84BE7815A371E2 /* KitchenOSConfig.swift */,
+				7BBB8850AD18BD62881FA8F0 /* Models.swift */,
+				0A54D3E8EF46AB3827E975F8 /* RecipeDetailView.swift */,
+				9A6650FCF59279561C0FC6A9 /* RecipeListView.swift */,
+			);
+			path = KitchenOS;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		ED7ADF218816953D3BED7212 /* KitchenOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 55EBE14C64C1176BE0A91AEC /* Build configuration list for PBXNativeTarget "KitchenOS" */;
+			buildPhases = (
+				7BB64234D93A09B062847AD8 /* Sources */,
+				7775E295B1EB9BD2DDE7EE70 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KitchenOS;
+			packageProductDependencies = (
+				7277F27E9BC1405628A4A6E3 /* Supabase */,
+			);
+			productName = KitchenOS;
+			productReference = B0BE8BC6CE7F6F42963DBF11 /* KitchenOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9AC054D891175C8737E9FE0B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = B3EF09474F2AF115462AB33C /* Build configuration list for PBXProject "KitchenOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 4041C2CB1CAD4EF6151D4DFE;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D4D918D260C9369F5859FF1C /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5DF3636EE428F32038AB203F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				ED7ADF218816953D3BED7212 /* KitchenOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7BB64234D93A09B062847AD8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2CB584E06687CC46CCA4C589 /* AppModel.swift in Sources */,
+				1AD065785D2B91D48B5045C2 /* AuthGateView.swift in Sources */,
+				DC19B6FECC6AEC3A6B992721 /* ContentView.swift in Sources */,
+				E7A510D561F56AD955B8BC5F /* IngredientListView.swift in Sources */,
+				2202560CD563F195127027B3 /* KitchenOSApp.swift in Sources */,
+				31E34EFCF07869040798B893 /* KitchenOSConfig.swift in Sources */,
+				27DA868B3404890BAF0700F1 /* Models.swift in Sources */,
+				9E0964C3FCEF340B036F5059 /* RecipeDetailView.swift in Sources */,
+				03FA0A9496F4050F077D6485 /* RecipeListView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1277F88004330450E208CC73 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KitchenOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = KitchenOS;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitchenos.app;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		28F76A2BB431CF9C71BB6645 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		67AE5C932501DA818D42E984 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7C3273A170960BE5E34C6106 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KitchenOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = KitchenOS;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitchenos.app;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		55EBE14C64C1176BE0A91AEC /* Build configuration list for PBXNativeTarget "KitchenOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1277F88004330450E208CC73 /* Debug */,
+				7C3273A170960BE5E34C6106 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B3EF09474F2AF115462AB33C /* Build configuration list for PBXProject "KitchenOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				67AE5C932501DA818D42E984 /* Debug */,
+				28F76A2BB431CF9C71BB6645 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D4D918D260C9369F5859FF1C /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7277F27E9BC1405628A4A6E3 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D4D918D260C9369F5859FF1C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 9AC054D891175C8737E9FE0B /* Project object */;
+}

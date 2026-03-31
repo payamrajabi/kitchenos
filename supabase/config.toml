@@ -1,0 +1,8 @@
+# https://supabase.com/docs/guides/cli/config
+project_id = "ggwqnakrqttydigdsfko"
+
+[api]
+enabled = true
+
+[functions.openai-kitchen]
+verify_jwt = true

@@ -1,6 +1,13 @@
 # Recipe Database Setup
 
-This folder contains a simple SQLite recipe database and an import script.
+This folder contains a SQLite recipe database, Supabase SQL, and import/sync scripts.
+
+## Supabase (cloud)
+
+- [supabase_setup.sql](supabase_setup.sql) — initial tables and seed equipment.
+- [supabase_migration_kitchenos_v2.sql](supabase_migration_kitchenos_v2.sql) — per-user RLS, `inventory_items`, `user_equipment`, `meal_plans` / `meal_plan_entries`, storage policies. Run after `supabase_setup.sql` on existing projects. **Production:** confirm this migration (or equivalent policies) is applied so `owner_id = auth.uid()` isolates data; rows with `owner_id IS NULL` are legacy/shared until you backfill or delete them.
+
+Bulk sync from SQLite uses **service role** (bypasses RLS): set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then run `sync_to_supabase.py`.
 
 ## 1) Create the database
 

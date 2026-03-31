@@ -1,0 +1,343 @@
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+import {
+  INGREDIENT_UNIT_VALUES,
+  normalizeIngredientUnitForStorage,
+} from "@/lib/unit-mapping";
+import { defaultStorageLocationForNewInventoryRow } from "@/lib/inventory-display";
+import type { IngredientRow } from "@/types/database";
+import type { InventoryTab } from "@/lib/inventory-filters";
+
+const VALID_LOCATIONS = new Set([
+  "Fridge",
+  "Freezer",
+  "Shallow Pantry",
+  "Deep Pantry",
+]);
+
+function storageLocationForTab(tab: string): string {
+  if (tab === "Pantry") return "Shallow Pantry";
+  return tab;
+}
+
+async function resolveInventoryRowId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ingredientId: number,
+  knownId: number | "",
+): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
+  if (knownId !== "") {
+    return { ok: true, id: Number(knownId) };
+  }
+
+  const { data: existing } = await supabase
+    .from("inventory_items")
+    .select("id")
+    .eq("ingredient_id", ingredientId)
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id != null) {
+    return { ok: true, id: existing.id };
+  }
+
+  const { data: ing, error: ingErr } = await supabase
+    .from("ingredients")
+    .select("id, category")
+    .eq("id", ingredientId)
+    .single();
+
+  if (ingErr || !ing) {
+    return { ok: false, error: "Ingredient not found." };
+  }
+
+  const tab: InventoryTab = "Pantry";
+  const storage_location = defaultStorageLocationForNewInventoryRow(
+    ing as IngredientRow,
+    tab,
+  );
+
+  const { data: inserted, error } = await supabase
+    .from("inventory_items")
+    .insert({
+      ingredient_id: ingredientId,
+      storage_location,
+      quantity: null,
+      unit: null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !inserted?.id) {
+    return { ok: false, error: error?.message ?? "Could not create inventory row." };
+  }
+
+  return { ok: true, id: inserted.id };
+}
+
+/** Empty / null → 0; truncate; must be ≥ 0. */
+function parseNonNegativeInventoryQty(
+  raw: unknown,
+): { ok: true; n: number } | { ok: false; error: string } {
+  if (raw === null || raw === undefined) return { ok: true, n: 0 };
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return { ok: false, error: "Invalid number." };
+    const v = Math.trunc(raw);
+    if (v < 0) return { ok: false, error: "Amount cannot be negative." };
+    return { ok: true, n: v };
+  }
+  const t = String(raw).trim();
+  if (t === "") return { ok: true, n: 0 };
+  const n = Number(t);
+  if (!Number.isFinite(n)) return { ok: false, error: "Invalid number." };
+  const v = Math.trunc(n);
+  if (v < 0) return { ok: false, error: "Amount cannot be negative." };
+  return { ok: true, n: v };
+}
+
+function coerceInventoryQtyColumn(v: unknown): number {
+  if (v === null || v === undefined) return 0;
+  const n = Math.trunc(Number(v));
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, n);
+}
+
+export async function deleteIngredientAction(ingredientId: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const { error: invErr } = await supabase
+    .from("inventory_items")
+    .delete()
+    .eq("ingredient_id", ingredientId);
+  if (invErr) return { ok: false as const, error: invErr.message };
+
+  const { error } = await supabase
+    .from("ingredients")
+    .delete()
+    .eq("id", ingredientId);
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  revalidatePath("/recipes");
+  return { ok: true as const };
+}
+
+export async function moveIngredientAction(
+  ingredientId: number,
+  fromTab: string,
+  toTab: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const newLocation = storageLocationForTab(toTab);
+  if (!VALID_LOCATIONS.has(newLocation)) {
+    return { ok: false as const, error: "Invalid destination." };
+  }
+
+  const oldLocation = storageLocationForTab(fromTab);
+
+  const { data: existing } = await supabase
+    .from("inventory_items")
+    .select("id")
+    .eq("ingredient_id", ingredientId)
+    .eq("storage_location", oldLocation)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("inventory_items")
+      .update({ storage_location: newLocation })
+      .eq("id", existing.id);
+    if (error) return { ok: false as const, error: error.message };
+  } else {
+    const { error } = await supabase.from("inventory_items").insert({
+      ingredient_id: ingredientId,
+      storage_location: newLocation,
+      quantity: null,
+      unit: null,
+    });
+    if (error) return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function batchDeleteIngredientsAction(ingredientIds: number[]) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  for (const ingredientId of ingredientIds) {
+    const { error: invErr } = await supabase
+      .from("inventory_items")
+      .delete()
+      .eq("ingredient_id", ingredientId);
+    if (invErr) return { ok: false as const, error: invErr.message };
+
+    const { error } = await supabase
+      .from("ingredients")
+      .delete()
+      .eq("id", ingredientId);
+    if (error) return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function batchMoveIngredientsAction(
+  ingredientIds: number[],
+  fromTab: string,
+  toTab: string,
+) {
+  for (const id of ingredientIds) {
+    const r = await moveIngredientAction(id, fromTab, toTab);
+    if (!r.ok) return r;
+  }
+  return { ok: true as const };
+}
+
+export async function updateRecipeUnitAction(
+  recipeUnit: string,
+  inventoryId: number | "",
+  ingredientId: number,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const recipeNorm = normalizeIngredientUnitForStorage(recipeUnit);
+  if (recipeNorm !== "" && !INGREDIENT_UNIT_VALUES.has(recipeNorm)) {
+    return { ok: false as const, error: "Invalid recipe unit." };
+  }
+
+  const resolved = await resolveInventoryRowId(supabase, ingredientId, inventoryId);
+  if (!resolved.ok) return resolved;
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ recipe_unit: recipeNorm || null })
+    .eq("id", resolved.id);
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function updateIngredientNameAction(
+  ingredientId: number,
+  name: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { ok: false as const, error: "Name is required." };
+  }
+
+  const { error } = await supabase
+    .from("ingredients")
+    .update({ name: trimmed })
+    .eq("id", ingredientId);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function updateInventoryStockUnitAction(
+  ingredientId: number,
+  inventoryId: number | "",
+  unit: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const u = normalizeIngredientUnitForStorage(unit);
+  if (u !== "" && !INGREDIENT_UNIT_VALUES.has(u)) {
+    return { ok: false as const, error: "Invalid stock unit." };
+  }
+
+  const resolved = await resolveInventoryRowId(supabase, ingredientId, inventoryId);
+  if (!resolved.ok) return resolved;
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ unit: u || null })
+    .eq("id", resolved.id);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function updateInventoryQuantityFieldAction(
+  ingredientId: number,
+  inventoryId: number | "",
+  field: "quantity" | "min_quantity" | "max_quantity",
+  value: unknown,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const parsed = parseNonNegativeInventoryQty(value);
+  if (!parsed.ok) return { ok: false as const, error: parsed.error };
+
+  const resolved = await resolveInventoryRowId(supabase, ingredientId, inventoryId);
+  if (!resolved.ok) return resolved;
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from("inventory_items")
+    .select("min_quantity, max_quantity")
+    .eq("id", resolved.id)
+    .maybeSingle();
+
+  if (fetchErr) return { ok: false as const, error: fetchErr.message };
+
+  const existingMin = coerceInventoryQtyColumn(existing?.min_quantity);
+  const existingMax = coerceInventoryQtyColumn(existing?.max_quantity);
+
+  const nextVal = parsed.n;
+  if (field === "min_quantity" && nextVal > existingMax) {
+    return { ok: false as const, error: "Minimum cannot be greater than maximum." };
+  }
+  if (field === "max_quantity" && nextVal < existingMin) {
+    return { ok: false as const, error: "Maximum cannot be less than minimum." };
+  }
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ [field]: nextVal })
+    .eq("id", resolved.id);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  return { ok: true as const };
+}
