@@ -1,12 +1,15 @@
-# Deploy app/recipes-next to Vercel on every push to main.
-# One-time setup (repo admin):
-# 1. Create a Vercel project with Root Directory = app/recipes-next (import this Git repo).
-# 2. In Vercel: Project → Settings → Environment Variables, add:
-#    NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY (and optional NEXT_PUBLIC_SUPABASE_RECIPE_BUCKET).
-# 3. Or add GitHub secrets for this workflow:
-#    VERCEL_TOKEN        (https://vercel.com/account/tokens)
-#    VERCEL_ORG_ID       (.vercel/project.json after `vercel link` in app/recipes-next)
-#    VERCEL_PROJECT_ID   (same file)
+# Deploy app/recipes-next to the existing Vercel project:
+#   https://vercel.com/finnandco/recipes-ui
+#
+# One-time (Vercel UI — recommended):
+# 1. Open that project → Settings → Git → Connect Repository → choose this repo (kitchenos).
+# 2. Set Root Directory to: app/recipes-next  (not the repo root).
+# 3. Production + Preview env: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+#    (optional: NEXT_PUBLIC_SUPABASE_RECIPE_BUCKET=recipe-images).
+# 4. Deploy. Pushes to main will then update recipes-ui automatically.
+#
+# Alternative — GitHub Action secrets (same project):
+#   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID from finnandco/recipes-ui settings / `vercel link`.
 
 name: Deploy recipes-next (Vercel)
 
