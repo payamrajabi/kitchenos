@@ -1,12 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
 import type { IngredientRow, InventoryItemRow } from "@/types/database";
-import { getInventoryRowForIngredient, getInventoryStockValuesUnified, sortIngredientsForInventoryDisplay } from "@/lib/inventory-display";
-import { IngredientDeleteButton } from "@/components/ingredient-delete-button";
-import { RecipeUnitSelect } from "@/components/recipe-unit-select";
-import { EditableIngredientName } from "@/components/editable-ingredient-name";
-import { InventoryQtyField } from "@/components/inventory-qty-field";
-import { InventoryStockUnitSelect } from "@/components/inventory-stock-unit-select";
+import { sortIngredientsForInventoryDisplay } from "@/lib/inventory-display";
+import { InventoryTableBody } from "@/components/inventory-table-body";
 
 export default async function InventoryPage() {
   if (!isSupabaseConfigured()) {
@@ -75,76 +71,14 @@ export default async function InventoryPage() {
               <th>Max</th>
               <th>Recipe Unit</th>
               <th className="row-delete-th">
-                <span className="visually-hidden">Delete ingredient</span>
+                <span className="visually-hidden">Actions</span>
               </th>
             </tr>
           </thead>
-          <tbody>
-            {sortedIng.map((ingredient) => {
-              const invRow = getInventoryRowForIngredient(invList, ingredient.id);
-              const stock = getInventoryStockValuesUnified(ingredient, invRow);
-              return (
-                <tr key={ingredient.id}>
-                    <td className="inventory-ingredient-name">
-                      <EditableIngredientName
-                        ingredientId={ingredient.id}
-                        initialName={ingredient.name || ""}
-                      />
-                    </td>
-                    <td className="inventory-qty-cell">
-                      <InventoryQtyField
-                        ingredientId={ingredient.id}
-                        inventoryId={stock.inventoryId}
-                        field="quantity"
-                        initialValue={stock.quantity}
-                        ariaLabel="Current quantity"
-                      />
-                    </td>
-                    <td className="inventory-unit-cell">
-                      <InventoryStockUnitSelect
-                        ingredientId={ingredient.id}
-                        inventoryId={stock.inventoryId}
-                        value={stock.unit}
-                      />
-                    </td>
-                    <td className="inventory-qty-cell">
-                      <InventoryQtyField
-                        ingredientId={ingredient.id}
-                        inventoryId={stock.inventoryId}
-                        field="min_quantity"
-                        initialValue={stock.min}
-                        maxBound={stock.max}
-                        ariaLabel="Minimum quantity"
-                      />
-                    </td>
-                    <td className="inventory-qty-cell">
-                      <InventoryQtyField
-                        ingredientId={ingredient.id}
-                        inventoryId={stock.inventoryId}
-                        field="max_quantity"
-                        initialValue={stock.max}
-                        minBound={stock.min}
-                        ariaLabel="Maximum quantity"
-                      />
-                    </td>
-                    <td className="inventory-unit-cell">
-                      <RecipeUnitSelect
-                        ingredientId={ingredient.id}
-                        inventoryId={stock.inventoryId}
-                        stockUnit={stock.unit}
-                        savedRecipeUnit={stock.recipeUnit}
-                      />
-                    </td>
-                    <td className="row-delete-cell">
-                      <IngredientDeleteButton
-                        ingredientId={ingredient.id}
-                        ingredientName={ingredient.name}
-                      />
-                    </td>
-                </tr>
-              );
-            })}
-          </tbody>
+          <InventoryTableBody
+            ingredients={sortedIng}
+            inventory={invList}
+          />
         </table>
       </div>
     </section>

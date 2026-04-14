@@ -1,0 +1,23 @@
+---
+description: After any DB schema change, always supply Supabase SQL Editor script and steps in the same response
+alwaysApply: true
+---
+
+# Supabase SQL migrations (kitchenOS)
+
+Whenever a change **adds, removes, or alters database structure or policies**—tables, columns, types, constraints, indexes, views, functions, triggers, extensions, or Row Level Security (RLS) policies—treat that as a schema change.
+
+## Required in the same response (no follow-up)
+
+1. **Short “how to run it”** for the Supabase dashboard: open **SQL** → **New query** → paste → **Run** as role **postgres** on the **Primary** database (match the user’s usual workflow).
+2. **The exact SQL** the user can paste into the editor: one fenced `sql` block, runnable as-is for their hosted project, in dependency order.
+3. If the repo already has a migration file (e.g. under `app/database/`), **still include the full SQL in the message** (or explicitly say the file is the single source and paste its full contents). Do not only point at a path without pasteable SQL.
+
+## Content of the script
+
+- Prefer **additive, safe** patterns when reasonable (`IF NOT EXISTS`, new columns with defaults, separate `DO` blocks for idempotent policy work) so re-runs do not fail blindly; if something must run **once** or is destructive, say so in plain language above the block.
+- Keep **canonical** updates in `app/database/schema.sql` (and any `supabase_migration_*.sql` files) in sync with what you tell them to run in Supabase.
+
+## When there is no remote migration
+
+If the change is **local-only** or **already applied** on Supabase, say that clearly and still give **no SQL** only when truly nothing needs to run remotely.

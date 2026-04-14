@@ -3,7 +3,7 @@ import { Suspense } from "react";
 
 function HeaderFallback() {
   return (
-    <header className="topbar" style={{ minHeight: "var(--triad-72)" }}>
+    <header className="topbar" style={{ minHeight: "var(--space-72)" }}>
       <div className="topbar-row topbar-tabs" />
     </header>
   );

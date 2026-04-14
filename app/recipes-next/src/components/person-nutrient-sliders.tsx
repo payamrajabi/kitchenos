@@ -2,17 +2,21 @@
 
 import { updatePersonPatchAction } from "@/app/actions/people";
 import {
+  canSetNutrientLock,
   clampTargetToBand,
   computeLinkedNutrientState,
+  DEFAULT_NUTRIENT_LOCKS,
   initialNutrientSliderValue,
   nutrientBandKeys,
   patchNutrientTargetsIfChanged,
   PERSON_NUTRIENT_SLIDERS,
   readNutrientBand,
   snapToNutrientStep,
+  type NutrientLockState,
   type NutrientSliderField,
   type NutrientSliderSpec,
 } from "@/lib/person-nutrient-sliders";
+import { Lock, LockOpen } from "@phosphor-icons/react";
 import type { PersonRow } from "@/types/database";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -78,6 +82,8 @@ function NutrientSliderRow({
   person,
   spec,
   value,
+  targetLocked,
+  onToggleTargetLock,
   onValueChange,
   commitPatch,
   onCommitTarget,
@@ -85,6 +91,8 @@ function NutrientSliderRow({
   person: PersonRow;
   spec: NutrientSliderSpec;
   value: number;
+  targetLocked: boolean;
+  onToggleTargetLock: () => void;
   onValueChange: (n: number) => void;
   commitPatch: (patch: Record<string, unknown>) => void;
   onCommitTarget: (spec: NutrientSliderSpec, t: number) => void;
@@ -167,6 +175,7 @@ function NutrientSliderRow({
       const lMax = localMaxRef.current;
 
       if (kind === "target") {
+        if (targetLocked) return;
         const t = clampTargetToBand(v, lMin, lMax, spec);
         valueRef.current = t;
         onValueChange(t);
@@ -203,6 +212,7 @@ function NutrientSliderRow({
       const trackEl = trackRef.current;
 
       if (kind === "target") {
+        if (targetLocked) return;
         const t = clampTargetToBand(
           valueFromClientX(e.clientX),
           localMinRef.current,
@@ -293,6 +303,7 @@ function NutrientSliderRow({
     onValueChange,
     spec,
     spec.field,
+    targetLocked,
     valueFromClientX,
   ]);
 
@@ -329,6 +340,7 @@ function NutrientSliderRow({
   const startDragTarget = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (targetLocked) return;
     const t0 = valueRef.current;
     setLiveHint({
       pct: valueToRatio(t0, spec) * 100,
@@ -424,7 +436,30 @@ function NutrientSliderRow({
   return (
     <div className="person-nutrient-slider-row">
       <div className="person-nutrient-slider-head">
-        <span className="person-nutrient-slider-label">{spec.label}</span>
+        <span className="person-nutrient-slider-label">
+          {spec.label}
+          <button
+            type="button"
+            className="person-nutrient-lock-btn"
+            aria-pressed={targetLocked}
+            aria-label={
+              targetLocked
+                ? `${spec.label} target locked — unlock to drag`
+                : `${spec.label} target unlocked — lock to keep fixed while adjusting other sliders`
+            }
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleTargetLock();
+            }}
+          >
+            {targetLocked ? (
+              <Lock size={18} weight="regular" aria-hidden />
+            ) : (
+              <LockOpen size={18} weight="regular" aria-hidden />
+            )}
+          </button>
+        </span>
         <span className="person-nutrient-slider-target" aria-live="polite">
           Target: <strong>{value}</strong> {spec.unit}
           {localMin !== null || localMax !== null ? (
@@ -504,13 +539,19 @@ function NutrientSliderRow({
           <button
             type="button"
             data-nutrient-thumb="target"
-            className="person-nutrient-thumb person-nutrient-thumb--target"
+            className={
+              targetLocked
+                ? "person-nutrient-thumb person-nutrient-thumb--target person-nutrient-thumb--target-locked"
+                : "person-nutrient-thumb person-nutrient-thumb--target"
+            }
             style={{ left: `${valueToRatio(value, spec) * 100}%` }}
             aria-label={`${spec.label} target ${value}`}
             aria-valuemin={spec.min}
             aria-valuemax={spec.max}
             aria-valuenow={value}
+            aria-disabled={targetLocked}
             role="slider"
+            tabIndex={targetLocked ? -1 : 0}
             onPointerDown={startDragTarget}
           />
         </div>
@@ -525,6 +566,12 @@ function NutrientSliderRow({
 export function PersonNutrientSliders({ person, onError }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+
+  const [locks, setLocks] = useState<NutrientLockState>(DEFAULT_NUTRIENT_LOCKS);
+  const locksRef = useRef(locks);
+  useEffect(() => {
+    locksRef.current = locks;
+  }, [locks]);
 
   const initialValues = useMemo(() => {
     const out: Record<NutrientSliderField, number> = {} as Record<
@@ -561,13 +608,28 @@ export function PersonNutrientSliders({ person, onError }: Props) {
 
   const onCommitTarget = useCallback(
     (spec: NutrientSliderSpec, t: number) => {
-      const next = computeLinkedNutrientState(valuesRef.current, spec.field, t);
+      const next = computeLinkedNutrientState(
+        valuesRef.current,
+        spec.field,
+        t,
+        locksRef.current,
+      );
       setValues(next);
       const patch = patchNutrientTargetsIfChanged(person, next);
       if (Object.keys(patch).length > 0) commitPatch(patch);
     },
     [commitPatch, person],
   );
+
+  const toggleLock = useCallback((field: NutrientSliderField) => {
+    setLocks((prev) => {
+      const nextLocked = !prev[field];
+      if (!canSetNutrientLock(prev, field, nextLocked)) return prev;
+      const next = { ...prev, [field]: nextLocked };
+      locksRef.current = next;
+      return next;
+    });
+  }, []);
 
   return (
     <div className="person-nutrient-sliders">
@@ -577,8 +639,12 @@ export function PersonNutrientSliders({ person, onError }: Props) {
           person={person}
           spec={spec}
           value={values[spec.field]}
+          targetLocked={locks[spec.field]}
+          onToggleTargetLock={() => toggleLock(spec.field)}
           onValueChange={(n) =>
-            setValues((p) => computeLinkedNutrientState(p, spec.field, n))
+            setValues((p) =>
+              computeLinkedNutrientState(p, spec.field, n, locksRef.current),
+            )
           }
           commitPatch={commitPatch}
           onCommitTarget={onCommitTarget}

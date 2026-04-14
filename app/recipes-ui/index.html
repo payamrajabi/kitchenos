@@ -285,29 +285,10 @@
                     Fat (g)
                     <input id="fatGrams" type="number" min="0" step="1" />
                   </label>
-                  <div class="macro-carbs-with-estimate">
-                    <label class="macro-carbs-field-label" for="carbsGrams">Carbs (g)</label>
-                    <div class="macro-carbs-row">
-                      <input id="carbsGrams" type="number" min="0" step="1" />
-                      <button
-                        id="estimateButton"
-                        class="secondary button-small macro-estimate-button"
-                        type="button"
-                        disabled
-                      >
-                        Estimate macros
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div class="macro-estimate-meta">
-                  <span id="estimateStatus" class="status"></span>
-                  <p class="helper macro-estimate-helper">
-                    Requires sign-in. Calls the <code>openai-kitchen</code> Edge Function (set
-                    <code>OPENAI_API_KEY</code> secret in Supabase). Your API key is not stored in
-                    the browser.
-                  </p>
-                  <pre id="estimateNotes" class="estimate-output"></pre>
+                  <label>
+                    Carbs (g)
+                    <input id="carbsGrams" type="number" min="0" step="1" />
+                  </label>
                 </div>
                 <div class="form-actions">
                   <button class="secondary" type="button" data-close-add>Cancel</button>

@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS recipes (
   protein_grams INTEGER,
   fat_grams INTEGER,
   carbs_grams INTEGER,
+  is_published_to_community INTEGER NOT NULL DEFAULT 0,
+  published_at TEXT,
+  community_source_recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (category_id) REFERENCES recipe_categories(id)
@@ -55,6 +58,20 @@ CREATE TABLE IF NOT EXISTS ingredients (
   brand_or_manufacturer TEXT,
   notes TEXT,
   ingredients_text TEXT,
+  parent_ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE CASCADE,
+  variant_sort_order INTEGER NOT NULL DEFAULT 0,
+  kcal REAL,
+  fat_g REAL,
+  protein_g REAL,
+  carbs_g REAL,
+  nutrition_basis TEXT CHECK (nutrition_basis IN ('per_100g', 'per_unit')),
+  canonical_unit_weight_g REAL,
+  nutrition_source_name TEXT,
+  nutrition_source_record_id TEXT,
+  nutrition_source_url TEXT,
+  nutrition_confidence REAL CHECK (nutrition_confidence >= 0 AND nutrition_confidence <= 1),
+  nutrition_needs_review INTEGER NOT NULL DEFAULT 0,
+  nutrition_notes TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -171,6 +188,7 @@ CREATE TABLE IF NOT EXISTS meal_plan_entries (
   label TEXT,
   notes TEXT,
   sort_order INTEGER DEFAULT 0,
+  servings INTEGER NOT NULL DEFAULT 4 CHECK (servings >= 1),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -6,7 +6,7 @@ window.SUPABASE_CONFIG = {
   bucket: "recipe-images",
 };
 
-// Optional: OpenAI model passed to the Edge Function (nutrition + meal plan).
+// Optional: OpenAI model passed to the Edge Function (meal plan).
 window.OPENAI_CONFIG = {
   model: "gpt-4o-mini",
 };

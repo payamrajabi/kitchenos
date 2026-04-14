@@ -313,10 +313,39 @@ export async function addMealPlanEntryAction(input: {
     label,
     notes: null,
     sort_order: nextSortOrder,
+    servings: 4,
   });
 
   if (insertResult.error) {
     return { ok: false as const, error: insertResult.error.message };
+  }
+
+  revalidatePath("/plan");
+  return { ok: true as const };
+}
+
+export async function updateMealPlanEntryServingsAction(entryId: number, servings: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false as const, error: "Sign in to edit your meal plan." };
+  }
+
+  const n = Math.floor(Number(servings));
+  if (!Number.isFinite(n) || n < 1 || n > 99) {
+    return { ok: false as const, error: "Servings must be between 1 and 99." };
+  }
+
+  const updateResult = await supabase
+    .from("meal_plan_entries")
+    .update({ servings: n })
+    .eq("id", entryId);
+
+  if (updateResult.error) {
+    return { ok: false as const, error: updateResult.error.message };
   }
 
   revalidatePath("/plan");

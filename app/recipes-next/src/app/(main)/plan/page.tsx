@@ -1,19 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import {
-  formatPlanDayLabel,
-  resolvePlanWeekFromSearchParam,
-  weekDayStrings,
+  addDaysToDateString,
+  getWeekStartMonday,
+  planDateKeyLocalAnchor,
 } from "@/lib/dates";
 import { isSupabaseConfigured } from "@/lib/env";
-import { PlanWeekBoard } from "@/components/plan-week-board";
-import { PlanWeekNav } from "@/components/plan-week-nav";
-import type { MealPlanEntryRow, MealPlanRow } from "@/types/database";
+import { PlanWeekClient } from "@/components/plan-week-client";
+import { Suspense } from "react";
+import type { MealPlanEntryRow, MealPlanRow, RecipeRow } from "@/types/database";
 
-type PageProps = {
-  searchParams?: Promise<{ w?: string | string[] }>;
-};
+const DAYS_BACK = 14;
+const DAYS_FORWARD = 21;
 
-export default async function PlanPage({ searchParams }: PageProps) {
+export default async function PlanPage() {
   if (!isSupabaseConfigured()) {
     return (
       <section className="grid is-empty">
@@ -39,34 +38,48 @@ export default async function PlanPage({ searchParams }: PageProps) {
     );
   }
 
-  const sp = searchParams ? await searchParams : {};
-  const ws = resolvePlanWeekFromSearchParam(sp.w);
+  const today = planDateKeyLocalAnchor();
+  const rangeStart = addDaysToDateString(today, -DAYS_BACK);
+  const rangeEnd = addDaysToDateString(today, DAYS_FORWARD);
+  const startWeek = getWeekStartMonday(new Date(`${rangeStart}T12:00:00`));
+  const endWeek = getWeekStartMonday(new Date(`${rangeEnd}T12:00:00`));
+
+  const days: { date: string }[] = [];
+  for (let i = -DAYS_BACK; i <= DAYS_FORWARD; i++) {
+    days.push({ date: addDaysToDateString(today, i) });
+  }
+
   const [{ data: planRows }, { data: recipeRows }, { data: ingredientRows }] =
     await Promise.all([
       supabase
         .from("meal_plans")
         .select("*, meal_plan_entries(*)")
-        .eq("week_start", ws)
-        .limit(1),
-      supabase.from("recipes").select("id,name").order("name"),
+        .gte("week_start", startWeek)
+        .lte("week_start", endWeek),
+      supabase.from("recipes").select("*").order("name"),
       supabase.from("ingredients").select("id,name").order("name"),
     ]);
 
-  const plan = (planRows?.[0] as MealPlanRow | undefined) ?? null;
-  const entries = [...(plan?.meal_plan_entries ?? [])] as MealPlanEntryRow[];
+  const entries = (planRows ?? []).flatMap(
+    (p) => ((p as MealPlanRow).meal_plan_entries ?? []) as MealPlanEntryRow[],
+  );
   entries.sort((a, b) => {
     const da = String(a.plan_date).localeCompare(String(b.plan_date));
     if (da !== 0) return da;
     return (a.sort_order ?? 0) - (b.sort_order ?? 0);
   });
-  const days = weekDayStrings(ws).map((dateStr) => ({
-    date: dateStr,
-    label: formatPlanDayLabel(dateStr),
-  }));
-  const recipes = (recipeRows ?? []).map((recipe) => ({
-    id: recipe.id,
-    name: recipe.name,
-  }));
+
+  const recipes = (recipeRows ?? []).map((recipe) => {
+    const row = recipe as RecipeRow;
+    return {
+      id: row.id,
+      name: row.name,
+      meal_types: row.meal_types,
+      image_url: row.image_url,
+      image_urls: row.image_urls,
+      image_focus_y: row.image_focus_y ?? null,
+    };
+  });
   const ingredients = (ingredientRows ?? []).map((row) => ({
     id: row.id,
     name: row.name?.trim() ? row.name : "Ingredient",
@@ -75,13 +88,21 @@ export default async function PlanPage({ searchParams }: PageProps) {
   return (
     <section className="plan-page">
       <div className="plan-week">
-        <PlanWeekNav weekStart={ws} />
-        <PlanWeekBoard
-          days={days}
-          entries={entries}
-          recipes={recipes}
-          ingredients={ingredients}
-        />
+        <Suspense
+          fallback={
+            <p className="plan-board-feedback plan-board-feedback--muted" role="status">
+              Loading plan…
+            </p>
+          }
+        >
+          <PlanWeekClient
+            today={today}
+            days={days}
+            entries={entries}
+            recipes={recipes}
+            ingredients={ingredients}
+          />
+        </Suspense>
       </div>
     </section>
   );

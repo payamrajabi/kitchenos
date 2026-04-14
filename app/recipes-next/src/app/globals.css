@@ -13,46 +13,72 @@
   --stripe-b: #f0f0f0;
 
   /*
-   * Triad rhythm — three is the spine (not Material’s 8s).
-   * Hairline run 1–4 px for borders and optical nudges, then a 3-lattice with
-   * occasional +6 “lungfuls” (e.g. 18→24) so the scale breathes. Larger slots
-   * use calc(n * var(--triad-unit)) so the math stays visible in one place.
+   * Base-4 spacing — unit 4px. Hairlines 1–2px; then 4, 6, 8 and +4 steps to 64;
+   * +8 to 128; +16 to 256; +32 to 512; +64 to 1024. Names are pixel values.
    */
-  --triad-unit: 3px;
-  --triad-1: 1px;
-  --triad-2: 2px;
-  --triad-3: var(--triad-unit);
-  --triad-4: 4px;
-  --triad-6: 6px;
-  --triad-9: 9px;
-  --triad-12: 12px;
-  --triad-15: 15px;
-  --triad-18: 18px;
-  --triad-21: 21px;
-  --triad-24: 24px;
-  --triad-27: 27px;
-  --triad-30: 30px;
-  --triad-33: 33px;
-  --triad-36: 36px;
-  --triad-39: 39px;
-  --triad-42: 42px;
-  --triad-45: 45px;
-  --triad-48: 48px;
-  --triad-54: 54px;
-  --triad-57: 57px;
-  --triad-60: 60px;
-  --triad-66: 66px;
-  --triad-72: 72px;
-  --triad-81: 81px;
+  --space-unit: 4px;
+  --space-1: 1px;
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  /* Must match .topbar-tabs-inner gap — used by useTopbarUnifiedNav measurement. */
+  --topbar-split-min-gap: var(--space-16);
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-28: 28px;
+  --space-32: 32px;
+  --space-36: 36px;
+  --space-40: 40px;
+  --space-44: 44px;
+  --space-48: 48px;
+  --space-52: 52px;
+  --space-56: 56px;
+  --space-60: 60px;
+  --space-64: 64px;
+  --space-72: 72px;
+  --space-80: 80px;
+  --space-88: 88px;
+  --space-96: 96px;
+  --space-104: 104px;
+  --space-112: 112px;
+  --space-120: 120px;
+  --space-128: 128px;
+  --space-144: 144px;
+  --space-160: 160px;
+  --space-176: 176px;
+  --space-192: 192px;
+  --space-208: 208px;
+  --space-224: 224px;
+  --space-240: 240px;
+  --space-256: 256px;
+  --space-288: 288px;
+  --space-320: 320px;
+  --space-352: 352px;
+  --space-384: 384px;
+  --space-416: 416px;
+  --space-448: 448px;
+  --space-480: 480px;
+  --space-512: 512px;
+  --space-576: 576px;
+  --space-640: 640px;
+  --space-704: 704px;
+  --space-768: 768px;
+  --space-832: 832px;
+  --space-896: 896px;
+  --space-960: 960px;
+  --space-1024: 1024px;
 
   /* Form control rhythm — one height so inputs, selects, and buttons align */
-  --control-height: 36px;
-  --control-padding-x: 12px;
+  --control-height: var(--space-36);
+  --control-padding-x: var(--space-12);
   /* Default field outline; full ink on :focus */
   --control-border-rest: rgb(0 0 0 / 0.2);
 
   /* Page rhythm — clear separation: header vs content, cards vs viewport */
-  --page-pad-x: clamp(20px, 4vw, 36px);
+  --page-pad-x: 12px;
   --page-pad-y-top: clamp(28px, 5vw, 48px);
   --page-pad-y-bottom: clamp(40px, 6vw, 64px);
   --page-max-width: 1400px;
@@ -92,7 +118,7 @@ samp {
   flex-direction: column;
   align-items: stretch;
   padding: 0;
-  border-bottom: var(--triad-2) solid var(--ink);
+  border-bottom: var(--space-2) solid var(--ink);
   position: sticky;
   top: 0;
   z-index: 40;
@@ -114,7 +140,7 @@ samp {
 }
 
 .topbar-secondary-tabs {
-  gap: var(--triad-4);
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -123,10 +149,10 @@ samp {
 }
 
 .secondary-tab-button {
-  border: var(--triad-1) solid transparent;
-  border-bottom: var(--triad-2) solid transparent;
+  border: var(--space-1) solid transparent;
+  border-bottom: var(--space-2) solid transparent;
   background: transparent;
-  padding: 0 var(--triad-9);
+  padding: 0 var(--space-8);
   height: var(--control-height);
   min-height: var(--control-height);
   border-radius: 0;
@@ -151,9 +177,47 @@ samp {
 
 .topbar-tabs {
   position: relative;
-  padding-block: var(--triad-12);
+  padding-block: var(--space-12);
   width: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.page-tabs-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.page-tabs-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.page-tabs--with-auth .header-auth {
+  flex-shrink: 0;
+}
+
+.topbar-nav-cluster {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Off-screen mirror of split groups for width measurement (see useTopbarUnifiedNav). */
+.topbar-layout-probe {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--topbar-split-min-gap);
 }
 
 .topbar-tabs-inner {
@@ -161,8 +225,32 @@ samp {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  gap: var(--triad-15);
-  flex-wrap: wrap;
+  gap: var(--topbar-split-min-gap);
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Unified strip: when split groups would collide (see useTopbarUnifiedNav), one scroll row. */
+.topbar.topbar--unified-nav > .topbar-row.topbar-tabs {
+  padding-inline: 0;
+}
+
+.topbar.topbar--unified-nav .topbar-nav-scroll {
+  padding-left: calc(var(--page-pad-x) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--page-pad-x) + env(safe-area-inset-right, 0px));
+  scrollbar-width: none;
+}
+
+.topbar.topbar--unified-nav .topbar-nav-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .header-auth {
@@ -174,13 +262,13 @@ samp {
 .header-auth-guest {
   display: flex;
   align-items: center;
-  gap: var(--triad-9);
+  gap: var(--space-8);
 }
 
 .header-auth-btn {
   font-size: 13px;
   border-radius: 0;
-  padding: 0 var(--triad-15);
+  padding: 0 var(--space-16);
 }
 
 .header-auth-user {
@@ -195,8 +283,8 @@ samp {
 .user-avatar-button {
   width: var(--control-height);
   height: var(--control-height);
-  border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
   background: var(--ink);
   color: var(--paper);
   font-size: 14px;
@@ -206,13 +294,36 @@ samp {
   align-items: center;
   justify-content: center;
   padding: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.user-avatar-button[data-has-photo] {
+  background: var(--paper);
+  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
 }
 
 .user-avatar-button:hover,
 .user-avatar-button:focus-visible {
+  outline: none;
+}
+
+.user-avatar-button:not([data-has-photo]):hover,
+.user-avatar-button:not([data-has-photo]):focus-visible {
   background: var(--paper);
   color: var(--ink);
-  outline: none;
+}
+
+.user-avatar-button[data-has-photo]:hover,
+.user-avatar-button[data-has-photo]:focus-visible {
+  opacity: 0.92;
+}
+
+.user-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .user-avatar-initial {
@@ -223,11 +334,11 @@ samp {
 .user-menu-dropdown {
   position: absolute;
   right: 0;
-  top: calc(100% + var(--triad-9));
+  top: calc(100% + var(--space-8));
   background: var(--paper);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
-  min-width: calc(74 * var(--triad-unit));
+  border: var(--space-2) solid var(--ink);
+  min-width: var(--space-224);
   padding: 0;
   display: none;
   z-index: 20;
@@ -238,20 +349,20 @@ samp {
 }
 
 .user-menu-email {
-  padding: var(--triad-9) var(--triad-12) var(--triad-9);
+  padding: var(--space-8) var(--space-12) var(--space-8);
   font-size: 13px;
   color: #555;
   word-break: break-all;
-  border-bottom: var(--triad-1) solid #f0f0f0;
-  margin-bottom: var(--triad-4);
+  border-bottom: var(--space-1) solid #f0f0f0;
+  margin-bottom: var(--space-4);
 }
 
 .user-menu-dropdown button[role="menuitem"] {
   width: 100%;
   border: none;
-  border-top: var(--triad-1) solid var(--ink);
+  border-top: var(--space-1) solid var(--ink);
   background: transparent;
-  padding: var(--triad-9) var(--triad-12);
+  padding: var(--space-8) var(--space-12);
   text-align: left;
   border-radius: 0;
   font-size: 12px;
@@ -277,14 +388,17 @@ samp {
 
 .page-tabs {
   display: inline-flex;
-  gap: var(--triad-3);
+  flex-wrap: nowrap;
+  gap: var(--space-4);
   align-items: center;
+  width: max-content;
+  min-height: var(--control-height);
 }
 
 .page-tab-button {
   border: none;
   background: transparent;
-  padding: var(--triad-6) var(--triad-12);
+  padding: var(--space-6) var(--space-12);
   min-height: var(--control-height);
   font-size: 13px;
   line-height: 1;
@@ -333,11 +447,11 @@ samp {
 .create-dropdown {
   position: absolute;
   right: 0;
-  top: calc(100% + var(--triad-9));
+  top: calc(100% + var(--space-8));
   background: var(--paper);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
-  min-width: calc(67 * var(--triad-unit));
+  border: var(--space-2) solid var(--ink);
+  min-width: var(--space-208);
   padding: 0;
   display: none;
   z-index: 10;
@@ -350,9 +464,9 @@ samp {
 .create-dropdown button {
   width: 100%;
   border: none;
-  border-bottom: var(--triad-1) solid var(--ink);
+  border-bottom: var(--space-1) solid var(--ink);
   background: transparent;
-  padding: var(--triad-9) var(--triad-12);
+  padding: var(--space-8) var(--space-12);
   text-align: left;
   border-radius: 0;
   font-size: 12px;
@@ -374,8 +488,8 @@ samp {
 
 .recipe-menu {
   position: absolute;
-  top: var(--triad-9);
-  right: var(--triad-9);
+  top: var(--space-8);
+  right: var(--space-8);
   z-index: 2;
   opacity: 0;
   pointer-events: none;
@@ -383,11 +497,11 @@ samp {
 }
 
 .recipe-menu-button {
-  border: var(--triad-1) solid var(--ink);
+  border: var(--space-1) solid var(--ink);
   background: var(--paper);
   color: var(--ink);
-  width: var(--triad-27);
-  height: var(--triad-27);
+  width: var(--space-28);
+  height: var(--space-28);
   border-radius: 0;
   font-size: 16px;
   line-height: 1;
@@ -401,11 +515,11 @@ samp {
 .recipe-menu-dropdown {
   position: absolute;
   right: 0;
-  top: calc(100% + var(--triad-6));
+  top: calc(100% + var(--space-6));
   background: var(--paper);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
-  min-width: calc(60 * var(--triad-unit));
+  border: var(--space-2) solid var(--ink);
+  min-width: var(--space-176);
   padding: 0;
   display: none;
   z-index: 10;
@@ -418,9 +532,9 @@ samp {
 .recipe-menu-dropdown button {
   width: 100%;
   border: none;
-  border-bottom: var(--triad-1) solid var(--ink);
+  border-bottom: var(--space-1) solid var(--ink);
   background: transparent;
-  padding: var(--triad-9) var(--triad-12);
+  padding: var(--space-8) var(--space-12);
   text-align: left;
   border-radius: 0;
   font-size: 12px;
@@ -451,7 +565,7 @@ samp {
 .adder {
   background: #ffffff;
   border-radius: 0;
-  padding: var(--triad-21) var(--triad-24);
+  padding: var(--space-20) var(--space-24);
   margin-bottom: clamp(24px, 4vw, 40px);
 }
 
@@ -464,10 +578,10 @@ samp {
 .adder-header {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--triad-15);
+  gap: var(--space-16);
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--triad-15);
+  margin-bottom: var(--space-16);
 }
 
 .adder-header h2 {
@@ -476,7 +590,7 @@ samp {
 }
 
 .adder-header p {
-  margin: var(--triad-4) 0 0;
+  margin: var(--space-4) 0 0;
   color: #666;
   font-size: 13px;
 }
@@ -487,15 +601,15 @@ samp {
   background: var(--paper);
   padding: 0;
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
 }
 
 .tab-button {
   flex: 1;
   border: none;
-  border-right: var(--triad-2) solid var(--ink);
+  border-right: var(--space-2) solid var(--ink);
   background: transparent;
-  padding: 0 var(--triad-15);
+  padding: 0 var(--space-16);
   min-height: var(--control-height);
   border-radius: 0;
   font-size: 12px;
@@ -522,7 +636,7 @@ samp {
 .adder-panel {
   display: none;
   flex-direction: column;
-  gap: var(--triad-12);
+  gap: var(--space-12);
 }
 
 .adder-panel.active {
@@ -531,32 +645,32 @@ samp {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(calc(60 * var(--triad-unit)), 1fr));
-  gap: var(--triad-12);
+  grid-template-columns: repeat(auto-fit, minmax(var(--space-176), 1fr));
+  gap: var(--space-12);
 }
 
 .form-full {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-6);
+  gap: var(--space-6);
 }
 
 .ingredient-picker {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   align-items: center;
 }
 
 .ingredient-list-header {
   display: grid;
-  grid-template-columns: minmax(calc(54 * var(--triad-unit)), 2fr) minmax(calc(27 * var(--triad-unit)), 1fr) minmax(calc(27 * var(--triad-unit)), 1fr) var(--triad-36) var(--triad-36);
-  gap: var(--triad-9);
+  grid-template-columns: minmax(var(--space-160), 2fr) minmax(var(--space-80), 1fr) minmax(var(--space-80), 1fr) var(--space-36) var(--space-36);
+  gap: var(--space-8);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #777;
-  padding: var(--triad-2) var(--triad-2) 0;
+  padding: var(--space-2) var(--space-2) 0;
 }
 
 .ingredient-list-header span:last-child {
@@ -566,13 +680,13 @@ samp {
 .ingredient-entries {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-9);
+  gap: var(--space-8);
 }
 
 .ingredient-entry {
   display: grid;
-  grid-template-columns: minmax(calc(54 * var(--triad-unit)), 2fr) minmax(calc(27 * var(--triad-unit)), 1fr) minmax(calc(27 * var(--triad-unit)), 1fr) var(--triad-36) var(--triad-36);
-  gap: var(--triad-9);
+  grid-template-columns: minmax(var(--space-160), 2fr) minmax(var(--space-80), 1fr) minmax(var(--space-80), 1fr) var(--space-36) var(--space-36);
+  gap: var(--space-8);
   align-items: center;
 }
 
@@ -600,7 +714,7 @@ samp {
   box-sizing: border-box;
   height: var(--control-height);
   min-height: var(--control-height);
-  padding: 0 var(--triad-12);
+  padding: 0 var(--space-12);
   font-size: 12px;
   border-radius: 0;
   line-height: 1;
@@ -609,17 +723,19 @@ samp {
 label {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-6);
+  gap: var(--space-6);
   font-size: 13px;
   color: #444;
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]),
+/* Exclude inventory table fields — global `input` + :not([type]) chain is more specific than
+   `.ingredients-table …` overrides; those rows manage borders via .inventory-* classes. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]):not(.inventory-name-input):not(.inventory-qty-input),
 select {
   height: var(--control-height);
   min-height: var(--control-height);
   padding: 0 var(--control-padding-x);
-  border: var(--triad-2) solid var(--control-border-rest);
+  border: var(--space-2) solid var(--control-border-rest);
   border-radius: 0;
   font: inherit;
   font-size: 14px;
@@ -630,12 +746,12 @@ select {
 }
 
 select {
-  line-height: calc(var(--control-height) - 2 * var(--triad-2));
+  line-height: calc(var(--control-height) - 2 * var(--space-2));
   appearance: none;
   cursor: pointer;
   padding-right: calc(var(--control-padding-x) + 18px);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='%230a0a0a'%3E%3Cpath d='M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,48,88H208a8,8,0,0,1,5.66,13.66Z'/%3E%3C/svg%3E");
-  background-position: right var(--triad-9) calc(50% + 3px);
+  background-position: right var(--space-8) calc(50% + var(--space-4));
   background-size: 10px 10px;
   background-repeat: no-repeat;
 }
@@ -643,8 +759,8 @@ select {
 textarea {
   resize: vertical;
   min-height: calc(var(--control-height) * 2.5);
-  padding: var(--triad-9) var(--control-padding-x);
-  border: var(--triad-2) solid var(--control-border-rest);
+  padding: var(--space-8) var(--control-padding-x);
+  border: var(--space-2) solid var(--control-border-rest);
   border-radius: 0;
   font: inherit;
   font-size: 14px;
@@ -658,7 +774,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--triad-12);
+  gap: var(--space-12);
 }
 
 .primary,
@@ -669,8 +785,8 @@ textarea {
   box-sizing: border-box;
   height: var(--control-height);
   min-height: var(--control-height);
-  padding: 0 var(--triad-18);
-  border: var(--triad-2) solid var(--ink);
+  padding: 0 var(--space-20);
+  border: var(--space-2) solid var(--ink);
   border-radius: 0;
   cursor: pointer;
   font-weight: 600;
@@ -712,11 +828,11 @@ textarea {
 }
 
 .form-section {
-  border-top: var(--triad-1) solid #eee;
-  padding-top: var(--triad-15);
+  border-top: var(--space-1) solid #eee;
+  padding-top: var(--space-16);
   display: flex;
   flex-direction: column;
-  gap: var(--triad-9);
+  gap: var(--space-8);
 }
 
 .section-header {
@@ -727,14 +843,14 @@ textarea {
 
 .nutrition-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(calc(67 * var(--triad-unit)), 1fr));
-  gap: var(--triad-12);
+  grid-template-columns: repeat(auto-fit, minmax(var(--space-208), 1fr));
+  gap: var(--space-12);
 }
 
 .inline-checkbox {
   flex-direction: row;
   align-items: center;
-  gap: var(--triad-9);
+  gap: var(--space-8);
 }
 
 .estimate-output {
@@ -751,7 +867,7 @@ textarea {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(calc(74 * var(--triad-unit)), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--space-224), 1fr));
   gap: var(--grid-gap);
 }
 
@@ -772,7 +888,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: min(50vh, calc(120 * var(--triad-unit)));
+  min-height: min(50vh, var(--space-352));
   padding-block: var(--page-pad-y-top);
 }
 
@@ -812,14 +928,14 @@ textarea {
 .shop-board {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-15);
+  gap: var(--space-16);
 }
 
 .shop-board-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--triad-15);
+  gap: var(--space-16);
 }
 
 .shop-board-header h2 {
@@ -828,7 +944,7 @@ textarea {
 }
 
 .shop-board-header p {
-  margin: var(--triad-4) 0 0;
+  margin: var(--space-4) 0 0;
   font-size: 13px;
   color: #666;
 }
@@ -844,8 +960,8 @@ textarea {
 }
 
 .people-card-link:focus-visible {
-  outline: var(--triad-2) solid var(--ink);
-  outline-offset: var(--triad-3);
+  outline: var(--space-2) solid var(--ink);
+  outline-offset: var(--space-4);
 }
 
 .people-card-link:hover .people-card {
@@ -877,7 +993,7 @@ textarea {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: var(--triad-6);
+  gap: var(--space-6);
   padding: 0;
   background: transparent;
   border: none;
@@ -924,18 +1040,58 @@ textarea {
 
 /* People — detail / edit */
 .person-detail-page {
-  max-width: 40rem;
+  max-width: min(100%, 56rem);
+}
+
+.person-detail-layout {
+  display: grid;
+  gap: var(--space-24);
+  grid-template-columns: 1fr;
+  align-items: start;
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .person-detail-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-32);
+  }
+}
+
+.person-detail-macro-aside {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.person-detail-macro-pie-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.person-detail-macro-pie-wrap .person-macro-pie-svg {
+  width: 100%;
+  height: auto;
+}
+
+.person-detail-macro-pie-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--fog);
 }
 
 .person-detail-rows {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-21);
+  gap: var(--space-20);
 }
 
 .person-detail-row {
   display: grid;
-  gap: var(--triad-15);
+  gap: var(--space-16);
   align-items: start;
 }
 
@@ -969,7 +1125,7 @@ textarea {
 .person-detail-field {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-3);
+  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -981,8 +1137,8 @@ textarea {
   width: 100%;
   box-sizing: border-box;
   border: none;
-  border-bottom: var(--triad-2) solid var(--ink);
-  padding: var(--triad-6) 0 var(--triad-9);
+  border-bottom: var(--space-2) solid var(--ink);
+  padding: var(--space-6) 0 var(--space-8);
   margin: 0;
   font: inherit;
   font-size: clamp(20px, 3vw, 26px);
@@ -997,14 +1153,14 @@ textarea {
 .person-detail-name-input:focus {
   outline: none;
   background: var(--fog);
-  padding-left: var(--triad-6);
-  padding-right: var(--triad-6);
-  margin-left: calc(-1 * var(--triad-6));
-  margin-right: calc(-1 * var(--triad-6));
+  padding-left: var(--space-6);
+  padding-right: var(--space-6);
+  margin-left: calc(-1 * var(--space-6));
+  margin-right: calc(-1 * var(--space-6));
 }
 
 .person-detail-form-message {
-  margin: 0 0 var(--triad-15);
+  margin: 0 0 var(--space-16);
   font-size: 13px;
 }
 
@@ -1016,14 +1172,14 @@ textarea {
 .person-nutrient-sliders {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-24);
-  margin: var(--triad-6) 0 var(--triad-6);
+  gap: var(--space-24);
+  margin: var(--space-6) 0 var(--space-6);
 }
 
 .person-nutrient-slider-row {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -1032,14 +1188,41 @@ textarea {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--triad-9);
+  gap: var(--space-8);
 }
 
 .person-nutrient-slider-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--ink);
+}
+
+.person-nutrient-lock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 2px;
+}
+
+.person-nutrient-lock-btn:hover {
+  color: var(--ink);
+}
+
+.person-nutrient-lock-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 .person-nutrient-slider-target {
@@ -1057,7 +1240,7 @@ textarea {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--triad-12);
+  gap: var(--space-12);
   min-width: 0;
 }
 
@@ -1109,11 +1292,11 @@ textarea {
   position: absolute;
   left: 0;
   top: 50%;
-  transform: translate(-50%, calc(-100% - var(--triad-9)));
+  transform: translate(-50%, calc(-100% - var(--space-8)));
   z-index: 10;
   max-width: min(220px, 70vw);
-  padding: var(--triad-3) var(--triad-9);
-  border: var(--triad-1) solid var(--ink);
+  padding: var(--space-4) var(--space-8);
+  border: var(--space-1) solid var(--ink);
   background: var(--paper);
   color: var(--ink);
   font-size: 11px;
@@ -1122,18 +1305,18 @@ textarea {
   white-space: nowrap;
   pointer-events: none;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 var(--triad-2) var(--triad-6) rgba(0, 0, 0, 0.08);
+  box-shadow: 0 var(--space-2) var(--space-6) rgba(0, 0, 0, 0.08);
 }
 
 .person-nutrient-hover-ghost {
   position: absolute;
   top: 50%;
   left: 0;
-  width: var(--triad-12);
-  height: var(--triad-12);
+  width: var(--space-12);
+  height: var(--space-12);
   transform: translate(-50%, -50%);
   background: #b8b8b8;
-  border: var(--triad-1) solid #6e6e6e;
+  border: var(--space-1) solid #6e6e6e;
   border-radius: 1px;
   z-index: 2;
   pointer-events: none;
@@ -1144,8 +1327,8 @@ textarea {
   position: absolute;
   top: 50%;
   left: 0;
-  width: var(--triad-18);
-  height: var(--triad-18);
+  width: var(--space-20);
+  height: var(--space-20);
   transform: translate(-50%, -50%);
   padding: 0;
   border-radius: 0;
@@ -1159,23 +1342,29 @@ textarea {
 }
 
 .person-nutrient-thumb--band {
-  width: var(--triad-15);
-  height: var(--triad-15);
+  width: var(--space-16);
+  height: var(--space-16);
   background: #aeaeae;
-  border: var(--triad-1) solid #5a5a5a;
+  border: var(--space-1) solid #5a5a5a;
   z-index: 3;
 }
 
 .person-nutrient-thumb--target {
   background: var(--ink);
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   z-index: 4;
-  box-shadow: 0 0 0 var(--triad-1) var(--paper);
+  box-shadow: 0 0 0 var(--space-1) var(--paper);
+}
+
+.person-nutrient-thumb--target-locked {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: not-allowed;
 }
 
 .person-nutrient-thumb:focus-visible {
-  outline: var(--triad-2) solid var(--ink);
-  outline-offset: var(--triad-3);
+  outline: var(--space-2) solid var(--ink);
+  outline-offset: var(--space-4);
 }
 
 .person-nutrient-thumb--poof-out {
@@ -1192,28 +1381,28 @@ textarea {
 
 .shop-board-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(calc(87 * var(--triad-unit)), 1fr));
-  gap: var(--triad-15);
+  grid-template-columns: repeat(auto-fit, minmax(var(--space-256), 1fr));
+  gap: var(--space-16);
   align-items: start;
 }
 
 .shop-column {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-12);
+  gap: var(--space-12);
   background: var(--paper);
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   border-radius: 0;
-  padding: var(--triad-12);
+  padding: var(--space-12);
 }
 
 .shop-column-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--triad-9);
-  padding-bottom: var(--triad-9);
-  border-bottom: var(--triad-1) solid #f0f0f0;
+  gap: var(--space-8);
+  padding-bottom: var(--space-8);
+  border-bottom: var(--space-1) solid #f0f0f0;
 }
 
 .shop-column-title {
@@ -1227,28 +1416,28 @@ textarea {
   color: #666;
   background: #f6f6f6;
   border-radius: 0;
-  padding: var(--triad-2) var(--triad-9);
+  padding: var(--space-2) var(--space-8);
 }
 
 .shop-aisles {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-12);
+  gap: var(--space-12);
 }
 
 .shop-aisle {
   background: var(--fog);
   border-radius: 0;
-  padding: var(--triad-9);
-  border: var(--triad-1) solid var(--ink);
+  padding: var(--space-8);
+  border: var(--space-1) solid var(--ink);
 }
 
 .shop-aisle-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--triad-9);
-  margin-bottom: var(--triad-9);
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
   color: #555;
   font-size: 13px;
 }
@@ -1267,20 +1456,20 @@ textarea {
 .shop-cards {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-9);
+  gap: var(--space-8);
 }
 
 .shop-card {
   background: var(--paper);
   border-radius: 0;
-  border: var(--triad-1) solid var(--hair);
-  padding: var(--triad-9) var(--triad-9);
+  border: var(--space-1) solid var(--hair);
+  padding: var(--space-8) var(--space-8);
 }
 
 .shop-card-title {
   font-weight: 600;
   font-size: 13px;
-  margin-bottom: var(--triad-4);
+  margin-bottom: var(--space-4);
 }
 
 .shop-card-meta {
@@ -1291,26 +1480,26 @@ textarea {
 .shop-card-notes {
   font-size: 12px;
   color: #777;
-  margin-top: var(--triad-4);
+  margin-top: var(--space-4);
 }
 
 .shop-match-hint {
-  margin: calc(-1 * var(--triad-6)) 0 var(--triad-6);
+  margin: calc(-1 * var(--space-6)) 0 var(--space-6);
   font-size: 12px;
   color: #666;
 }
 
 .empty-state {
-  max-width: calc(120 * var(--triad-unit));
-  padding: var(--triad-27) var(--triad-24);
+  max-width: var(--space-352);
+  padding: var(--space-28) var(--space-24);
   background: var(--paper);
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   border-radius: 0;
   text-align: center;
 }
 
 .empty-state-message {
-  margin: 0 0 var(--triad-15);
+  margin: 0 0 var(--space-16);
   color: #555;
   font-size: 14px;
   line-height: 1.4;
@@ -1320,21 +1509,21 @@ textarea {
   width: 100%;
   overflow: auto;
   background: var(--paper);
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   border-radius: 0;
 }
 
 .ingredients-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: calc(327 * var(--triad-unit));
+  min-width: var(--space-960);
   font-size: 13px;
 }
 
 .ingredients-table th,
 .ingredients-table td {
-  border-bottom: var(--triad-1) solid #eee;
-  padding: var(--triad-9) var(--triad-12);
+  border-bottom: var(--space-1) solid #eee;
+  padding: var(--space-8) var(--space-12);
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
@@ -1363,16 +1552,16 @@ textarea {
 
 .inventory-ingredient-name {
   cursor: pointer;
-  max-width: calc(107 * var(--triad-unit));
+  max-width: var(--space-320);
   white-space: normal;
 }
 
 .inventory-name-input {
   width: 100%;
-  max-width: calc(107 * var(--triad-unit));
+  max-width: var(--space-320);
   min-width: 0;
-  padding: var(--triad-4) var(--triad-6);
-  border: var(--triad-2) solid var(--control-border-rest);
+  padding: var(--space-4) var(--space-6);
+  border: var(--space-2) solid var(--control-border-rest);
   border-radius: 0;
   font: inherit;
   font-size: 13px;
@@ -1381,17 +1570,15 @@ textarea {
   box-sizing: border-box;
 }
 
-.inventory-name-input:hover {
+.ingredients-table
+  tbody
+  tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open))
+  .inventory-name-input:hover {
   background: rgba(0, 0, 0, 0.02);
 }
 
-.inventory-name-input:focus {
-  border-color: var(--ink);
-  outline: none;
-}
-
 .inventory-unit-cell {
-  min-width: calc(47 * var(--triad-unit));
+  min-width: var(--space-144);
   position: relative;
   vertical-align: top;
   overflow: visible;
@@ -1399,30 +1586,30 @@ textarea {
 
 .inventory-unit-select {
   width: 100%;
-  max-width: calc(67 * var(--triad-unit));
+  max-width: var(--space-208);
   font-size: 13px;
 }
 
 .inventory-qty-cell {
-  min-width: calc(40 * var(--triad-unit));
-  width: calc(40 * var(--triad-unit));
+  min-width: var(--space-120);
+  width: var(--space-120);
 }
 
 .inventory-qty-wrap {
   display: inline-flex;
   align-items: center;
-  gap: var(--triad-4);
+  gap: var(--space-4);
   position: relative;
   width: 100%;
-  min-height: var(--triad-21);
+  min-height: var(--space-20);
 }
 
 .inventory-qty-btn {
   flex-shrink: 0;
-  width: var(--triad-21);
-  height: var(--triad-21);
+  width: var(--space-20);
+  height: var(--space-20);
   padding: 0;
-  border: var(--triad-1) solid var(--ink);
+  border: var(--space-1) solid var(--ink);
   border-radius: 0;
   background: var(--paper);
   color: var(--ink);
@@ -1435,8 +1622,10 @@ textarea {
   transition: opacity 0.12s ease, background 0.12s ease;
 }
 
-.inventory-qty-wrap:hover .inventory-qty-btn,
-.inventory-qty-wrap:focus-within .inventory-qty-btn {
+.ingredients-table
+  tbody
+  tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open))
+  .inventory-qty-btn {
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
@@ -1455,7 +1644,7 @@ textarea {
 .inventory-qty-value {
   order: -1;
   min-width: 2.25rem;
-  padding: var(--triad-4) var(--triad-6);
+  padding: var(--space-4) var(--space-6);
   border: none;
   border-radius: 0;
   background: transparent;
@@ -1474,13 +1663,46 @@ textarea {
   width: 4.5rem;
   height: var(--control-height);
   min-height: var(--control-height);
-  padding: 0 var(--triad-6);
-  border: var(--triad-2) solid var(--control-border-rest);
+  padding: 0 var(--space-6);
+  border: var(--space-2) solid var(--control-border-rest);
   border-radius: 0;
   font: inherit;
   font-size: 13px;
   text-align: left;
   box-sizing: border-box;
+}
+
+/* Inventory: hide field chrome until row hover/focus/open. Must follow
+   .inventory-name-input and .inventory-qty-input — their `border` shorthand
+   would otherwise override earlier `border-color` rules. */
+.ingredients-table tbody tr.inventory-data-row .inventory-name-input,
+.ingredients-table tbody tr.inventory-data-row .inventory-qty-input,
+.ingredients-table tbody tr.inventory-data-row .ss-trigger,
+.ingredients-table tbody tr.inventory-data-row .ss-input {
+  border-color: transparent;
+  background: transparent;
+}
+
+.ingredients-table tbody tr.inventory-data-row .ss-caret {
+  opacity: 0;
+}
+
+.ingredients-table tbody tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open)) .inventory-name-input:not(:focus),
+.ingredients-table tbody tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open)) .inventory-qty-input:not(:focus),
+.ingredients-table tbody tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open)) .ss-trigger,
+.ingredients-table tbody tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open)) .ss-input {
+  border-color: var(--control-border-rest);
+  background: var(--paper);
+}
+
+.ingredients-table tbody tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open)) .inventory-name-input:focus,
+.ingredients-table tbody tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open)) .inventory-qty-input:focus {
+  border-color: var(--ink);
+  outline: none;
+}
+
+.ingredients-table tbody tr.inventory-data-row:is(:hover, :focus-within, :has(.ss-open)) .ss-caret {
+  opacity: 1;
 }
 
 tr.inventory-row-saving {
@@ -1489,7 +1711,10 @@ tr.inventory-row-saving {
 }
 
 @media (hover: none) {
-  .inventory-qty-btn {
+  .ingredients-table
+    tbody
+    tr.inventory-data-row:is(:focus-within, :has(.ss-open))
+    .inventory-qty-btn {
     visibility: visible;
     opacity: 0.65;
     pointer-events: auto;
@@ -1497,7 +1722,7 @@ tr.inventory-row-saving {
 }
 
 .equipment-check-cell {
-  width: calc(40 * var(--triad-unit));
+  width: var(--space-120);
 }
 
 .equipment-check {
@@ -1508,20 +1733,20 @@ tr.inventory-row-saving {
 }
 
 .equipment-check input {
-  width: var(--triad-15);
-  height: var(--triad-15);
+  width: var(--space-16);
+  height: var(--space-16);
 }
 
 .ingredient-detail {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-15);
+  gap: var(--space-16);
 }
 
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(calc(47 * var(--triad-unit)), 1fr) minmax(calc(74 * var(--triad-unit)), 2fr);
-  gap: var(--triad-9) var(--triad-15);
+  grid-template-columns: minmax(var(--space-144), 1fr) minmax(var(--space-224), 2fr);
+  gap: var(--space-8) var(--space-16);
   font-size: 13px;
 }
 
@@ -1548,14 +1773,14 @@ tr.inventory-row-saving {
   background: var(--ink);
   font-weight: 600;
   color: var(--paper);
-  border-bottom: var(--triad-2) solid var(--ink);
+  border-bottom: var(--space-2) solid var(--ink);
 }
 
 .card {
   background: var(--paper);
   border-radius: 0;
   overflow: visible;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   cursor: pointer;
   position: relative;
 }
@@ -1633,7 +1858,7 @@ button.card.recipe-add-card {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   border-radius: 0;
-  border-bottom: var(--triad-2) solid var(--ink);
+  border-bottom: var(--space-2) solid var(--ink);
 }
 
 .card-content {
@@ -1641,7 +1866,7 @@ button.card.recipe-add-card {
 }
 
 .card-title {
-  margin: 0 0 var(--triad-6);
+  margin: 0 0 var(--space-6);
   font-size: 15px;
   line-height: 1.35;
 }
@@ -1654,7 +1879,7 @@ button.card.recipe-add-card {
   font-size: 12px;
   color: #666;
   display: flex;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   flex-wrap: wrap;
 }
 
@@ -1679,30 +1904,30 @@ button.card.recipe-add-card {
 
 .modal-card {
   position: relative;
-  max-width: calc(320 * var(--triad-unit));
-  width: min(calc(320 * var(--triad-unit)), 92vw);
+  max-width: var(--space-960);
+  width: min(var(--space-960), 92vw);
   max-height: 90vh;
   background: var(--paper);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   overflow: hidden;
   z-index: 2;
 }
 
 .modal-card.modal-large {
-  max-width: calc(367 * var(--triad-unit));
-  width: min(calc(367 * var(--triad-unit)), 94vw);
+  max-width: var(--space-1024);
+  width: min(var(--space-1024), 94vw);
 }
 
 .modal-card.modal-small {
-  max-width: calc(174 * var(--triad-unit));
-  width: min(calc(174 * var(--triad-unit)), 92vw);
+  max-width: var(--space-512);
+  width: min(var(--space-512), 92vw);
 }
 
 .modal-close {
   position: absolute;
-  top: var(--triad-12);
-  right: var(--triad-15);
+  top: var(--space-12);
+  right: var(--space-16);
 }
 
 .icon-ghost {
@@ -1730,19 +1955,19 @@ button.card.recipe-add-card {
 }
 
 .modal-menu {
-  top: var(--triad-12);
-  right: var(--triad-57);
+  top: var(--space-12);
+  right: var(--space-56);
   opacity: 1;
   pointer-events: auto;
 }
 
 .modal-body {
   display: grid;
-  grid-template-columns: calc(87 * var(--triad-unit)) 1fr;
-  gap: var(--triad-24);
-  padding: var(--triad-24);
+  grid-template-columns: var(--space-256) 1fr;
+  gap: var(--space-24);
+  padding: var(--space-24);
   overflow: auto;
-  max-height: calc(90vh - var(--triad-48));
+  max-height: calc(90vh - var(--space-48));
 }
 
 .modal-body-single {
@@ -1751,20 +1976,20 @@ button.card.recipe-add-card {
 
 .add-modal-body {
   display: block;
-  padding: var(--triad-24) var(--triad-27) var(--triad-27);
-  max-height: calc(90vh - var(--triad-48));
+  padding: var(--space-24) var(--space-28) var(--space-28);
+  max-height: calc(90vh - var(--space-48));
 }
 
 .ingredient-form {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-12);
+  gap: var(--space-12);
 }
 
 .modal-image {
-  height: calc(87 * var(--triad-unit));
+  height: var(--space-256);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background-color: var(--stripe-b);
   background-image: repeating-linear-gradient(
     -45deg,
@@ -1782,27 +2007,27 @@ button.card.recipe-add-card {
 .meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--triad-12);
+  gap: var(--space-12);
   font-size: 13px;
   color: #666;
-  margin-bottom: var(--triad-15);
+  margin-bottom: var(--space-16);
 }
 
 .section h3 {
-  margin-bottom: var(--triad-6);
+  margin-bottom: var(--space-6);
 }
 
 .upload-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   align-items: center;
 }
 
 .upload-row input[type="file"] {
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   min-height: var(--control-height);
-  padding: var(--triad-6) var(--control-padding-x);
+  padding: var(--space-6) var(--control-padding-x);
   border-radius: 0;
   background: var(--paper);
   font: inherit;
@@ -1818,7 +2043,7 @@ button.card.recipe-add-card {
   height: var(--control-height);
   min-height: var(--control-height);
   padding: 0 var(--control-padding-x);
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background: var(--ink);
   color: var(--paper);
   border-radius: 0;
@@ -1844,9 +2069,9 @@ button.card.recipe-add-card {
 pre {
   margin: 0;
   background: var(--fog);
-  padding: var(--triad-9) var(--triad-12);
+  padding: var(--space-8) var(--space-12);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   white-space: pre-wrap;
   font-family: inherit;
   font-size: 13px;
@@ -1855,19 +2080,19 @@ pre {
 .ingredient-links {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-6);
+  gap: var(--space-6);
   background: var(--fog);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
-  padding: var(--triad-9) var(--triad-12);
+  border: var(--space-2) solid var(--ink);
+  padding: var(--space-8) var(--space-12);
   font-size: 13px;
   white-space: pre-wrap;
 }
 
 .ingredient-link-row {
   display: grid;
-  grid-template-columns: minmax(calc(47 * var(--triad-unit)), 2fr) minmax(calc(27 * var(--triad-unit)), 1fr) minmax(calc(27 * var(--triad-unit)), 1fr);
-  gap: var(--triad-9);
+  grid-template-columns: minmax(var(--space-144), 2fr) minmax(var(--space-80), 1fr) minmax(var(--space-80), 1fr);
+  gap: var(--space-8);
   align-items: center;
 }
 
@@ -1880,12 +2105,12 @@ pre {
   cursor: pointer;
   font: inherit;
   text-decoration: underline;
-  text-decoration-thickness: var(--triad-1);
-  text-underline-offset: var(--triad-3);
+  text-decoration-thickness: var(--space-1);
+  text-underline-offset: var(--space-4);
 }
 
 .ingredient-link:hover {
-  text-decoration-thickness: var(--triad-2);
+  text-decoration-thickness: var(--space-2);
 }
 
 .ingredient-link-amount,
@@ -1895,19 +2120,19 @@ pre {
 
 .source-link {
   display: inline-block;
-  margin-top: var(--triad-12);
+  margin-top: var(--space-12);
   color: var(--ink);
   text-decoration: underline;
-  text-decoration-thickness: var(--triad-1);
-  text-underline-offset: var(--triad-3);
+  text-decoration-thickness: var(--space-1);
+  text-underline-offset: var(--space-4);
   font-weight: 600;
 }
 
 .config-banner {
-  margin: 0 var(--triad-15) var(--triad-12);
-  padding: var(--triad-12) var(--triad-15);
+  margin: 0 var(--space-16) var(--space-12);
+  padding: var(--space-12) var(--space-16);
   border-radius: 0;
-  border: var(--triad-2) dashed var(--ink);
+  border: var(--space-2) dashed var(--ink);
   background: var(--fog);
   color: var(--ink);
   font-size: 13px;
@@ -1916,9 +2141,9 @@ pre {
 
 .config-banner code {
   font-size: 0.9em;
-  padding: var(--triad-2) var(--triad-6);
+  padding: var(--space-2) var(--space-6);
   border-radius: 0;
-  border: var(--triad-1) solid var(--ink);
+  border: var(--space-1) solid var(--ink);
   background: var(--paper);
 }
 
@@ -1926,7 +2151,7 @@ pre {
   color: var(--ink);
   font-weight: 700;
   text-decoration: underline;
-  text-underline-offset: var(--triad-2);
+  text-underline-offset: var(--space-2);
 }
 
 .config-banner p {
@@ -1934,12 +2159,12 @@ pre {
 }
 
 .auth-modal-body {
-  padding: var(--triad-27) var(--triad-27) var(--triad-33);
+  padding: var(--space-28) var(--space-28) var(--space-32);
   max-width: 100%;
 }
 
 .auth-modal-title {
-  margin: 0 0 var(--triad-15);
+  margin: 0 0 var(--space-16);
   font-size: 1.35rem;
   font-weight: 600;
 }
@@ -1947,20 +2172,20 @@ pre {
 .auth-mode-tabs {
   display: flex;
   gap: 0;
-  margin-bottom: var(--triad-21);
+  margin-bottom: var(--space-20);
   padding: 0;
   min-height: var(--control-height);
   background: var(--paper);
   border-radius: 0;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
 }
 
 .auth-tab {
   flex: 1;
   border: none;
-  border-right: var(--triad-2) solid var(--ink);
+  border-right: var(--space-2) solid var(--ink);
   background: transparent;
-  padding: 0 var(--triad-12);
+  padding: 0 var(--space-12);
   min-height: var(--control-height);
   border-radius: 0;
   font-size: 12px;
@@ -1993,13 +2218,13 @@ pre {
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-15);
+  gap: var(--space-16);
 }
 
 .auth-field {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-6);
+  gap: var(--space-6);
   font-size: 13px;
   font-weight: 500;
   color: #444;
@@ -2024,7 +2249,7 @@ pre {
 }
 
 .auth-submit {
-  margin-top: var(--triad-4);
+  margin-top: var(--space-4);
   width: 100%;
 }
 
@@ -2038,73 +2263,38 @@ pre {
 /* Let the meal calendar use the full browser width; header/nav stay padded via .container. */
 main.container:has(> .plan-page) {
   max-width: none;
+  padding-top: var(--space-16);
 }
 
 .plan-week {
-  padding: var(--triad-9) 0 var(--triad-24);
+  padding: 0 0 var(--space-24);
   width: 100%;
   min-width: 0;
 }
 
-.plan-week-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--triad-12);
-  margin-bottom: var(--triad-15);
+/* Width measured for how many 244px day columns fit (see `usePlanBoardFit`). */
+.plan-week-fit {
+  width: 100%;
+  min-width: 0;
 }
 
-.plan-week-nav-caret {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-height);
-  height: var(--control-height);
-  min-width: var(--control-height);
-  min-height: var(--control-height);
-  border: var(--triad-2) solid var(--ink);
-  background: var(--paper);
-  color: var(--ink);
-  text-decoration: none;
+/* Plan grid: bleed to the right viewport edge (container padding lives on `main.container`). */
+.plan-page .plan-week-fit {
+  width: calc(100% + var(--page-pad-x));
+  max-width: none;
+  margin-right: calc(-1 * var(--page-pad-x));
+  padding-right: env(safe-area-inset-right, 0px);
   box-sizing: border-box;
-  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.plan-week-nav-caret:hover,
-.plan-week-nav-caret:focus-visible {
-  background: var(--ink);
-  color: var(--paper);
-  outline: none;
-}
-
-.plan-week-nav-this {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--control-height);
-  padding: 0 var(--triad-18);
-  border: var(--triad-2) solid var(--ink);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-decoration: none;
-  box-sizing: border-box;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.plan-week-nav-this:hover,
-.plan-week-nav-this:focus-visible {
-  background: var(--ink);
-  color: var(--paper);
-  outline: none;
+.plan-board-feedback--muted {
+  color: var(--muted);
 }
 
 .plan-board-shell {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-12);
+  gap: var(--space-12);
   width: 100%;
   min-width: 0;
 }
@@ -2115,69 +2305,87 @@ main.container:has(> .plan-page) {
   color: #6b1f1f;
 }
 
+.plan-board-layout {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Frozen meal-type column: outside horizontal scroll so it never moves. */
+.plan-board-rail {
+  flex: 0 0 72px;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: var(--space-1) solid var(--hair);
+  background: var(--paper);
+  z-index: 2;
+}
+
+.plan-board-rail .plan-board-corner,
+.plan-board-rail .plan-board-rowlabel {
+  border-bottom: var(--space-1) solid var(--hair);
+  box-sizing: border-box;
+}
+
+.plan-board-rail .plan-board-corner {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: var(--space-12);
+  background: var(--paper);
+}
+
+.plan-board-rail .plan-board-rowlabel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 11px 9px 13px 0;
+  background: var(--paper);
+}
+
 .plan-board-scroll {
+  flex: 1 1 0%;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: visible;
-  width: 100%;
   max-width: 100%;
-  border: var(--triad-2) solid var(--ink);
   background: var(--paper);
-  box-shadow: 0 var(--triad-6) var(--triad-18) rgb(0 0 0 / 0.05);
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.plan-board-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .plan-board-grid {
   display: grid;
-  /* Stretch every cell in a row to the row height (tallest cell); borders line up as continuous rules. */
   align-items: stretch;
   box-sizing: border-box;
-  /* Fixed day column width: week is at least full width, and wider than narrow viewports so you can pan. */
   width: max(100%, max-content);
   min-width: 0;
-  grid-template-columns: calc(40 * var(--triad-unit)) repeat(
-    7,
-    calc(72 * var(--triad-unit))
-  );
 }
 
-.plan-board-corner,
 .plan-board-dayhead,
-.plan-board-rowlabel,
 .plan-board-cell {
-  border-right: var(--triad-1) solid var(--hair);
-  /* Shared bottom edge per row reads as one horizontal rule across the grid */
-  border-bottom: var(--triad-1) solid var(--hair);
+  border-right: var(--space-1) solid var(--hair);
+  border-bottom: var(--space-1) solid var(--hair);
   box-sizing: border-box;
-}
-
-.plan-board-corner {
-  position: sticky;
-  left: 0;
-  top: 0;
-  z-index: 6;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  min-height: calc(26 * var(--triad-unit));
-  padding: var(--triad-12);
-  background: var(--fog);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .plan-board-dayhead {
-  position: sticky;
-  top: 0;
-  z-index: 5;
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: var(--triad-3);
-  min-height: calc(26 * var(--triad-unit));
-  padding: var(--triad-12);
-  background: var(--fog);
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 44px;
+  padding: var(--space-12);
+  background: var(--paper);
 }
 
 .plan-board-dayname {
@@ -2193,44 +2401,41 @@ main.container:has(> .plan-page) {
   font-variant-numeric: tabular-nums;
 }
 
-.plan-board-rowlabel {
-  position: sticky;
-  left: 0;
-  z-index: 4;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: var(--triad-12);
-  background: var(--paper);
+.plan-board-rail .plan-board-rowlabel--snack {
+  padding-top: 11px;
+  padding-bottom: 13px;
+}
+
+.plan-board-rowlabel-name {
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #5a5a5a;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .plan-board-cell {
   position: relative;
-  z-index: 1;
-  isolation: isolate;
+  z-index: 0;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   align-content: flex-start;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   min-height: 0;
   min-width: 0;
-  padding: var(--triad-12);
+  padding: var(--space-12);
   background: var(--paper);
   cursor: pointer;
   overflow: hidden;
-  transition: background 0.14s ease, box-shadow 0.14s ease;
+  transition: background 0.14s ease;
 }
 
 .plan-board-cell:hover,
 .plan-board-cell:focus-visible {
   background: #fcfcfc;
-  box-shadow: inset 0 0 0 var(--triad-1) var(--hair);
   outline: none;
 }
 
@@ -2246,13 +2451,34 @@ main.container:has(> .plan-page) {
   box-shadow: none;
 }
 
+.plan-board-cell--meal {
+  min-height: 244px;
+}
+
+.plan-board-cell--snack {
+  min-height: 40px;
+  padding: var(--space-8) var(--space-12);
+}
+
+.plan-board-cell--past .plan-board-card {
+  opacity: 0.5;
+}
+
 .plan-board-stack {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   width: 100%;
   min-width: 0;
+}
+
+/* Multiple image tiles in one cell: two columns so squares stay compact (no tall stack). */
+.plan-board-stack--images-multi {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8);
+  align-items: start;
 }
 
 .plan-board-card {
@@ -2261,15 +2487,15 @@ main.container:has(> .plan-page) {
   flex-direction: column;
   flex-shrink: 0;
   /* Tighter top padding balances the font’s line box (extra lead above caps). */
-  padding: var(--triad-6) var(--triad-12) var(--triad-12);
+  padding: var(--space-6) var(--space-12) var(--space-12);
   background: var(--paper);
-  border: var(--triad-1) solid rgb(10 10 10 / 0.18);
+  border: var(--space-1) solid rgb(10 10 10 / 0.18);
 }
 
 .plan-board-cardlink {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-4);
+  gap: var(--space-4);
   color: inherit;
   text-decoration: none;
   min-width: 0;
@@ -2293,40 +2519,187 @@ main.container:has(> .plan-page) {
   line-height: 1.35;
 }
 
-.plan-board-remove {
+.plan-board-card--image {
+  padding: 0;
+  overflow: hidden;
+}
+
+.plan-board-card-image-footer {
+  padding: var(--space-6) var(--space-8) var(--space-8);
+  min-width: 0;
+  border-top: var(--space-1) solid rgb(10 10 10 / 0.08);
+  background: var(--paper);
+}
+
+.plan-board-card-image-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.plan-board-card-image-notes {
+  margin: var(--space-4) 0 0;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.plan-board-card-imagelink {
+  display: block;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+}
+
+.plan-board-card-thumb {
   position: absolute;
-  top: var(--triad-6);
-  right: var(--triad-6);
+  inset: 0;
+  background: var(--fog);
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: plan-thumb;
+}
+
+/* Servings: black circle (number only); hover expands to three equal square segments (− / count / +). */
+.plan-serving {
+  --cell: min(26px, calc((100cqw - var(--space-12)) / 3));
+  position: absolute;
+  top: var(--space-6);
+  right: var(--space-6);
+  z-index: 4;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  box-sizing: border-box;
+  width: var(--cell);
+  height: var(--cell);
+  max-width: calc(100% - var(--space-12));
+  border-radius: 50%;
+  background: #0a0a0a;
+  color: #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  pointer-events: auto;
+  transition:
+    width 0.16s ease,
+    border-radius 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.plan-serving:hover,
+.plan-serving:focus-within {
+  width: min(calc(3 * var(--cell)), calc(100cqw - var(--space-12)));
+  border-radius: calc(var(--cell) / 2);
+}
+
+.plan-serving-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--triad-24);
-  height: var(--triad-24);
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.plan-serving:not(:hover):not(:focus-within) .plan-serving-label {
+  flex: 1 1 100%;
+}
+
+.plan-serving-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
+  margin: 0;
   padding: 0;
   border: none;
-  background: transparent;
-  color: #7a7a7a;
+  background: rgb(255 255 255 / 0.08);
+  color: inherit;
   cursor: pointer;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.12s ease, color 0.12s ease;
+  pointer-events: none;
+  transition:
+    flex 0.16s ease,
+    opacity 0.12s ease;
 }
 
-.plan-board-card:hover .plan-board-remove,
-.plan-board-card:focus-within .plan-board-remove,
-.plan-board-remove:focus-visible {
+.plan-serving:hover .plan-serving-btn,
+.plan-serving:focus-within .plan-serving-btn {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
   opacity: 1;
+  pointer-events: auto;
 }
 
-.plan-board-remove:hover,
-.plan-board-remove:focus-visible {
-  color: var(--ink);
+.plan-serving-btn:hover,
+.plan-serving-btn:focus-visible {
+  background: rgb(255 255 255 / 0.16);
   outline: none;
 }
 
+.plan-serving-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @media (hover: none) {
-  .plan-board-remove {
-    opacity: 1;
+  .plan-serving {
+    width: min(calc(3 * var(--cell)), calc(100cqw - var(--space-12)));
+    border-radius: calc(var(--cell) / 2);
   }
+
+  .plan-serving-btn {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .plan-serving:not(:hover):not(:focus-within) .plan-serving-label {
+    flex: 1 1 0;
+  }
+}
+
+.plan-board-card-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.plan-board-card-thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
 }
 
 .plan-board-composer {
@@ -2359,7 +2732,7 @@ main.container:has(> .plan-page) {
 
 /* Plan picker: hairline field aligned with meal cards, not the default gray control chrome */
 .plan-board-select.ss-root .ss-input {
-  border: var(--triad-1) solid rgb(10 10 10 / 0.18);
+  border: var(--space-1) solid rgb(10 10 10 / 0.18);
   background: var(--paper);
 }
 
@@ -2370,7 +2743,7 @@ main.container:has(> .plan-page) {
 .plan-board-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--triad-9);
+  gap: var(--space-8);
 }
 
 .plan-board-composer-empty {
@@ -2381,43 +2754,35 @@ main.container:has(> .plan-page) {
 }
 
 @media (max-width: 56rem) {
-  .plan-board-grid {
-    min-width: calc(286 * var(--triad-unit));
-    grid-template-columns: calc(34 * var(--triad-unit)) repeat(
-      7,
-      minmax(calc(36 * var(--triad-unit)), 1fr)
-    );
-  }
-
-  .plan-board-corner,
-  .plan-board-dayhead,
-  .plan-board-rowlabel,
   .plan-board-cell {
-    padding: var(--triad-9);
+    padding: var(--space-8);
   }
 
+  .plan-board-cell--snack {
+    padding: var(--space-6) var(--space-8);
+  }
 }
 
 button:focus-visible,
 [role="tab"]:focus-visible {
-  outline: var(--triad-2) solid var(--ink);
-  outline-offset: var(--triad-2);
+  outline: var(--space-2) solid var(--ink);
+  outline-offset: var(--space-2);
 }
 
 .primary:focus-visible,
 .upload-row button:focus-visible {
-  outline: var(--triad-2) solid var(--paper);
-  outline-offset: var(--triad-2);
+  outline: var(--space-2) solid var(--paper);
+  outline-offset: var(--space-2);
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]):focus,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]):not(.inventory-name-input):not(.inventory-qty-input):focus,
 textarea:focus,
 select:focus {
   border-color: var(--ink);
   outline: none;
 }
 
-@media (max-width: calc(267 * var(--triad-unit))) {
+@media (max-width: var(--space-832)) {
   .modal-body {
     grid-template-columns: 1fr;
   }
@@ -2431,8 +2796,8 @@ a.card {
 }
 
 a.card:focus-visible {
-  outline: var(--triad-2) solid var(--ink);
-  outline-offset: var(--triad-2);
+  outline: var(--space-2) solid var(--ink);
+  outline-offset: var(--space-2);
 }
 
 .visually-hidden {
@@ -2448,20 +2813,20 @@ a.card:focus-visible {
 }
 
 .inventory-readonly-hint {
-  margin-top: var(--triad-15);
+  margin-top: var(--space-16);
   color: var(--muted);
   font-size: 13px;
 }
 
 .recipe-detail h1 {
-  margin: 0 0 var(--triad-9);
+  margin: 0 0 var(--space-8);
   font-size: 1.5rem;
 }
 
 .recipe-detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: var(--triad-36);
+  gap: var(--space-36);
   align-items: start;
 }
 
@@ -2472,17 +2837,44 @@ a.card:focus-visible {
 .recipe-detail-aside {
   min-width: 0;
   position: sticky;
-  top: var(--triad-18);
+  top: var(--space-20);
+}
+
+.recipe-detail-aside-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.recipe-detail-aside-stack .recipe-detail-image-message {
+  margin: 0;
+}
+
+.recipe-detail-aside-stack .recipe-meal-types {
+  margin-bottom: 0;
+  max-width: none;
+}
+
+.recipe-detail-aside-stack .recipe-publish-toggle {
+  margin-bottom: 0;
+}
+
+.recipe-detail-aside-stack .recipe-source-section {
+  margin-top: 0;
+}
+
+.recipe-detail-aside-stack .recipe-detail-delete-wrap {
+  margin-top: 0;
 }
 
 .recipe-detail-title-input {
   width: 100%;
   box-sizing: border-box;
-  margin: 0 0 var(--triad-9);
+  margin: 0 0 var(--space-8);
   font-size: 1.5rem;
   font-weight: 600;
   line-height: 1.25;
-  padding: var(--triad-9) var(--control-padding-x);
+  padding: var(--space-8) var(--control-padding-x);
   font-family: inherit;
   color: var(--ink);
 }
@@ -2490,20 +2882,101 @@ a.card:focus-visible {
 /* Taller than default control height; same specificity as global input so height wins */
 input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]) {
   height: auto;
-  min-height: calc(1.5rem * 1.25 + 2 * var(--triad-9));
+  min-height: calc(1.5rem * 1.25 + 2 * var(--space-8));
+}
+
+.recipe-meal-types {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-8);
+  max-width: 36rem;
+}
+
+.recipe-meal-types-inner {
+  position: relative;
+}
+
+.recipe-meal-types-trigger {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: var(--control-height);
+  padding: var(--space-6) var(--space-8);
+  border: var(--space-2) solid var(--ink);
+  background: var(--paper);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.recipe-meal-types-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.recipe-meal-types-trigger:hover:not(:disabled),
+.recipe-meal-types-trigger:focus-visible:not(:disabled) {
+  background: var(--mist);
+  outline: none;
+}
+
+.recipe-meal-types-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--space-4));
+  z-index: 10;
+  border: var(--space-2) solid var(--ink);
+  background: var(--paper);
+  padding: var(--space-6) 0;
+  box-shadow: 0 var(--space-4) var(--space-8) rgb(0 0 0 / 0.08);
+}
+
+/* Override global `label { flex-direction: column }` — checkbox left of text, like ingredient Opt. */
+.recipe-meal-types-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-8);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-6) var(--space-12);
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--ink);
+  text-align: left;
+}
+
+.recipe-meal-types-option:hover {
+  background: var(--mist);
+}
+
+.recipe-meal-types-option input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--ink);
 }
 
 .recipe-source-section {
-  margin-top: var(--triad-6);
+  margin-top: var(--space-6);
 }
 
 .recipe-source-section .recipe-source-open-wrap {
-  margin: var(--triad-6) 0 0;
+  margin: var(--space-6) 0 0;
 }
 
 .recipe-detail-photo-panel {
   position: relative;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background-color: var(--paper);
   aspect-ratio: 1 / 1;
   width: 100%;
@@ -2519,7 +2992,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 
 .recipe-detail-photo-panel--drag-over {
   background-color: var(--mist);
-  box-shadow: inset 0 0 0 var(--triad-2) var(--ink);
+  box-shadow: inset 0 0 0 var(--space-2) var(--ink);
 }
 
 .recipe-detail-photo {
@@ -2557,7 +3030,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   bottom: 0;
   z-index: 1;
   margin: 0;
-  padding: var(--triad-6) var(--triad-9);
+  padding: var(--space-6) var(--space-8);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -2576,7 +3049,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   min-height: inherit;
   box-sizing: border-box;
   margin: 0;
-  padding: var(--triad-15);
+  padding: var(--space-16);
   border: none;
   background: transparent;
   font: inherit;
@@ -2595,14 +3068,14 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 
 .recipe-detail-image-remove {
   position: absolute;
-  top: var(--triad-6);
-  right: var(--triad-6);
+  top: var(--space-6);
+  right: var(--space-6);
   z-index: 2;
-  width: calc(14 * var(--triad-unit));
-  height: calc(14 * var(--triad-unit));
+  width: var(--space-40);
+  height: var(--space-40);
   padding: 0;
   margin: 0;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background: var(--paper);
   font-size: 14px;
   line-height: 1;
@@ -2616,7 +3089,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 }
 
 .recipe-detail-image-message {
-  margin: calc(-1 * var(--triad-3)) 0 var(--triad-9);
+  margin: calc(-1 * var(--space-4)) 0 var(--space-8);
   font-size: 13px;
   color: var(--muted);
 }
@@ -2639,15 +3112,36 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   }
 }
 
-.recipe-detail-meta-editable {
+.meta.recipe-detail-meta-editable {
+  flex-wrap: nowrap;
   align-items: flex-end;
+  gap: var(--space-12);
+  padding-top: 3px;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
 }
 
 .recipe-meta-field {
   display: inline-flex;
   flex-direction: column;
-  gap: var(--triad-3);
+  gap: var(--space-4);
   color: var(--ink);
+}
+
+.recipe-meta-field--nutrition {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.recipe-meta-field--nutrition-servings {
+  flex: 0 0 10.1667rem;
+  width: 10.1667rem;
+}
+
+.recipe-meta-field--nutrition-grow {
+  flex: 1 0 5.5rem;
+  min-width: 5.5rem;
 }
 
 .recipe-meta-label {
@@ -2658,27 +3152,63 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   color: #666;
 }
 
-.recipe-meta-input {
-  width: 4.5rem;
+/* One bordered cell: number + unit share the same interior (no inner field chrome). */
+.recipe-nutrition-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
   box-sizing: border-box;
-  border: var(--triad-2) solid var(--ink);
-  padding: var(--triad-6) var(--triad-9);
-  font: inherit;
-  font-size: 13px;
+  min-height: 36px;
+  width: 100%;
+  padding: var(--space-8) var(--space-12);
+  border: 2px solid rgba(0, 0, 0, 0.2);
   background: var(--paper);
   border-radius: 0;
 }
 
-.recipe-meta-input:focus {
-  outline: none;
+.recipe-nutrition-field:focus-within {
   background: var(--mist);
+}
+
+.recipe-nutrition-value-input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  appearance: none;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: normal;
+  color: #444;
+  border-radius: 0;
+}
+
+.recipe-nutrition-value-input:focus {
+  outline: none;
+}
+
+.recipe-nutrition-value-input:disabled {
+  opacity: 0.6;
+}
+
+.recipe-nutrition-unit {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: normal;
+  color: #757575;
+  pointer-events: none;
+  user-select: none;
 }
 
 .recipe-source-row {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-6);
-  margin: 0 0 var(--triad-12);
+  gap: var(--space-6);
+  margin: 0 0 var(--space-12);
 }
 
 .recipe-source-label {
@@ -2693,8 +3223,8 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   width: 100%;
   max-width: 36rem;
   box-sizing: border-box;
-  border: var(--triad-2) solid var(--ink);
-  padding: var(--triad-9) var(--triad-12);
+  border: var(--space-2) solid var(--ink);
+  padding: var(--space-8) var(--space-12);
   font: inherit;
   font-size: 13px;
   background: var(--paper);
@@ -2721,8 +3251,8 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 }
 
 .recipe-limited-md-readonly {
-  padding: var(--triad-9) var(--control-padding-x);
-  border: var(--triad-2) solid var(--ink);
+  padding: var(--space-8) var(--control-padding-x);
+  border: var(--space-2) solid var(--ink);
   background: var(--paper);
   color: var(--ink);
   font-size: 14px;
@@ -2787,11 +3317,8 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   position: relative;
 }
 
-.recipe-ingredients-add-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--triad-6);
-  margin: 0 0 var(--triad-12);
+.recipe-ingredients-add-cell-inner {
+  position: relative;
 }
 
 .recipe-ingredients-add-input-wrap {
@@ -2799,14 +3326,15 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 }
 
 .recipe-ingredients-add-input {
-  padding-right: var(--triad-12);
+  padding-right: var(--space-12);
 }
 
-.recipe-ingredients-suggestions {
+.recipe-ingredients-add-cell-inner .recipe-ingredients-suggestions {
   position: absolute;
-  top: calc(var(--triad-18) + var(--control-height) + var(--triad-6));
+  top: 100%;
   left: 0;
   right: 0;
+  margin-top: var(--space-6);
   z-index: 12;
 }
 
@@ -2815,7 +3343,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 }
 
 .recipe-ingredients-message {
-  margin: 0 0 var(--triad-12);
+  margin: 0 0 var(--space-12);
   font-size: 13px;
   color: var(--muted);
 }
@@ -2833,12 +3361,76 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   white-space: normal;
 }
 
+.recipe-ingredient-drag-header {
+  width: 2.25rem;
+  padding: 0;
+}
+
+.recipe-ingredient-drag-cell {
+  width: 2.25rem;
+  vertical-align: middle;
+  padding: var(--space-4) var(--space-8) var(--space-4) var(--space-4);
+}
+
+.recipe-ingredient-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--space-4);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: grab;
+  border-radius: 0;
+  touch-action: none;
+}
+
+.recipe-ingredient-drag-handle:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.recipe-ingredient-drag-handle:active:not(:disabled) {
+  cursor: grabbing;
+}
+
+.recipe-ingredient-drag-handle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.recipe-ingredient-drag-icon {
+  flex-shrink: 0;
+}
+
 .recipe-ingredient-name-cell {
   min-width: 15rem;
 }
 
 .recipe-ingredient-name {
   font-weight: 600;
+}
+
+.recipe-ingredient-name-button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.recipe-ingredient-name-button:hover:not(:disabled) .recipe-ingredient-name {
+  text-decoration: underline;
+}
+
+.recipe-ingredient-name-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .recipe-ingredient-amount-cell {
@@ -2848,8 +3440,8 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 .recipe-ingredient-amount-input {
   width: 100%;
   box-sizing: border-box;
-  border: var(--triad-2) solid var(--ink);
-  padding: var(--triad-9) var(--triad-12);
+  border: var(--space-2) solid var(--ink);
+  padding: var(--space-8) var(--space-12);
   font: inherit;
   font-size: 13px;
   background: var(--paper);
@@ -2869,6 +3461,34 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   max-width: none;
 }
 
+.recipe-ingredient-optional-cell,
+.recipe-ingredient-optional-header {
+  width: 3.25rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.recipe-ingredient-optional-header {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.recipe-ingredient-optional-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  cursor: pointer;
+}
+
+.recipe-ingredient-optional-input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--ink);
+}
+
 .recipe-ingredient-remove-cell,
 .recipe-ingredient-remove-header {
   width: 1%;
@@ -2876,13 +3496,13 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 }
 
 .recipe-ingredient-remove-button {
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background: var(--paper);
   color: var(--ink);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  padding: var(--triad-6) var(--triad-9);
+  padding: var(--space-6) var(--space-8);
   border-radius: 0;
   cursor: pointer;
 }
@@ -2900,18 +3520,81 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 .recipe-ingredient-sections {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-18);
+  gap: var(--space-20);
 }
 
 .recipe-ingredient-section-block {
   display: flex;
   flex-direction: column;
-  gap: var(--triad-9);
+  gap: var(--space-8);
+}
+
+.recipe-ingredient-section-heading {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.recipe-ingredient-section-heading--editing {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.recipe-ingredient-section-heading:not(.recipe-ingredient-section-heading--editing)
+  .recipe-ingredient-section-delete {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: var(--space-4);
+  transform: translateY(-50%);
+}
+
+.recipe-ingredient-section-heading--editing .recipe-ingredient-section-title-input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.recipe-ingredient-section-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  margin: 0 0 var(--space-4) 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.recipe-ingredient-section-heading:hover .recipe-ingredient-section-delete,
+.recipe-ingredient-section-delete:focus-visible {
+  opacity: 1;
+}
+
+.recipe-ingredient-section-delete:hover:not(:disabled) {
+  color: var(--danger, #b42318);
+}
+
+.recipe-ingredient-section-delete:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.recipe-ingredient-section-delete-icon {
+  display: block;
 }
 
 .recipe-ingredient-section-title-button {
   align-self: flex-start;
-  margin: 0 0 var(--triad-3);
+  margin: 0 0 var(--space-4);
   padding: 0;
   border: none;
   background: none;
@@ -2921,7 +3604,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   text-align: left;
   cursor: pointer;
   color: var(--ink);
-  border-bottom: var(--triad-2) solid transparent;
+  border-bottom: var(--space-2) solid transparent;
 }
 
 .recipe-ingredient-section-title-button:hover:not(:disabled) {
@@ -2935,10 +3618,10 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 
 .recipe-ingredient-section-title-input {
   align-self: stretch;
-  margin: 0 0 var(--triad-3);
+  margin: 0 0 var(--space-4);
   box-sizing: border-box;
-  border: var(--triad-2) solid var(--ink);
-  padding: var(--triad-6) var(--triad-9);
+  border: var(--space-2) solid var(--ink);
+  padding: var(--space-6) var(--space-8);
   font: inherit;
   font-size: 15px;
   font-weight: 700;
@@ -2952,38 +3635,258 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 }
 
 .recipe-ingredient-section-static-title {
-  margin: 0 0 var(--triad-6);
+  margin: 0 0 var(--space-6);
   font-size: 15px;
   font-weight: 700;
 }
 
 .recipe-ingredients-orphan-hint {
-  margin: 0 0 var(--triad-9);
+  margin: 0 0 var(--space-8);
   font-size: 13px;
   color: var(--muted);
 }
 
-.recipe-ingredients-add-field-section {
-  position: relative;
+.recipe-ingredients-add-row td {
+  border-top: var(--space-2) solid var(--ink);
 }
 
-.recipe-ingredients-add-field-section .recipe-ingredients-suggestions {
-  top: 100%;
-  margin-top: var(--triad-6);
+.ingredients-table tbody tr.recipe-ingredients-add-row:hover {
+  background: var(--paper);
+}
+
+.recipe-ingredients-add-placeholder-cell {
+  color: var(--muted);
+  font-style: normal;
+}
+
+/* ── Ingredient Variants (inventory table) ── */
+
+.ingredient-name-with-caret {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.variant-caret {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 0;
+  transition: transform 0.15s ease, color 0.12s ease;
+  transform: rotate(0deg);
+}
+
+.variant-caret:hover {
+  color: var(--ink);
+}
+
+.variant-caret-open {
+  transform: rotate(90deg);
+}
+
+.variant-caret-spacer {
+  flex-shrink: 0;
+  width: 20px;
+}
+
+.variant-row {
+  background: color-mix(in srgb, var(--ink) 2%, var(--paper));
+}
+
+.variant-row:hover {
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper)) !important;
+}
+
+.variant-name-cell .variant-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.variant-indent {
+  flex-shrink: 0;
+  width: var(--space-16);
+}
+
+.variant-connector {
+  flex-shrink: 0;
+  width: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.variant-reorder-btns {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: var(--space-8);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.variant-row:hover .variant-reorder-btns {
+  opacity: 1;
+}
+
+.variant-reorder-btn {
+  background: none;
+  border: var(--space-1) solid var(--muted);
+  color: var(--muted);
+  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 0;
+}
+
+.variant-reorder-btn:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.variant-reorder-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.locked-parent .inventory-qty-wrap,
+.locked-parent .ss-root {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.inventory-qty-locked {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.row-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.variant-add-btn {
+  border: var(--space-2) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+tr:hover .variant-add-btn,
+.variant-add-btn:focus-visible {
+  opacity: 1;
+}
+
+.variant-add-btn:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.variant-add-btn:focus-visible {
+  outline: var(--space-2) solid var(--ink);
+  outline-offset: var(--space-2);
+}
+
+.variant-add-row {
+  background: color-mix(in srgb, var(--ink) 2%, var(--paper));
+}
+
+.variant-add-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-4) 0;
+}
+
+.variant-add-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.variant-add-save,
+.variant-add-cancel {
+  border: var(--space-2) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: var(--space-6) var(--space-8);
+  border-radius: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.variant-add-save:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.variant-add-cancel {
+  border-color: var(--muted);
+  color: var(--muted);
+}
+
+.variant-add-cancel:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.variant-add-save:disabled,
+.variant-add-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (hover: none) {
+  .variant-add-btn {
+    opacity: 0.75;
+  }
+  .variant-reorder-btns {
+    opacity: 1;
+  }
 }
 
 .recipe-ingredients-add-component-wrap {
-  margin-top: var(--triad-12);
+  margin-top: var(--space-12);
 }
 
 .recipe-ingredients-add-component {
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background: var(--paper);
   color: var(--ink);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  padding: var(--triad-9) var(--triad-12);
+  padding: var(--space-8) var(--space-12);
   border-radius: 0;
   cursor: pointer;
 }
@@ -2997,21 +3900,47 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   cursor: not-allowed;
 }
 
+.recipe-detail-delete-wrap {
+  margin-top: var(--space-20);
+}
+
+.recipe-detail-delete {
+  border: var(--space-2) solid #e74c3c;
+  background: var(--paper);
+  color: #e74c3c;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: var(--space-8) var(--space-12);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.recipe-detail-delete:hover:not(:disabled) {
+  background: #e74c3c;
+  color: var(--paper);
+}
+
+.recipe-detail-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Per-row delete (inventory) ── */
 
 .row-delete-th {
-  width: calc(60 * var(--triad-unit));
+  width: var(--space-176);
 }
 
 .row-delete-cell {
-  width: calc(60 * var(--triad-unit));
-  padding: 0 var(--triad-6) !important;
+  width: var(--space-176);
+  padding: 0 var(--space-6) !important;
   text-align: center;
   vertical-align: middle;
 }
 
 .inventory-row-delete {
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background: var(--paper);
   color: var(--ink);
   font: inherit;
@@ -3019,7 +3948,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  padding: var(--triad-6) var(--triad-9);
+  padding: var(--space-6) var(--space-8);
   border-radius: 0;
   cursor: pointer;
   opacity: 0;
@@ -3037,8 +3966,8 @@ tr:hover .inventory-row-delete,
 }
 
 .inventory-row-delete:focus-visible {
-  outline: var(--triad-2) solid var(--ink);
-  outline-offset: var(--triad-2);
+  outline: var(--space-2) solid var(--ink);
+  outline-offset: var(--space-2);
 }
 
 .inventory-row-delete:disabled {
@@ -3047,17 +3976,22 @@ tr:hover .inventory-row-delete,
 }
 
 .modal-card.modal-delete-ingredient {
-  max-width: calc(280 * var(--triad-unit));
-  width: min(calc(280 * var(--triad-unit)), 94vw);
+  max-width: var(--space-832);
+  width: min(var(--space-832), 94vw);
+}
+
+.modal-card.modal-delete-recipe {
+  max-width: var(--space-416);
+  width: min(var(--space-416), 94vw);
 }
 
 .delete-ingredient-modal-body {
-  padding: var(--triad-24) var(--triad-27) var(--triad-27);
-  padding-right: calc(var(--triad-27) + var(--triad-24));
+  padding: var(--space-24) var(--space-28) var(--space-28);
+  padding-right: calc(var(--space-28) + var(--space-24));
 }
 
 .delete-ingredient-modal-title {
-  margin: 0 0 var(--triad-12);
+  margin: 0 0 var(--space-12);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -3065,7 +3999,7 @@ tr:hover .inventory-row-delete,
 }
 
 .delete-ingredient-modal-warning {
-  margin: 0 0 var(--triad-18);
+  margin: 0 0 var(--space-20);
   font-size: 14px;
   line-height: 1.45;
   color: var(--ink);
@@ -3075,9 +4009,46 @@ tr:hover .inventory-row-delete,
   font-weight: 700;
 }
 
+.delete-ingredient-recipe-list {
+  margin: 0 0 var(--space-20);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.delete-ingredient-recipe-list-label {
+  margin: 0 0 var(--space-6);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 11px;
+  color: var(--ash);
+}
+
+.delete-ingredient-recipe-list ul {
+  margin: 0;
+  padding: 0 0 0 var(--space-16);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.delete-ingredient-recipe-list li {
+  margin: 0 0 var(--space-2);
+}
+
+.delete-ingredient-recipe-list a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.delete-ingredient-recipe-list a:hover {
+  color: var(--ash);
+}
+
 .delete-ingredient-modal-label {
   display: block;
-  margin: 0 0 var(--triad-6);
+  margin: 0 0 var(--space-6);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -3088,16 +4059,16 @@ tr:hover .inventory-row-delete,
 .delete-ingredient-modal-input {
   width: 100%;
   box-sizing: border-box;
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   border-radius: 0;
-  padding: var(--triad-9) var(--triad-12);
+  padding: var(--space-8) var(--space-12);
   font: inherit;
   font-size: 15px;
-  margin-bottom: var(--triad-12);
+  margin-bottom: var(--space-12);
 }
 
 .delete-ingredient-modal-input:focus {
-  outline: var(--triad-2) solid var(--ink);
+  outline: var(--space-2) solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -3106,20 +4077,24 @@ tr:hover .inventory-row-delete,
 }
 
 .delete-ingredient-modal-error {
-  margin: calc(-1 * var(--triad-6)) 0 var(--triad-12);
+  margin: calc(-1 * var(--space-6)) 0 var(--space-12);
   font-size: 13px;
   color: #c0392b;
+}
+
+.delete-ingredient-modal-warning + .delete-ingredient-modal-error {
+  margin: 0 0 var(--space-12);
 }
 
 .delete-ingredient-modal-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   justify-content: flex-end;
 }
 
 .delete-ingredient-modal-cancel {
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   background: var(--paper);
   color: var(--ink);
   font: inherit;
@@ -3127,7 +4102,7 @@ tr:hover .inventory-row-delete,
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  padding: var(--triad-9) var(--triad-15);
+  padding: var(--space-8) var(--space-16);
   border-radius: 0;
   cursor: pointer;
 }
@@ -3137,7 +4112,7 @@ tr:hover .inventory-row-delete,
 }
 
 .delete-ingredient-modal-confirm {
-  border: var(--triad-2) solid #c0392b;
+  border: var(--space-2) solid #c0392b;
   background: #c0392b;
   color: var(--paper);
   font: inherit;
@@ -3145,7 +4120,7 @@ tr:hover .inventory-row-delete,
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  padding: var(--triad-9) var(--triad-15);
+  padding: var(--space-8) var(--space-16);
   border-radius: 0;
   cursor: pointer;
 }
@@ -3168,18 +4143,18 @@ tr:hover .inventory-row-delete,
 /* ── Batch selection: checkboxes ── */
 
 .check-th {
-  width: var(--triad-42);
+  width: var(--space-40);
 }
 
 .check-cell {
-  width: var(--triad-42);
+  width: var(--space-40);
   text-align: center;
 }
 
 .check-th input,
 .check-cell input {
-  width: var(--triad-15);
-  height: var(--triad-15);
+  width: var(--space-16);
+  height: var(--space-16);
   cursor: pointer;
   accent-color: var(--ink);
 }
@@ -3198,10 +4173,10 @@ tr:hover .inventory-row-delete,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--triad-12);
+  gap: var(--space-12);
   flex-wrap: wrap;
-  padding: var(--triad-9) var(--triad-15);
-  margin-bottom: var(--triad-9);
+  padding: var(--space-8) var(--space-16);
+  margin-bottom: var(--space-8);
   background: var(--ink);
   color: var(--paper);
 }
@@ -3216,7 +4191,7 @@ tr:hover .inventory-row-delete,
 .batch-bar-actions {
   display: flex;
   align-items: center;
-  gap: var(--triad-9);
+  gap: var(--space-8);
   flex-wrap: wrap;
 }
 
@@ -3263,9 +4238,9 @@ tr:hover .inventory-row-delete,
 }
 
 .batch-bar-clear {
-  width: var(--triad-30);
-  height: var(--triad-30);
-  border: var(--triad-1) solid transparent;
+  width: var(--space-28);
+  height: var(--space-28);
+  border: var(--space-1) solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--paper);
@@ -3290,11 +4265,11 @@ tr:hover .inventory-row-delete,
 
 .batch-bar-dropdown {
   position: absolute;
-  bottom: calc(100% + var(--triad-6));
+  bottom: calc(100% + var(--space-6));
   left: 0;
   background: var(--paper);
-  border: var(--triad-2) solid var(--ink);
-  min-width: calc(54 * var(--triad-unit));
+  border: var(--space-2) solid var(--ink);
+  min-width: var(--space-160);
   padding: 0;
   z-index: 15;
   box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.08);
@@ -3303,9 +4278,9 @@ tr:hover .inventory-row-delete,
 .batch-bar-dropdown button {
   width: 100%;
   border: none;
-  border-bottom: var(--triad-1) solid var(--hair);
+  border-bottom: var(--space-1) solid var(--hair);
   background: transparent;
-  padding: var(--triad-9) var(--triad-12);
+  padding: var(--space-8) var(--space-12);
   text-align: left;
   border-radius: 0;
   font-size: 12px;
@@ -3333,7 +4308,7 @@ a.primary {
   justify-content: center;
   text-decoration: none;
   text-align: center;
-  margin-top: var(--triad-12);
+  margin-top: var(--space-12);
   box-sizing: border-box;
 }
 
@@ -3346,19 +4321,19 @@ a.primary {
 
 .ss-root.inventory-unit-select {
   width: 100%;
-  max-width: calc(67 * var(--triad-unit));
+  max-width: var(--space-208);
 }
 
 .ss-trigger {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--triad-6);
+  gap: var(--space-6);
   width: 100%;
   height: var(--control-height);
   min-height: var(--control-height);
-  padding: 0 var(--triad-9);
-  border: var(--triad-2) solid var(--control-border-rest);
+  padding: 0 var(--space-8);
+  border: var(--space-2) solid var(--control-border-rest);
   border-radius: 0;
   background: var(--paper);
   color: var(--ink);
@@ -3410,8 +4385,8 @@ a.primary {
   width: 100%;
   height: var(--control-height);
   min-height: var(--control-height);
-  padding: 0 calc(var(--triad-9) + 16px) 0 var(--triad-9);
-  border: var(--triad-2) solid var(--control-border-rest);
+  padding: 0 calc(var(--space-8) + 16px) 0 var(--space-8);
+  border: var(--space-2) solid var(--control-border-rest);
   border-radius: 0;
   background: var(--paper);
   color: var(--ink);
@@ -3424,7 +4399,7 @@ a.primary {
 
 .ss-input-wrap .ss-caret {
   position: absolute;
-  right: var(--triad-9);
+  right: var(--space-8);
 }
 
 .ss-list {
@@ -3435,12 +4410,12 @@ a.primary {
   z-index: 900;
   list-style: none;
   margin: 0;
-  padding: var(--triad-4) 0;
+  padding: var(--space-4) 0;
   max-height: 240px;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--paper);
-  border: var(--triad-2) solid var(--ink);
+  border: var(--space-2) solid var(--ink);
   border-top: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
@@ -3459,12 +4434,12 @@ a.primary {
   z-index: auto;
   width: 100%;
   min-width: 0;
-  border-top: var(--triad-2) solid var(--ink);
+  border-top: var(--space-2) solid var(--ink);
   box-sizing: border-box;
 }
 
 .ss-option {
-  padding: var(--triad-6) var(--triad-9);
+  padding: var(--space-6) var(--space-8);
   font-size: 13px;
   line-height: 1.35;
   cursor: pointer;
@@ -3480,8 +4455,166 @@ a.primary {
 }
 
 .ss-empty {
-  padding: var(--triad-12) var(--triad-9);
+  padding: var(--space-12) var(--space-8);
   font-size: 13px;
   color: var(--muted);
   text-align: center;
+}
+
+/* ── Publish to Community toggle ── */
+
+.recipe-publish-toggle {
+  margin: 0 0 var(--space-12);
+}
+
+.recipe-publish-btn {
+  font-size: 12px;
+  padding: 0 var(--space-16);
+}
+
+.recipe-publish-btn--active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.recipe-publish-btn--active:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ── Community: saved badge on cards ── */
+
+.community-saved-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: var(--space-1) solid var(--hair);
+  padding: var(--space-2) var(--space-6);
+}
+
+/* ── Community: recipe detail (read-only) ── */
+
+.community-detail {
+  max-width: var(--page-max-width);
+}
+
+.community-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-36);
+  align-items: start;
+}
+
+.community-detail-main {
+  min-width: 0;
+}
+
+.community-detail-title {
+  margin: 0 0 var(--space-12);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.community-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+
+.community-save-btn {
+  font-size: 12px;
+}
+
+.community-detail-error {
+  margin: 0;
+  font-size: 13px;
+  color: #8a1f1f;
+}
+
+.community-detail-aside {
+  min-width: 0;
+  position: sticky;
+  top: var(--space-20);
+}
+
+.community-detail-photo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: var(--space-2) solid var(--ink);
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.community-detail-pre {
+  white-space: pre-wrap;
+  margin: 0;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: var(--space-8) var(--control-padding-x);
+  border: var(--space-2) solid var(--ink);
+  background: var(--fog);
+}
+
+.community-ingredient-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.community-ingredient-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-12);
+  padding: var(--space-6) 0;
+  border-bottom: var(--space-1) solid var(--mist);
+  font-size: 14px;
+}
+
+.community-ingredient-line:last-child {
+  border-bottom: none;
+}
+
+.community-ingredient-name {
+  font-weight: 600;
+}
+
+.community-ingredient-optional {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.community-ingredient-amount {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.community-ingredient-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-20);
+}
+
+.community-ingredient-section-title {
+  margin: 0 0 var(--space-6);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+@media (max-width: 52rem) {
+  .community-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .community-detail-aside {
+    position: static;
+    order: -1;
+  }
 }

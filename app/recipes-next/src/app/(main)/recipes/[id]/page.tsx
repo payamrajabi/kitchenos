@@ -15,6 +15,7 @@ type RawRecipeIngredientRow = {
   line_sort_order: unknown;
   amount: unknown;
   unit: unknown;
+  is_optional?: unknown;
   created_at?: string;
   ingredients:
     | {
@@ -70,11 +71,11 @@ export default async function RecipeDetailPage({ params }: Props) {
   const [recipeResult, ingredientsResult, recipeIngredientsResult, sectionsResult] =
     await Promise.all([
       supabase.from("recipes").select("*").eq("id", id).maybeSingle(),
-      supabase.from("ingredients").select("id, name").order("name"),
+      supabase.from("ingredients").select("id, name, parent_ingredient_id, variant_sort_order").order("name"),
       supabase
         .from("recipe_ingredients")
         .select(
-          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, created_at, ingredients(id, name)",
+          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name)",
         )
         .eq("recipe_id", id),
       supabase
@@ -107,10 +108,14 @@ export default async function RecipeDetailPage({ params }: Props) {
   const r = recipeResult.data as RecipeRow;
   const availableIngredients = ((ingredientsResult.data ?? []) as Pick<
     IngredientRow,
-    "id" | "name"
+    "id" | "name" | "parent_ingredient_id" | "variant_sort_order"
   >[]).map((ingredient) => ({
     id: Number(ingredient.id),
     name: String(ingredient.name ?? ""),
+    parentIngredientId: ingredient.parent_ingredient_id
+      ? Number(ingredient.parent_ingredient_id)
+      : null,
+    variantSortOrder: Number(ingredient.variant_sort_order ?? 0),
   }));
   const recipeIngredients: {
     id: number;
@@ -120,6 +125,7 @@ export default async function RecipeDetailPage({ params }: Props) {
     line_sort_order: number;
     amount: string | null;
     unit: string | null;
+    is_optional: boolean;
     created_at?: string;
     ingredients: { id: number; name: string } | null;
   }[] = ((recipeIngredientsResult.data ?? []) as RawRecipeIngredientRow[]).map((row) => {
@@ -127,6 +133,9 @@ export default async function RecipeDetailPage({ params }: Props) {
       ? row.ingredients[0] ?? null
       : row.ingredients ?? null;
     const sid = row.section_id;
+    const opt = row.is_optional;
+    const is_optional =
+      opt === true || opt === 1 || opt === "true" || opt === "t";
     return {
       id: Number(row.id),
       recipe_id: Number(row.recipe_id),
@@ -138,6 +147,7 @@ export default async function RecipeDetailPage({ params }: Props) {
       line_sort_order: Number(row.line_sort_order ?? 0),
       amount: row.amount == null ? null : String(row.amount),
       unit: row.unit == null ? null : String(row.unit),
+      is_optional,
       created_at: row.created_at,
       ingredients: ingredient
         ? {

@@ -11,10 +11,12 @@ export function InventoryStockUnitSelect({
   ingredientId,
   inventoryId,
   value,
+  disabled: externalDisabled,
 }: {
   ingredientId: number;
   inventoryId: number | "";
   value: string;
+  disabled?: boolean;
 }) {
   const resolvedInventoryId = normalizeInventoryId(inventoryId);
   const [isPending, startTransition] = useTransition();
@@ -49,7 +51,7 @@ export function InventoryStockUnitSelect({
       options={options}
       value={selectValue}
       onChange={handleChange}
-      disabled={isPending}
+      disabled={isPending || !!externalDisabled}
       aria-label="Stock unit"
     />
   );

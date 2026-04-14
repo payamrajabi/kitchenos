@@ -226,7 +226,7 @@ export function LimitedRecipeTextField({
     [variant, value, onChange],
   );
 
-  const minH = `calc(${rows} * 1.45em + var(--triad-9) * 2)`;
+  const minH = `calc(${rows} * 1.45em + var(--space-12) + var(--space-6))`;
 
   if (editing) {
     return (

@@ -9,6 +9,7 @@ import {
 import { defaultStorageLocationForNewInventoryRow } from "@/lib/inventory-display";
 import type { IngredientRow } from "@/types/database";
 import type { InventoryTab } from "@/lib/inventory-filters";
+import { maybeAutofillNutrition } from "@/app/actions/ingredient-nutrition";
 
 const VALID_LOCATIONS = new Set([
   "Fridge",
@@ -101,6 +102,30 @@ function coerceInventoryQtyColumn(v: unknown): number {
   const n = Math.trunc(Number(v));
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, n);
+}
+
+export async function fetchRecipesUsingIngredientAction(
+  ingredientId: number,
+): Promise<{ id: number; name: string }[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("recipe_ingredients")
+    .select("recipe_id, recipes:recipe_id(id, name)")
+    .eq("ingredient_id", ingredientId);
+
+  if (!data) return [];
+
+  const seen = new Set<number>();
+  const result: { id: number; name: string }[] = [];
+  for (const row of data) {
+    const r = row.recipes as unknown as { id: number; name: string } | null;
+    if (r && !seen.has(r.id)) {
+      seen.add(r.id);
+      result.push({ id: r.id, name: r.name });
+    }
+  }
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
 }
 
 export async function deleteIngredientAction(ingredientId: number) {
@@ -260,6 +285,8 @@ export async function updateIngredientNameAction(
 
   if (error) return { ok: false as const, error: error.message };
 
+  void maybeAutofillNutrition(ingredientId);
+
   revalidatePath("/inventory");
   return { ok: true as const };
 }
@@ -291,6 +318,99 @@ export async function updateInventoryStockUnitAction(
   if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function addIngredientVariantAction(
+  parentIngredientId: number,
+  variantName: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const trimmed = variantName.trim();
+  if (!trimmed) return { ok: false as const, error: "Name is required." };
+
+  const { data: parent, error: parentErr } = await supabase
+    .from("ingredients")
+    .select("id, category")
+    .eq("id", parentIngredientId)
+    .single();
+  if (parentErr || !parent) {
+    return { ok: false as const, error: "Parent ingredient not found." };
+  }
+
+  const { data: siblings } = await supabase
+    .from("ingredients")
+    .select("variant_sort_order")
+    .eq("parent_ingredient_id", parentIngredientId)
+    .order("variant_sort_order", { ascending: false })
+    .limit(1);
+
+  const nextSort =
+    siblings && siblings.length > 0
+      ? (siblings[0].variant_sort_order ?? 0) + 1
+      : 0;
+
+  const { data: newIng, error: ingErr } = await supabase
+    .from("ingredients")
+    .insert({
+      name: trimmed,
+      parent_ingredient_id: parentIngredientId,
+      variant_sort_order: nextSort,
+      category: (parent as { category?: string | null }).category ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (ingErr || !newIng) {
+    return { ok: false as const, error: ingErr?.message ?? "Could not create variant." };
+  }
+
+  const tab: InventoryTab = "Pantry";
+  const storage_location = defaultStorageLocationForNewInventoryRow(
+    parent as IngredientRow,
+    tab,
+  );
+
+  await supabase.from("inventory_items").insert({
+    ingredient_id: newIng.id,
+    storage_location,
+    quantity: null,
+    unit: null,
+  });
+
+  void maybeAutofillNutrition(newIng.id);
+
+  revalidatePath("/inventory");
+  revalidatePath("/recipes");
+  return { ok: true as const, ingredientId: newIng.id };
+}
+
+export async function reorderVariantsAction(
+  parentIngredientId: number,
+  orderedVariantIds: number[],
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  for (let i = 0; i < orderedVariantIds.length; i++) {
+    const { error } = await supabase
+      .from("ingredients")
+      .update({ variant_sort_order: i })
+      .eq("id", orderedVariantIds[i])
+      .eq("parent_ingredient_id", parentIngredientId);
+    if (error) return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/inventory");
+  revalidatePath("/recipes");
   return { ok: true as const };
 }
 

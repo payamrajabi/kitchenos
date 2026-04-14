@@ -479,59 +479,14 @@ samp {
 
 .form-grid-macros {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.4fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   align-items: end;
-}
-
-.macro-carbs-with-estimate {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-label.macro-carbs-field-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.macro-carbs-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.macro-carbs-row input[type="number"] {
-  flex: 1 1 72px;
-  min-width: 64px;
-}
-
-.macro-estimate-button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.macro-estimate-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.macro-estimate-helper {
-  margin: 0;
 }
 
 @media (max-width: 768px) {
   .form-grid-macros {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .macro-carbs-with-estimate {
-    grid-column: 1 / -1;
   }
 }
 
@@ -848,14 +803,6 @@ textarea {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-}
-
-.estimate-output {
-  display: none;
-}
-
-.estimate-output.is-visible {
-  display: block;
 }
 
 .is-hidden {

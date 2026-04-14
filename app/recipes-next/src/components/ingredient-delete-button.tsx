@@ -1,6 +1,9 @@
 "use client";
 
-import { deleteIngredientAction } from "@/app/actions/inventory";
+import {
+  deleteIngredientAction,
+  fetchRecipesUsingIngredientAction,
+} from "@/app/actions/inventory";
 import {
   useCallback,
   useEffect,
@@ -13,6 +16,8 @@ import {
 import { createPortal } from "react-dom";
 
 const emptySubscribe = () => () => {};
+
+type LinkedRecipe = { id: number; name: string };
 
 export function IngredientDeleteButton({
   ingredientId,
@@ -30,6 +35,8 @@ export function IngredientDeleteButton({
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [recipes, setRecipes] = useState<LinkedRecipe[]>([]);
+  const [loadingRecipes, setLoadingRecipes] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
   const inputId = useId();
@@ -42,14 +49,35 @@ export function IngredientDeleteButton({
 
   const expected = ingredientName.trim();
   const nameMatches = confirmText.trim() === expected;
+  const hasRecipes = recipes.length > 0;
 
   const close = useCallback(() => {
     setModalOpen(false);
     setConfirmText("");
     setError("");
+    setRecipes([]);
   }, []);
 
-  const handleDelete = useCallback(() => {
+  const handleDeleteClick = useCallback(async () => {
+    setLoadingRecipes(true);
+    setError("");
+    try {
+      const used = await fetchRecipesUsingIngredientAction(ingredientId);
+      if (used.length > 0) {
+        setRecipes(used);
+        setModalOpen(true);
+      } else {
+        startTransition(async () => {
+          const res = await deleteIngredientAction(ingredientId);
+          if (!res.ok) setError(res.error);
+        });
+      }
+    } finally {
+      setLoadingRecipes(false);
+    }
+  }, [ingredientId]);
+
+  const handleConfirmDelete = useCallback(() => {
     if (!nameMatches || isPending) return;
     setError("");
     startTransition(async () => {
@@ -104,6 +132,28 @@ export function IngredientDeleteButton({
               inventory and from every recipe that uses it. This cannot be
               undone.
             </p>
+
+            {hasRecipes && (
+              <div className="delete-ingredient-recipe-list">
+                <p className="delete-ingredient-recipe-list-label">
+                  Used in {recipes.length} recipe{recipes.length !== 1 ? "s" : ""}:
+                </p>
+                <ul>
+                  {recipes.map((r) => (
+                    <li key={r.id}>
+                      <a
+                        href={`/recipes/${r.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {r.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <label htmlFor={inputId} className="delete-ingredient-modal-label">
               Type the ingredient name to confirm:
             </label>
@@ -136,7 +186,7 @@ export function IngredientDeleteButton({
               <button
                 type="button"
                 className="delete-ingredient-modal-confirm"
-                onClick={handleDelete}
+                onClick={handleConfirmDelete}
                 disabled={!nameMatches || isPending}
               >
                 {isPending ? "Deleting…" : "Delete ingredient"}
@@ -153,14 +203,10 @@ export function IngredientDeleteButton({
         type="button"
         className="inventory-row-delete"
         aria-label={`Delete ${ingredientName}`}
-        onClick={() => {
-          setConfirmText("");
-          setError("");
-          setModalOpen(true);
-        }}
-        disabled={isPending}
+        onClick={handleDeleteClick}
+        disabled={isPending || loadingRecipes}
       >
-        Delete
+        {loadingRecipes ? "Checking…" : "Delete"}
       </button>
       {modal ? createPortal(modal, document.body) : null}
     </>

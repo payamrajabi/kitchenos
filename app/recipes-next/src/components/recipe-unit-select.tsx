@@ -16,11 +16,13 @@ export function RecipeUnitSelect({
   inventoryId,
   stockUnit,
   savedRecipeUnit,
+  disabled: externalDisabled,
 }: {
   ingredientId: number;
   inventoryId: number | "";
   stockUnit: string;
   savedRecipeUnit: string;
+  disabled?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -59,7 +61,7 @@ export function RecipeUnitSelect({
       options={options}
       value={selectValue}
       onChange={handleChange}
-      disabled={isPending}
+      disabled={isPending || !!externalDisabled}
       aria-label="Recipe unit"
     />
   );

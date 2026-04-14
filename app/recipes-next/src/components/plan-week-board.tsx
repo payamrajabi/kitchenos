@@ -1,22 +1,21 @@
 "use client";
 
-import {
-  addMealPlanEntryAction,
-  deleteMealPlanEntryAction,
-} from "@/app/actions/meal-plan";
-import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
+import { addMealPlanEntryAction } from "@/app/actions/meal-plan";
+import { PlanMealSlot } from "@/components/plan-meal-slot";
 import {
   classifyStoredMealEntry,
   planSlotOrder,
   type PlanSlotKey,
 } from "@/lib/meal-plan";
+import { PLAN_SCROLL_TO_TODAY_EVENT } from "@/lib/plan-board-scroll";
+import { coerceNumericId } from "@/lib/recipes";
 import type { MealPlanEntryRow } from "@/types/database";
-import { X } from "@phosphor-icons/react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -25,21 +24,35 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-/** Match `weekDayStrings` / DB plan_date keys (local calendar day at noon → ISO date). */
-function planDateKeyForLocalToday(): string {
-  const t = new Date();
-  const noon = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12, 0, 0, 0);
-  return noon.toISOString().slice(0, 10);
+export const PLAN_MEALS_COLUMN_PX = 72;
+export const PLAN_DAY_COLUMN_PX = 244;
+
+const SLOT_CUTOFF_HOUR: Record<PlanSlotKey, number> = {
+  breakfast: 10,
+  snack_am: 11.5,
+  lunch: 14,
+  snack_pm: 16,
+  dinner: 20,
+  dessert: 22,
+};
+
+function isSlotInPast(dateStr: string, slotKey: PlanSlotKey, todayStr: string): boolean {
+  if (dateStr < todayStr) return true;
+  if (dateStr > todayStr) return false;
+  const now = new Date();
+  const h = now.getHours() + now.getMinutes() / 60;
+  return h >= SLOT_CUTOFF_HOUR[slotKey];
 }
 
-type DayColumn = {
-  date: string;
-  label: string;
-};
+type DayColumn = { date: string };
 
 type RecipeOption = {
   id: number;
   name: string;
+  meal_types?: string[] | null;
+  image_url: string | null;
+  image_urls?: unknown;
+  image_focus_y: number | null;
 };
 
 type IngredientOption = {
@@ -48,10 +61,15 @@ type IngredientOption = {
 };
 
 type Props = {
+  today: string;
   days: DayColumn[];
   entries: MealPlanEntryRow[];
   recipes: RecipeOption[];
   ingredients: IngredientOption[];
+};
+
+export type PlanWeekBoardHandle = {
+  scrollToToday: (options?: { behavior?: ScrollBehavior }) => void;
 };
 
 function parsePlanPick(raw: string):
@@ -88,313 +106,334 @@ function dayParts(dateStr: string) {
   return {
     weekday: date.toLocaleDateString(undefined, { weekday: "short" }),
     monthDay: date.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    full: date.toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    }),
   };
 }
 
-export function PlanWeekBoard({ days, entries, recipes, ingredients }: Props) {
-  const router = useRouter();
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const todayHeadRef = useRef<HTMLDivElement | null>(null);
-  const planOpenCellRef = useRef<HTMLDivElement | null>(null);
-  const [composer, setComposer] = useState<ComposerState>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+export const PlanWeekBoard = forwardRef<PlanWeekBoardHandle, Props>(
+  function PlanWeekBoard({ today, days, entries, recipes, ingredients }, ref) {
+    const router = useRouter();
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const planOpenCellRef = useRef<HTMLDivElement | null>(null);
+    const [composer, setComposer] = useState<ComposerState>(null);
+    const [feedback, setFeedback] = useState<string | null>(null);
+    const [pending, startTransition] = useTransition();
 
-  const weekKey = days[0]?.date ?? "";
-  const todayPlanDate = planDateKeyForLocalToday();
-  const todayInWeek = days.some((d) => d.date === todayPlanDate);
+    const todayIndex = useMemo(
+      () => days.findIndex((d) => d.date === today),
+      [days, today],
+    );
 
-  useLayoutEffect(() => {
-    const applyScroll = () => {
-      const scrollEl = scrollRef.current;
-      if (!scrollEl) return;
-      const headEl = todayHeadRef.current;
-      const cornerEl = scrollEl.querySelector(".plan-board-corner");
-      if (!todayInWeek || !headEl || !(cornerEl instanceof HTMLElement)) {
-        scrollEl.scrollLeft = 0;
-        return;
+    const firstDayKey = days[0]?.date ?? "";
+
+    const railCornerRef = useRef<HTMLDivElement | null>(null);
+    const railSlotRefs = useRef<Partial<Record<PlanSlotKey, HTMLDivElement | null>>>(
+      {},
+    );
+
+    const syncRailHeights = useCallback(() => {
+      const sc = scrollRef.current;
+      if (!sc) return;
+      const firstHead = sc.querySelector<HTMLElement>(".plan-board-dayhead");
+      const corner = railCornerRef.current;
+      if (firstHead && corner) {
+        corner.style.height = `${firstHead.getBoundingClientRect().height}px`;
       }
-      const desired = headEl.offsetLeft - cornerEl.offsetWidth;
-      scrollEl.scrollLeft = Math.max(0, desired);
-    };
+      for (const slot of planSlotOrder) {
+        const sample = sc.querySelector<HTMLElement>(
+          `[data-plan-row-sample="${slot.key}"]`,
+        );
+        const rail = railSlotRefs.current[slot.key];
+        if (sample && rail) {
+          rail.style.height = `${sample.getBoundingClientRect().height}px`;
+        }
+      }
+    }, []);
 
-    applyScroll();
-    const id = requestAnimationFrame(applyScroll);
-    return () => cancelAnimationFrame(id);
-  }, [weekKey, todayPlanDate, todayInWeek]);
+    useLayoutEffect(() => {
+      syncRailHeights();
+      const sc = scrollRef.current;
+      if (!sc) return;
+      const grid = sc.querySelector(".plan-board-grid");
+      const ro = new ResizeObserver(() => {
+        syncRailHeights();
+      });
+      if (grid) ro.observe(grid);
+      ro.observe(sc);
+      const onResize = () => syncRailHeights();
+      window.addEventListener("resize", onResize);
+      return () => {
+        ro.disconnect();
+        window.removeEventListener("resize", onResize);
+      };
+    }, [syncRailHeights, days, entries, composer, pending]);
 
-  const closeComposer = useCallback(() => {
-    setComposer(null);
-  }, []);
+    const scrollToToday = useCallback(
+      (options?: { behavior?: ScrollBehavior }) => {
+        const el = scrollRef.current;
+        if (!el || todayIndex < 0) return;
+        const left = todayIndex * PLAN_DAY_COLUMN_PX;
+        const behavior = options?.behavior ?? "auto";
+        el.scrollTo({ left, behavior });
+      },
+      [todayIndex],
+    );
 
-  useEffect(() => {
-    if (!composer) return;
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      closeComposer();
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [composer, closeComposer]);
+    useImperativeHandle(ref, () => ({ scrollToToday }), [scrollToToday]);
 
-  useEffect(() => {
-    if (!composer) return;
-    const onMouseDown = (e: MouseEvent) => {
-      const t = e.target;
-      if (!(t instanceof Node)) return;
-      if (planOpenCellRef.current?.contains(t)) return;
-      if (t instanceof Element && t.closest(".ss-popover-anchor")) return;
-      closeComposer();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [composer, closeComposer]);
+    useLayoutEffect(() => {
+      scrollToToday({ behavior: "auto" });
+    }, [scrollToToday]);
 
-  const planPickerOptions: SelectOption[] = useMemo(() => {
-    const recipeOpts: SelectOption[] = recipes.map((recipe) => ({
-      value: `r:${recipe.id}`,
-      label: recipe.name,
-      tier: 0,
-    }));
-    const ingredientOpts: SelectOption[] = ingredients.map((ing) => ({
-      value: `i:${ing.id}`,
-      label: ing.name,
-      tier: 1,
-    }));
-    return [...recipeOpts, ...ingredientOpts];
-  }, [recipes, ingredients]);
+    useEffect(() => {
+      const onScrollToToday = () => {
+        const reduced =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        scrollToToday({ behavior: reduced ? "auto" : "smooth" });
+      };
+      window.addEventListener(PLAN_SCROLL_TO_TODAY_EVENT, onScrollToToday);
+      return () =>
+        window.removeEventListener(PLAN_SCROLL_TO_TODAY_EVENT, onScrollToToday);
+    }, [scrollToToday]);
 
-  const grouped = useMemo(() => {
-    const byDay = new Map<string, SlotBuckets>();
-    for (const day of days) {
-      byDay.set(day.date, createEmptyBuckets());
-    }
+    const closeComposer = useCallback(() => {
+      setComposer(null);
+    }, []);
 
-    const sortedEntries = [...entries].sort((a, b) => {
-      const dateCmp = String(a.plan_date).localeCompare(String(b.plan_date));
-      if (dateCmp !== 0) return dateCmp;
-      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-    });
+    useEffect(() => {
+      if (!composer) return;
+      const onKeyDown = (e: globalThis.KeyboardEvent) => {
+        if (e.key !== "Escape") return;
+        closeComposer();
+      };
+      document.addEventListener("keydown", onKeyDown, true);
+      return () => document.removeEventListener("keydown", onKeyDown, true);
+    }, [composer, closeComposer]);
 
-    for (const entry of sortedEntries) {
-      const dateKey = String(entry.plan_date).slice(0, 10);
-      const buckets = byDay.get(dateKey);
-      if (!buckets) continue;
+    useEffect(() => {
+      if (!composer) return;
+      const onMouseDown = (e: MouseEvent) => {
+        const t = e.target;
+        if (!(t instanceof Node)) return;
+        if (planOpenCellRef.current?.contains(t)) return;
+        if (t instanceof Element && t.closest(".ss-popover-anchor")) return;
+        closeComposer();
+      };
+      document.addEventListener("mousedown", onMouseDown);
+      return () => document.removeEventListener("mousedown", onMouseDown);
+    }, [composer, closeComposer]);
 
-      const slotName = String(entry.meal_slot ?? "").toLowerCase();
-      const explicitBucket = classifyStoredMealEntry(entry.meal_slot, entry.sort_order);
+    const recipeById = useMemo(() => {
+      const m = new Map<number, RecipeOption>();
+      for (const r of recipes) {
+        const id = coerceNumericId(r.id);
+        if (id != null) m.set(id, r);
+      }
+      return m;
+    }, [recipes]);
 
-      if (explicitBucket) {
-        buckets[explicitBucket].push(entry);
-        continue;
+    const recipeByNameLower = useMemo(() => {
+      const m = new Map<string, RecipeOption>();
+      for (const r of recipes) {
+        const key = r.name.trim().toLowerCase();
+        if (key) m.set(key, r);
+        const stripped = key.replace(/\s*\(#\d+\)\s*$/i, "").trim();
+        if (stripped && stripped !== key) m.set(stripped, r);
+      }
+      return m;
+    }, [recipes]);
+
+    const grouped = useMemo(() => {
+      const byDay = new Map<string, SlotBuckets>();
+      for (const day of days) {
+        byDay.set(day.date, createEmptyBuckets());
       }
 
-      if (slotName === "snack") {
-        const fallbackBucket: PlanSlotKey =
-          buckets.snack_am.length === 0 ? "snack_am" : "snack_pm";
-        buckets[fallbackBucket].push(entry);
-        continue;
-      }
-
-      if (slotName === "other") {
-        buckets.dessert.push(entry);
-      }
-    }
-
-    return byDay;
-  }, [days, entries]);
-
-  const openComposer = (planDate: string, slotKey: PlanSlotKey) => {
-    setComposer({ planDate, slotKey });
-    setFeedback(null);
-  };
-
-  const commitPick = (value: string) => {
-    if (!composer || !value) return;
-    const parsed = parsePlanPick(value);
-    if (!parsed) return;
-
-    setFeedback(null);
-    startTransition(async () => {
-      const result = await addMealPlanEntryAction({
-        planDate: composer.planDate,
-        slotKey: composer.slotKey,
-        ...(parsed.kind === "recipe"
-          ? { recipeId: parsed.id }
-          : { ingredientId: parsed.id }),
+      const sortedEntries = [...entries].sort((a, b) => {
+        const dateCmp = String(a.plan_date).localeCompare(String(b.plan_date));
+        if (dateCmp !== 0) return dateCmp;
+        return (a.sort_order ?? 0) - (b.sort_order ?? 0);
       });
 
-      if (!result.ok) {
-        setFeedback(result.error);
-        return;
+      for (const entry of sortedEntries) {
+        const dateKey = String(entry.plan_date).slice(0, 10);
+        const buckets = byDay.get(dateKey);
+        if (!buckets) continue;
+
+        const slotName = String(entry.meal_slot ?? "").toLowerCase();
+        const explicitBucket = classifyStoredMealEntry(
+          entry.meal_slot,
+          entry.sort_order,
+        );
+
+        if (explicitBucket) {
+          buckets[explicitBucket].push(entry);
+          continue;
+        }
+
+        if (slotName === "snack") {
+          const fallbackBucket: PlanSlotKey =
+            buckets.snack_am.length === 0 ? "snack_am" : "snack_pm";
+          buckets[fallbackBucket].push(entry);
+          continue;
+        }
+
+        if (slotName === "other") {
+          buckets.dessert.push(entry);
+        }
       }
 
-      closeComposer();
-      router.refresh();
-    });
-  };
+      return byDay;
+    }, [days, entries]);
 
-  const removeEntry = (entryId: number) => {
-    setFeedback(null);
-    startTransition(async () => {
-      const result = await deleteMealPlanEntryAction(entryId);
-      if (!result.ok) {
-        setFeedback(result.error);
-        return;
-      }
+    const openComposer = (planDate: string, slotKey: PlanSlotKey) => {
+      setComposer({ planDate, slotKey });
+      setFeedback(null);
+    };
 
-      router.refresh();
-    });
-  };
+    const commitPick = (value: string) => {
+      if (!composer || !value) return;
+      const parsed = parsePlanPick(value);
+      if (!parsed) return;
 
-  const handleCellKeyDown = (
-    event: ReactKeyboardEvent<HTMLDivElement>,
-    planDate: string,
-    slotKey: PlanSlotKey,
-  ) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    openComposer(planDate, slotKey);
-  };
+      setFeedback(null);
+      startTransition(async () => {
+        const result = await addMealPlanEntryAction({
+          planDate: composer.planDate,
+          slotKey: composer.slotKey,
+          ...(parsed.kind === "recipe"
+            ? { recipeId: parsed.id }
+            : { ingredientId: parsed.id }),
+        });
 
-  return (
-    <div className="plan-board-shell">
-      {feedback ? (
-        <p className="plan-board-feedback" role="status">
-          {feedback}
-        </p>
-      ) : null}
+        if (!result.ok) {
+          setFeedback(result.error);
+          return;
+        }
 
-      <div className="plan-board-scroll" ref={scrollRef}>
-        <div className="plan-board-grid">
-          <div className="plan-board-corner">Meals</div>
+        closeComposer();
+        router.refresh();
+      });
+    };
 
-          {days.map((day) => {
-            const parts = dayParts(day.date);
-            const isToday = day.date === todayPlanDate;
-            return (
+    const handleCellKeyDown = (
+      event: ReactKeyboardEvent<HTMLDivElement>,
+      planDate: string,
+      slotKey: PlanSlotKey,
+    ) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openComposer(planDate, slotKey);
+    };
+
+    if (days.length === 0) {
+      return (
+        <div className="plan-board-shell">
+          {feedback ? (
+            <p className="plan-board-feedback" role="status">
+              {feedback}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+
+    const isSnack = (key: PlanSlotKey) => key === "snack_am" || key === "snack_pm";
+
+    return (
+      <div className="plan-board-shell">
+        {feedback ? (
+          <p className="plan-board-feedback" role="status">
+            {feedback}
+          </p>
+        ) : null}
+
+        <div className="plan-board-layout">
+          <div className="plan-board-rail" aria-hidden={false}>
+            <div ref={railCornerRef} className="plan-board-corner">
+              <span className="visually-hidden">Meals</span>
+            </div>
+            {planSlotOrder.map((slot) => (
               <div
-                key={day.date}
-                ref={isToday ? todayHeadRef : undefined}
-                className="plan-board-dayhead"
+                key={slot.key}
+                ref={(el) => {
+                  railSlotRefs.current[slot.key] = el;
+                }}
+                className={`plan-board-rowlabel${isSnack(slot.key) ? " plan-board-rowlabel--snack" : ""}`}
+                title={slot.label}
               >
-                <div className="plan-board-dayname">{parts.weekday}</div>
-                <div className="plan-board-daydate">{parts.monthDay}</div>
+                <span className="plan-board-rowlabel-name">{slot.label}</span>
               </div>
-            );
-          })}
+            ))}
+          </div>
 
-          {planSlotOrder.flatMap((slot) => [
-            <div key={`${slot.key}-label`} className="plan-board-rowlabel">
-              {slot.label}
-            </div>,
-            ...days.map((day) => {
-              const dayBuckets = grouped.get(day.date) ?? createEmptyBuckets();
-              const cellEntries = dayBuckets[slot.key];
-              const isOpen =
-                composer?.planDate === day.date && composer?.slotKey === slot.key;
+          <div className="plan-board-scroll" ref={scrollRef}>
+            <div
+              className="plan-board-grid plan-board-grid--sized-cols"
+              style={{
+                gridTemplateColumns: `repeat(${days.length}, ${PLAN_DAY_COLUMN_PX}px)`,
+                width: "max(100%, max-content)",
+              }}
+            >
+              {days.map((day) => {
+                const parts = dayParts(day.date);
+                return (
+                  <div key={day.date} className="plan-board-dayhead">
+                    <span className="plan-board-dayname">{parts.weekday}</span>
+                    <span className="plan-board-daydate">{parts.monthDay}</span>
+                  </div>
+                );
+              })}
 
-              return (
-                <div
-                  key={`${day.date}-${slot.key}`}
-                  ref={
-                    isOpen
-                      ? (el) => {
-                          planOpenCellRef.current = el;
-                        }
-                      : undefined
-                  }
-                  className={`plan-board-cell${isOpen ? " is-open" : ""}`}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open ${slot.label.toLowerCase()} for ${day.label}`}
-                  onClick={() => openComposer(day.date, slot.key)}
-                  onKeyDown={(event) => handleCellKeyDown(event, day.date, slot.key)}
-                >
-                  {cellEntries.length ? (
-                    <div className="plan-board-stack">
-                      {cellEntries.map((entry) => {
-                        const titleText = entry.label || "Recipe";
-                        return (
-                        <article
-                          key={entry.id}
-                          className="plan-board-card"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {entry.recipe_id ? (
-                            <Link
-                              href={`/recipes/${entry.recipe_id}`}
-                              className="plan-board-cardlink"
-                              title={titleText}
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <span className="plan-board-cardtitle">
-                                {titleText}
-                              </span>
-                              {entry.notes ? (
-                                <span className="plan-board-cardnotes">{entry.notes}</span>
-                              ) : null}
-                            </Link>
-                          ) : (
-                            <div className="plan-board-cardlink" title={titleText}>
-                              <span className="plan-board-cardtitle">
-                                {titleText}
-                              </span>
-                              {entry.notes ? (
-                                <span className="plan-board-cardnotes">{entry.notes}</span>
-                              ) : null}
-                            </div>
-                          )}
+              {planSlotOrder.flatMap((slot) =>
+                days.map((day) => {
+                  const dayBuckets =
+                    grouped.get(day.date) ?? createEmptyBuckets();
+                  const cellEntries = dayBuckets[slot.key];
+                  const isOpen =
+                    composer?.planDate === day.date &&
+                    composer?.slotKey === slot.key;
+                  const past = isSlotInPast(day.date, slot.key, today);
+                  const parts = dayParts(day.date);
 
-                          <button
-                            type="button"
-                            className="plan-board-remove"
-                            aria-label={`Remove ${entry.label || "planned item"}`}
-                            disabled={pending}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              removeEntry(entry.id);
-                            }}
-                          >
-                            <X size={16} weight="bold" aria-hidden />
-                          </button>
-                        </article>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-
-                  {isOpen ? (
-                    <div
-                      className="plan-board-composer"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      {planPickerOptions.length ? (
-                        <SearchableSelect
-                          key={`${day.date}-${slot.key}-picker`}
-                          defaultOpen
-                          options={planPickerOptions}
-                          value=""
-                          onChange={commitPick}
-                          disabled={pending}
-                          className="plan-board-select"
-                          aria-label="Search recipes and ingredients"
-                          placeholder="Search recipes and ingredients"
-                        />
-                      ) : (
-                        <p className="plan-board-composer-empty">
-                          Add recipes on the Recipes page and ingredients in Inventory, then
-                          come back here to plan your week.
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            }),
-          ])}
+                  return (
+                    <PlanMealSlot
+                      key={`${day.date}-${slot.key}`}
+                      day={{ date: day.date, label: parts.full }}
+                      slotKey={slot.key}
+                      slotLabel={slot.label}
+                      cellEntries={cellEntries}
+                      isOpen={isOpen}
+                      isRowHeightSample={
+                        Boolean(firstDayKey) && day.date === firstDayKey
+                      }
+                      recipeById={recipeById}
+                      recipeByNameLower={recipeByNameLower}
+                      recipes={recipes}
+                      ingredients={ingredients}
+                      pending={pending}
+                      cellClassName={`${isSnack(slot.key) ? "plan-board-cell--snack" : "plan-board-cell--meal"}${past ? " plan-board-cell--past" : ""}`}
+                      onAssignOpenRef={(el) => {
+                        planOpenCellRef.current = el;
+                      }}
+                      onOpen={() => openComposer(day.date, slot.key)}
+                      onKeyDown={(event) =>
+                        handleCellKeyDown(event, day.date, slot.key)
+                      }
+                      commitPick={commitPick}
+                    />
+                  );
+                }),
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  },
+);

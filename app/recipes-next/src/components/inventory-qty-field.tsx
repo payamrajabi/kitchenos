@@ -61,6 +61,7 @@ export function InventoryQtyField({
   ariaLabel,
   minBound,
   maxBound,
+  disabled: externalDisabled,
 }: {
   ingredientId: number;
   inventoryId: number | "";
@@ -71,6 +72,7 @@ export function InventoryQtyField({
   minBound?: number | null;
   /** For min field: current maximum (null = 0). */
   maxBound?: number | null;
+  disabled?: boolean;
 }) {
   const resolvedInventoryId = useMemo(
     () => normalizeInventoryId(inventoryId),
@@ -141,13 +143,15 @@ export function InventoryQtyField({
     [ingredientId, resolvedInventoryId, field, text, minBound, maxBound],
   );
 
+  const fieldDisabled = isPending || !!externalDisabled;
+
   return (
-    <div className="inventory-qty-wrap">
+    <div className={`inventory-qty-wrap${externalDisabled ? " inventory-qty-locked" : ""}`}>
       <button
         type="button"
         className="inventory-qty-btn"
         aria-label={`Decrease ${ariaLabel}`}
-        disabled={isPending}
+        disabled={fieldDisabled}
         onClick={() => step(-1)}
       >
         −
@@ -158,7 +162,7 @@ export function InventoryQtyField({
         className="inventory-qty-input"
         value={text}
         aria-label={ariaLabel}
-        disabled={isPending}
+        disabled={fieldDisabled}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => persist(text)}
         onKeyDown={(e) => {
@@ -171,7 +175,7 @@ export function InventoryQtyField({
         type="button"
         className="inventory-qty-btn"
         aria-label={`Increase ${ariaLabel}`}
-        disabled={isPending}
+        disabled={fieldDisabled}
         onClick={() => step(1)}
       >
         +

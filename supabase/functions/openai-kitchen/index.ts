@@ -6,17 +6,6 @@ const corsHeaders: Record<string, string> = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-type NutritionBody = {
-  mode: "nutrition_estimate";
-  model?: string;
-  payload: {
-    name?: string | null;
-    servings?: number | null;
-    ingredients: string;
-    instructions?: string | null;
-  };
-};
-
 type MealPlanBody = {
   mode: "meal_plan";
   model?: string;
@@ -26,7 +15,7 @@ type MealPlanBody = {
   people_notes?: string;
 };
 
-type RequestBody = NutritionBody | MealPlanBody;
+type RequestBody = MealPlanBody;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -84,23 +73,6 @@ Deno.serve(async (req: Request) => {
     (body as { model?: string }).model?.trim() || "gpt-4o-mini";
 
   try {
-    if (body.mode === "nutrition_estimate") {
-      const content = await callOpenAiJson(openaiKey, model, [
-        {
-          role: "system",
-          content:
-            "You estimate nutrition from recipe ingredients. Return JSON only with keys: servings, total, ingredients, assumptions. servings is a number. total is an object with calories, protein_grams, fat_grams, carbs_grams. ingredients is an array of objects with name, amount, calories, protein_grams, fat_grams, carbs_grams. assumptions is a short string. Use reasonable defaults for missing amounts. Be explicit and conservative.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify(body.payload, null, 2),
-        },
-      ]);
-      return new Response(JSON.stringify({ result: JSON.parse(content) }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     if (body.mode === "meal_plan") {
       const content = await callOpenAiJson(openaiKey, model, [
         {

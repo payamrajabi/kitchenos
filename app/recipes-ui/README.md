@@ -11,7 +11,7 @@ Browser UI for KitchenOS backed by **Supabase** (Postgres + Auth + optional Stor
    - In [Google Cloud Console](https://console.cloud.google.com/), create an OAuth **Web client** and set the authorized redirect URI to your Supabase callback: `https://<project-ref>.supabase.co/auth/v1/callback` (shown under **Authentication → Providers → Google** in the Supabase dashboard).
    - In Supabase: **Authentication → Providers → Google** — paste the Google **Client ID** and **Client secret**, enable the provider.
    - **Authentication → URL configuration**: set **Site URL** to your primary app URL (e.g. `http://localhost:8000` for local dev). Under **Redirect URLs**, add every origin you use (e.g. `http://localhost:8000/**`, and your production URL). OAuth will not work when opening the UI as a `file://` page; use a local HTTP server as described in “Run a local server” below.
-5. Deploy the Edge Function `openai-kitchen` (see `supabase/functions/openai-kitchen/`) and set the secret `OPENAI_API_KEY` for nutrition estimates and AI meal plans.
+5. Deploy the Edge Function `openai-kitchen` (see `supabase/functions/openai-kitchen/`) and set the secret `OPENAI_API_KEY` for AI meal plans.
 
 ## 2) Configure the web app
 

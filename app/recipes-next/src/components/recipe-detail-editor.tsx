@@ -1,6 +1,10 @@
 "use client";
 
-import { updateRecipeAction } from "@/app/actions/recipes";
+import {
+  deleteRecipeAction,
+  publishRecipeToCommunityAction,
+  updateRecipeAction,
+} from "@/app/actions/recipes";
 import { RecipeIngredientsEditor } from "@/components/recipe-ingredients-editor";
 import { isSupabaseConfigured, recipeImagesBucket } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
@@ -10,23 +14,32 @@ import type {
   RecipeIngredientSectionRow,
   RecipeRow,
 } from "@/types/database";
+import { RecipeMealTypesField } from "@/components/recipe-meal-types-field";
 import { LimitedRecipeTextField } from "@/components/limited-recipe-text-field";
+import { mealTypesEqual, normalizeMealTypesFromDb } from "@/lib/recipe-meal-types";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
   type ChangeEvent,
   type DragEvent,
   type MouseEvent,
   type PointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
+
+const emptySubscribe = () => () => {};
 
 type RecipeIngredientOption = {
   id: number;
   name: string;
+  parentIngredientId?: number | null;
+  variantSortOrder?: number;
 };
 
 type Props = {
@@ -85,6 +98,18 @@ export function RecipeDetailEditor({
   const [carbs, setCarbs] = useState(() =>
     initial.carbs_grams != null ? String(initial.carbs_grams) : "",
   );
+  const [mealTypes, setMealTypes] = useState(() =>
+    normalizeMealTypesFromDb(initial.meal_types),
+  );
+  const [mealTypesError, setMealTypesError] = useState<string | null>(null);
+  const [isPublished, setIsPublished] = useState(
+    () => initial.is_published_to_community === true,
+  );
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteModalTitleId = useId();
+  const deleteModalCancelRef = useRef<HTMLButtonElement>(null);
+  const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   focusYRef.current = focusY;
 
@@ -96,6 +121,11 @@ export function RecipeDetailEditor({
   }, [initial]);
 
   useEffect(() => {
+    setMealTypes(normalizeMealTypesFromDb(initial.meal_types));
+    setMealTypesError(null);
+  }, [initial]);
+
+  useEffect(() => {
     return () => {
       if (replaceImageClickTimerRef.current) {
         clearTimeout(replaceImageClickTimerRef.current);
@@ -104,10 +134,14 @@ export function RecipeDetailEditor({
   }, []);
 
   const save = useCallback(
-    (patch: Record<string, unknown>) => {
+    (
+      patch: Record<string, unknown>,
+      opts?: { onFailed?: (message: string) => void },
+    ) => {
       startTransition(async () => {
         const r = await updateRecipeAction(initial.id, patch);
         if (r.ok) router.refresh();
+        else opts?.onFailed?.(r.error ?? "Could not save.");
       });
     },
     [initial.id, router],
@@ -137,6 +171,77 @@ export function RecipeDetailEditor({
     if (next === str(initial.source_url)) return;
     save({ source_url: next });
   }, [sourceUrl, initial.source_url, save]);
+
+  const commitMealTypes = useCallback(
+    (next: string[]) => {
+      if (mealTypesEqual(next, initial.meal_types)) return;
+      setMealTypesError(null);
+      setMealTypes(next);
+      save(
+        { meal_types: next.length ? next : null },
+        {
+          onFailed: (msg) => {
+            setMealTypes(normalizeMealTypesFromDb(initial.meal_types));
+            setMealTypesError(msg);
+          },
+        },
+      );
+    },
+    [initial.meal_types, save],
+  );
+
+  const recipeDisplayName =
+    (name.trim() || str(initial.name)).trim() || "this recipe";
+
+  const closeDeleteModal = useCallback(() => {
+    setDeleteModalOpen(false);
+    setDeleteError(null);
+  }, []);
+
+  const openDeleteModal = useCallback(() => {
+    setDeleteError(null);
+    setDeleteModalOpen(true);
+  }, []);
+
+  const performDeleteRecipe = useCallback(() => {
+    setDeleteError(null);
+    startTransition(async () => {
+      const r = await deleteRecipeAction(initial.id);
+      if (r.ok) {
+        setDeleteModalOpen(false);
+        router.push("/recipes");
+        return;
+      }
+      setDeleteError(r.error ?? "Could not delete recipe.");
+    });
+  }, [initial.id, router]);
+
+  useEffect(() => {
+    if (!deleteModalOpen) return;
+    const id = requestAnimationFrame(() =>
+      deleteModalCancelRef.current?.focus(),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [deleteModalOpen]);
+
+  useEffect(() => {
+    if (!deleteModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDeleteModal();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [deleteModalOpen, closeDeleteModal]);
+
+  const togglePublish = useCallback(() => {
+    const next = !isPublished;
+    setIsPublished(next);
+    startTransition(async () => {
+      const r = await publishRecipeToCommunityAction(initial.id, next);
+      if (!r.ok) setIsPublished(!next);
+      else router.refresh();
+    });
+  }, [isPublished, initial.id, router]);
 
   const blurMeta = useCallback(
     (
@@ -393,7 +498,67 @@ export function RecipeDetailEditor({
 
   const img = primaryImageUrl(initial);
 
+  const deleteConfirmModal =
+    isClient && deleteModalOpen ? (
+      <div className="modal open" aria-hidden="false" role="presentation">
+        <button
+          type="button"
+          className="modal-backdrop"
+          aria-label="Close delete confirmation"
+          onClick={closeDeleteModal}
+        />
+        <div
+          className="modal-card modal-delete-recipe"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={deleteModalTitleId}
+        >
+          <button
+            type="button"
+            className="modal-close icon-ghost"
+            aria-label="Close"
+            onClick={closeDeleteModal}
+          >
+            <i className="ph ph-x" aria-hidden="true" />
+          </button>
+          <div className="delete-ingredient-modal-body">
+            <h2 id={deleteModalTitleId} className="delete-ingredient-modal-title">
+              Delete recipe
+            </h2>
+            <p className="delete-ingredient-modal-warning">
+              Delete <strong>{recipeDisplayName}</strong>? This cannot be undone.
+            </p>
+            {deleteError ? (
+              <p className="delete-ingredient-modal-error" role="alert">
+                {deleteError}
+              </p>
+            ) : null}
+            <div className="delete-ingredient-modal-actions">
+              <button
+                ref={deleteModalCancelRef}
+                type="button"
+                className="delete-ingredient-modal-cancel"
+                onClick={closeDeleteModal}
+                disabled={isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="delete-ingredient-modal-confirm"
+                onClick={performDeleteRecipe}
+                disabled={isPending}
+              >
+                {isPending ? "Deleting…" : "Delete recipe"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   return (
+    <>
     <article className="recipe-detail">
       <div className="recipe-detail-layout">
         <div className="recipe-detail-main">
@@ -406,76 +571,96 @@ export function RecipeDetailEditor({
             disabled={isPending}
             aria-label="Recipe name"
           />
-          {imageMessage ? (
-            <p className="recipe-detail-image-message" role="status">
-              {imageMessage}
-            </p>
-          ) : null}
           <div className="meta recipe-detail-meta-editable">
-        <label className="recipe-meta-field">
+        <label className="recipe-meta-field recipe-meta-field--nutrition recipe-meta-field--nutrition-servings">
           <span className="recipe-meta-label">Servings</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            className="recipe-meta-input"
-            value={servings}
-            onChange={(e) => setServings(e.target.value)}
-            onBlur={() => blurMeta("servings", servings, initial.servings)}
-            disabled={isPending}
-            aria-label="Servings"
-          />
+          <span className="recipe-nutrition-field">
+            <input
+              type="text"
+              inputMode="numeric"
+              className="recipe-nutrition-value-input"
+              value={servings}
+              onChange={(e) => setServings(e.target.value)}
+              onBlur={() => blurMeta("servings", servings, initial.servings)}
+              disabled={isPending}
+              aria-label="Number of servings"
+            />
+            <span className="recipe-nutrition-unit" aria-hidden="true">
+              servings
+            </span>
+          </span>
         </label>
-        <label className="recipe-meta-field">
-          <span className="recipe-meta-label">Cal</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            className="recipe-meta-input"
-            value={calories}
-            onChange={(e) => setCalories(e.target.value)}
-            onBlur={() => blurMeta("calories", calories, initial.calories)}
-            disabled={isPending}
-            aria-label="Calories"
-          />
+        <label className="recipe-meta-field recipe-meta-field--nutrition recipe-meta-field--nutrition-grow">
+          <span className="recipe-meta-label">Calories</span>
+          <span className="recipe-nutrition-field">
+            <input
+              type="text"
+              inputMode="numeric"
+              className="recipe-nutrition-value-input"
+              value={calories}
+              onChange={(e) => setCalories(e.target.value)}
+              onBlur={() => blurMeta("calories", calories, initial.calories)}
+              disabled={isPending}
+              aria-label="Calories"
+            />
+            <span className="recipe-nutrition-unit" aria-hidden="true">
+              kcal
+            </span>
+          </span>
         </label>
-        <label className="recipe-meta-field">
-          <span className="recipe-meta-label">P g</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            className="recipe-meta-input"
-            value={protein}
-            onChange={(e) => setProtein(e.target.value)}
-            onBlur={() => blurMeta("protein_grams", protein, initial.protein_grams)}
-            disabled={isPending}
-            aria-label="Protein grams"
-          />
+        <label className="recipe-meta-field recipe-meta-field--nutrition recipe-meta-field--nutrition-grow">
+          <span className="recipe-meta-label">Protein</span>
+          <span className="recipe-nutrition-field">
+            <input
+              type="text"
+              inputMode="numeric"
+              className="recipe-nutrition-value-input"
+              value={protein}
+              onChange={(e) => setProtein(e.target.value)}
+              onBlur={() => blurMeta("protein_grams", protein, initial.protein_grams)}
+              disabled={isPending}
+              aria-label="Protein in grams"
+            />
+            <span className="recipe-nutrition-unit" aria-hidden="true">
+              g
+            </span>
+          </span>
         </label>
-        <label className="recipe-meta-field">
-          <span className="recipe-meta-label">F g</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            className="recipe-meta-input"
-            value={fat}
-            onChange={(e) => setFat(e.target.value)}
-            onBlur={() => blurMeta("fat_grams", fat, initial.fat_grams)}
-            disabled={isPending}
-            aria-label="Fat grams"
-          />
+        <label className="recipe-meta-field recipe-meta-field--nutrition recipe-meta-field--nutrition-grow">
+          <span className="recipe-meta-label">Fat</span>
+          <span className="recipe-nutrition-field">
+            <input
+              type="text"
+              inputMode="numeric"
+              className="recipe-nutrition-value-input"
+              value={fat}
+              onChange={(e) => setFat(e.target.value)}
+              onBlur={() => blurMeta("fat_grams", fat, initial.fat_grams)}
+              disabled={isPending}
+              aria-label="Fat in grams"
+            />
+            <span className="recipe-nutrition-unit" aria-hidden="true">
+              g
+            </span>
+          </span>
         </label>
-        <label className="recipe-meta-field">
-          <span className="recipe-meta-label">C g</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            className="recipe-meta-input"
-            value={carbs}
-            onChange={(e) => setCarbs(e.target.value)}
-            onBlur={() => blurMeta("carbs_grams", carbs, initial.carbs_grams)}
-            disabled={isPending}
-            aria-label="Carbs grams"
-          />
+        <label className="recipe-meta-field recipe-meta-field--nutrition recipe-meta-field--nutrition-grow">
+          <span className="recipe-meta-label">Carb</span>
+          <span className="recipe-nutrition-field">
+            <input
+              type="text"
+              inputMode="numeric"
+              className="recipe-nutrition-value-input"
+              value={carbs}
+              onChange={(e) => setCarbs(e.target.value)}
+              onBlur={() => blurMeta("carbs_grams", carbs, initial.carbs_grams)}
+              disabled={isPending}
+              aria-label="Carbohydrate in grams"
+            />
+            <span className="recipe-nutrition-unit" aria-hidden="true">
+              g
+            </span>
+          </span>
         </label>
       </div>
       <RecipeIngredientsEditor
@@ -512,32 +697,9 @@ export function RecipeDetailEditor({
           placeholder="Optional notes…"
         />
       </section>
-      <section className="section recipe-source-section">
-        <p className="recipe-source-row">
-          <label className="recipe-source-label" htmlFor="recipe-source-url">
-            Source URL
-          </label>
-          <input
-            id="recipe-source-url"
-            type="url"
-            className="recipe-source-input"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            onBlur={blurSource}
-            disabled={isPending}
-            placeholder="https://…"
-          />
-        </p>
-        {sourceUrl.trim() ? (
-          <p className="recipe-source-open-wrap">
-            <a className="source-link" href={sourceUrl.trim()} target="_blank" rel="noreferrer">
-              Open source
-            </a>
-          </p>
-        ) : null}
-      </section>
         </div>
-        <aside className="recipe-detail-aside" aria-label="Recipe image">
+        <aside className="recipe-detail-aside" aria-label="Recipe image and recipe options">
+          <div className="recipe-detail-aside-stack">
           <div
             ref={panelRef}
             className={[
@@ -622,8 +784,70 @@ export function RecipeDetailEditor({
               </button>
             )}
           </div>
+          {imageMessage ? (
+            <p className="recipe-detail-image-message" role="status">
+              {imageMessage}
+            </p>
+          ) : null}
+          <RecipeMealTypesField
+            value={mealTypes}
+            disabled={isPending}
+            onCommit={commitMealTypes}
+          />
+          {mealTypesError ? (
+            <p className="recipe-detail-image-message" role="alert">
+              {mealTypesError}
+            </p>
+          ) : null}
+          <div className="recipe-publish-toggle">
+            <button
+              type="button"
+              className={`secondary recipe-publish-btn${isPublished ? " recipe-publish-btn--active" : ""}`}
+              onClick={togglePublish}
+              disabled={isPending}
+            >
+              {isPublished ? "Published to Community" : "Publish to Community"}
+            </button>
+          </div>
+          <section className="section recipe-source-section">
+            <p className="recipe-source-row">
+              <label className="recipe-source-label" htmlFor="recipe-source-url">
+                Source URL
+              </label>
+              <input
+                id="recipe-source-url"
+                type="url"
+                className="recipe-source-input"
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                onBlur={blurSource}
+                disabled={isPending}
+                placeholder="https://…"
+              />
+            </p>
+            {sourceUrl.trim() ? (
+              <p className="recipe-source-open-wrap">
+                <a className="source-link" href={sourceUrl.trim()} target="_blank" rel="noreferrer">
+                  Open source
+                </a>
+              </p>
+            ) : null}
+          </section>
+          <div className="recipe-detail-delete-wrap">
+            <button
+              type="button"
+              className="recipe-detail-delete"
+              onClick={openDeleteModal}
+              disabled={isPending}
+            >
+              Delete recipe
+            </button>
+          </div>
+          </div>
         </aside>
       </div>
     </article>
+    {deleteConfirmModal ? createPortal(deleteConfirmModal, document.body) : null}
+    </>
   );
 }

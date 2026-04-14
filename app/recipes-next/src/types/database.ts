@@ -17,6 +17,13 @@ export type RecipeRow = {
   protein_grams: number | null;
   fat_grams: number | null;
   carbs_grams: number | null;
+  /** When the recipe is a fit for these meal moments (see `RECIPE_MEAL_TYPES`). */
+  meal_types?: string[] | null;
+  is_published_to_community?: boolean;
+  published_at?: string | null;
+  /** Points back to the original published recipe this was saved from. */
+  community_source_recipe_id?: number | null;
+  owner_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -34,6 +41,20 @@ export type IngredientRow = {
   ingredients_text: string | null;
   preferred_vendor?: string | null;
   brand_or_manufacturer?: string | null;
+  parent_ingredient_id?: number | null;
+  variant_sort_order?: number;
+  kcal?: number | null;
+  fat_g?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  nutrition_basis?: "per_100g" | "per_unit" | null;
+  canonical_unit_weight_g?: number | null;
+  nutrition_source_name?: string | null;
+  nutrition_source_record_id?: string | null;
+  nutrition_source_url?: string | null;
+  nutrition_confidence?: number | null;
+  nutrition_needs_review?: boolean;
+  nutrition_notes?: string | null;
 };
 
 export type RecipeIngredientSectionRow = {
@@ -52,6 +73,8 @@ export type RecipeIngredientRow = {
   line_sort_order: number;
   amount: string | null;
   unit: string | null;
+  /** When true, this ingredient line is optional (e.g. garnish). */
+  is_optional: boolean;
   created_at?: string;
   ingredients?: Pick<IngredientRow, "id" | "name"> | null;
 };
@@ -77,6 +100,8 @@ export type MealPlanEntryRow = {
   label: string | null;
   notes: string | null;
   sort_order: number | null;
+  /** Planned servings for this slot entry; default 4. */
+  servings?: number | null;
 };
 
 export type MealPlanRow = {

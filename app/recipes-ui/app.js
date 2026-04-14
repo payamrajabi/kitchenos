@@ -30,9 +30,6 @@ const carbsGramsInput = document.getElementById("carbsGrams");
 const ingredientsInput = document.getElementById("ingredients");
 const instructionsInput = document.getElementById("instructions");
 const notesInput = document.getElementById("notes");
-const estimateButton = document.getElementById("estimateButton");
-const estimateStatus = document.getElementById("estimateStatus");
-const estimateNotes = document.getElementById("estimateNotes");
 const manualStatus = document.getElementById("manualStatus");
 const createOptions = document.querySelectorAll("[data-create]");
 const viewButtons = document.querySelectorAll(".page-tab-button");
@@ -903,21 +900,11 @@ const commitIngredientScratchRow = () => {
   getScratchRow()?.querySelector(".ingredient-entry-name")?.focus();
 };
 
-const syncEstimateButtonEnabledState = () => {
-  if (!estimateButton) return;
-  const count = normalizeIngredientEntries(getIngredientEntriesFromDom()).length;
-  estimateButton.disabled = count < 1;
-};
-
-const updateIngredientTextFromEntries = ({ triggerEstimate = true } = {}) => {
+const updateIngredientTextFromEntries = () => {
   if (!ingredientsInput) return { entries: [], text: "" };
   const entries = normalizeIngredientEntries(getIngredientEntriesFromDom());
   const text = buildIngredientTextFromEntries(entries);
   ingredientsInput.value = text;
-  syncEstimateButtonEnabledState();
-  if (triggerEstimate) {
-    scheduleEstimate();
-  }
   return { entries, text };
 };
 
@@ -1042,7 +1029,7 @@ const setIngredientEntries = (entries) => {
     ingredientEntries.appendChild(createIngredientEntryRow(entry));
   });
   ensureScratchRow();
-  updateIngredientTextFromEntries({ triggerEstimate: false });
+  updateIngredientTextFromEntries();
 };
 
 const setIngredientEntriesFromText = (text) => {
@@ -1121,96 +1108,10 @@ const syncShopDefaultsFromName = () => {
   }
 };
 
-const setEstimateStatus = (message) => {
-  estimateStatus.textContent = message || "";
-};
-
-const showEstimateNotes = (text) => {
-  if (!text) {
-    estimateNotes.textContent = "";
-    estimateNotes.classList.remove("is-visible");
-    return;
-  }
-  estimateNotes.textContent = text;
-  estimateNotes.classList.add("is-visible");
-};
-
-const setNumericInput = (input, value) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return;
-  }
-  input.value = String(Math.round(Number(value)));
-};
-
-const persistOpenAiModel = (model) => {
-  const modelValue = String(model || "").trim();
-  if (modelValue) {
-    localStorage.setItem(OPENAI_MODEL_STORAGE, modelValue);
-  }
-};
-
 const getOpenAiModel = () => {
   const fromStorage = localStorage.getItem(OPENAI_MODEL_STORAGE)?.trim() || "";
   const fromConfig = (openAiConfig.model || "").trim();
   return fromStorage || fromConfig || "gpt-4o-mini";
-};
-
-const requestNutritionEstimateViaEdge = async ({ model, payload }) => {
-  if (!supabaseConfig) {
-    throw new Error("Supabase config missing.");
-  }
-  if (!sessionAccessToken) {
-    throw new Error("Sign in to estimate nutrition (Edge Function).");
-  }
-  const response = await fetch(
-    `${supabaseConfig.url}/functions/v1/openai-kitchen`,
-    {
-      method: "POST",
-      headers: {
-        ...getRestHeaders({ jsonBody: true }),
-        Authorization: `Bearer ${sessionAccessToken}`,
-      },
-      body: JSON.stringify({
-        mode: "nutrition_estimate",
-        model,
-        payload,
-      }),
-    }
-  );
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    data = {};
-  }
-  if (!response.ok) {
-    throw new Error(data.error || "Nutrition estimate failed.");
-  }
-  if (!data.result) {
-    throw new Error("Nutrition estimate missing result.");
-  }
-  return data.result;
-};
-
-const formatNutritionNotes = (estimate) => {
-  if (!estimate) return "";
-  const lines = ["Nutrition estimate (LLM, not verified)"];
-  if (estimate.assumptions) {
-    lines.push(`Assumptions: ${estimate.assumptions}`);
-  }
-  if (Array.isArray(estimate.ingredients) && estimate.ingredients.length) {
-    lines.push("Per-ingredient breakdown:");
-    estimate.ingredients.forEach((item) => {
-      if (!item || !item.name) return;
-      const calories = item.calories ? `${Math.round(item.calories)} cal` : "cal ?";
-      const protein = item.protein_grams ? `${Math.round(item.protein_grams)}g P` : "P ?";
-      const fat = item.fat_grams ? `${Math.round(item.fat_grams)}g F` : "F ?";
-      const carbs = item.carbs_grams ? `${Math.round(item.carbs_grams)}g C` : "C ?";
-      const amount = item.amount ? ` (${item.amount})` : "";
-      lines.push(`- ${item.name}${amount}: ${calories}, ${protein}, ${fat}, ${carbs}`);
-    });
-  }
-  return lines.join("\n");
 };
 
 const getPrimaryImageUrl = (recipe) => {
@@ -1456,109 +1357,12 @@ document.addEventListener("click", (event) => {
   }
 });
 
-let isEstimating = false;
-let estimateTimer = null;
-let lastEstimateSignature = "";
-
-const buildEstimatePayload = () => ({
-  name: recipeNameInput.value.trim(),
-  servings: toNumberOrNull(servingsInput.value),
-  ingredients: ingredientsInput.value.trim(),
-  instructions: toOptionalString(instructionsInput.value),
-});
-
-const runEstimate = async ({ silent = false, force = false } = {}) => {
-  setEstimateStatus("");
-  showEstimateNotes("");
-
-  const payload = buildEstimatePayload();
-  if (!payload.ingredients) {
-    if (!silent) {
-      setEstimateStatus("Add ingredients first.");
-    }
-    return;
-  }
-
-  if (!sessionAccessToken) {
-    if (!silent) {
-      setEstimateStatus("Sign in to estimate nutrition.");
-    }
-    return;
-  }
-
-  const model = getOpenAiModel();
-
-  const signature = JSON.stringify(payload);
-  if (!force && signature === lastEstimateSignature) {
-    return;
-  }
-  if (isEstimating) {
-    return;
-  }
-
-  setEstimateStatus("Estimating...");
-  isEstimating = true;
-  try {
-    const estimate = await requestNutritionEstimateViaEdge({
-      model,
-      payload,
-    });
-
-    lastEstimateSignature = signature;
-    persistOpenAiModel(model);
-
-    if (estimate?.servings && !servingsInput.value.trim()) {
-      setNumericInput(servingsInput, estimate.servings);
-    }
-    if (estimate?.total) {
-      setNumericInput(caloriesInput, estimate.total.calories);
-      setNumericInput(proteinGramsInput, estimate.total.protein_grams);
-      setNumericInput(fatGramsInput, estimate.total.fat_grams);
-      setNumericInput(carbsGramsInput, estimate.total.carbs_grams);
-    }
-
-    const formattedNotes = formatNutritionNotes(estimate);
-    if (formattedNotes) {
-      showEstimateNotes(formattedNotes);
-    }
-
-    setEstimateStatus("Estimate complete.");
-  } catch (error) {
-    setEstimateStatus(
-      error?.message ? `Estimate failed: ${error.message}` : "Estimate failed."
-    );
-  } finally {
-    isEstimating = false;
-  }
-};
-
-const scheduleEstimate = () => {
-  if (estimateTimer) {
-    clearTimeout(estimateTimer);
-  }
-  estimateTimer = setTimeout(() => {
-    runEstimate({ silent: true });
-  }, 900);
-};
-
-if (estimateButton) {
-  estimateButton.addEventListener("click", () => {
-    runEstimate({ force: true });
-  });
-}
-
-ingredientsInput.addEventListener("input", scheduleEstimate);
-instructionsInput.addEventListener("input", scheduleEstimate);
-servingsInput.addEventListener("input", scheduleEstimate);
-
 if (ingredientEntries) {
   ingredientEntries.addEventListener("input", () => {
-    updateIngredientTextFromEntries({ triggerEstimate: false });
-    scheduleEstimate();
+    updateIngredientTextFromEntries();
   });
   ingredientEntries.addEventListener("change", () => {
-    updateIngredientTextFromEntries({ triggerEstimate: false });
-    scheduleEstimate();
+    updateIngredientTextFromEntries();
   });
   ingredientEntries.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
@@ -3722,9 +3526,7 @@ manualForm.addEventListener("submit", async (event) => {
 
   manualStatus.textContent = "Saving...";
   try {
-    const { entries: ingredientEntriesData } = updateIngredientTextFromEntries({
-      triggerEstimate: false,
-    });
+    const { entries: ingredientEntriesData } = updateIngredientTextFromEntries();
     const payload = buildRecipePayloadFromForm();
 
     if (editingRecipeId) {
@@ -4154,7 +3956,6 @@ const updateSupabaseConfigBanner = () => {
   banner.classList.toggle("is-hidden", ready);
 };
 
-syncEstimateButtonEnabledState();
 attachAuthUiListeners();
 initSupabaseClient();
 updateSupabaseConfigBanner();

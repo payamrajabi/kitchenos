@@ -6,6 +6,38 @@ export type NutrientSliderField =
   | "fat_target_grams"
   | "carb_target_grams";
 
+/** When true, that slider's target stays fixed unless you drag that slider yourself. */
+export type NutrientLockState = Record<NutrientSliderField, boolean>;
+
+export const DEFAULT_NUTRIENT_LOCKS: NutrientLockState = {
+  calorie_target: false,
+  protein_target_grams: false,
+  fat_target_grams: false,
+  carb_target_grams: false,
+};
+
+const ALL_NUTRIENT_SLIDER_FIELDS: readonly NutrientSliderField[] = [
+  "calorie_target",
+  "protein_target_grams",
+  "fat_target_grams",
+  "carb_target_grams",
+] as const;
+
+export function countUnlockedNutrientSliders(locks: NutrientLockState): number {
+  return ALL_NUTRIENT_SLIDER_FIELDS.filter((f) => !locks[f]).length;
+}
+
+/** At least one slider must remain unlocked (cannot lock the last one). */
+export function canSetNutrientLock(
+  locks: NutrientLockState,
+  field: NutrientSliderField,
+  nextLocked: boolean,
+): boolean {
+  if (!nextLocked) return true;
+  if (locks[field]) return true;
+  return countUnlockedNutrientSliders(locks) > 1;
+}
+
 export type NutrientSliderSpec = {
   label: string;
   min: number;
@@ -155,8 +187,78 @@ export function scaleMacrosToCalorieTarget(
   };
 }
 
-/** One slider moved: keep calories = Atwater(macros), or scale all macros when calories move. */
-export function computeLinkedNutrientState(
+type MacroSliderField = Exclude<NutrientSliderField, "calorie_target">;
+
+const MACRO_SLIDER_FIELDS: readonly MacroSliderField[] = [
+  "protein_target_grams",
+  "fat_target_grams",
+  "carb_target_grams",
+];
+
+function macroKcalCoeff(m: MacroSliderField): number {
+  switch (m) {
+    case "protein_target_grams":
+      return ATWATER_KCAL_PER_PROTEIN_G;
+    case "fat_target_grams":
+      return ATWATER_KCAL_PER_FAT_G;
+    case "carb_target_grams":
+      return ATWATER_KCAL_PER_CARB_G;
+    default:
+      return 0;
+  }
+}
+
+function snapMacroField(m: MacroSliderField, grams: number): number {
+  return snapToNutrientStep(grams, nutrientSpec(m));
+}
+
+function nutrientLocksAllOff(locks: NutrientLockState): boolean {
+  return ALL_NUTRIENT_SLIDER_FIELDS.every((f) => !locks[f]);
+}
+
+/**
+ * Assign remainderKcal across the given macro fields in proportion to each field’s previous
+ * contribution to food energy (so the mix stays familiar when multiple macros move).
+ */
+function distributeKcalAcrossMacroFields(
+  prev: Record<NutrientSliderField, number>,
+  fields: readonly MacroSliderField[],
+  remainderKcal: number,
+): Partial<Record<MacroSliderField, number>> {
+  const out: Partial<Record<MacroSliderField, number>> = {};
+  if (fields.length === 0) return out;
+
+  if (fields.length === 1) {
+    const m = fields[0];
+    const coef = macroKcalCoeff(m);
+    const g = coef > 0 ? remainderKcal / coef : 0;
+    out[m] = snapMacroField(m, g);
+    return out;
+  }
+
+  let sumPrevK = 0;
+  for (const m of fields) {
+    sumPrevK += macroKcalCoeff(m) * prev[m];
+  }
+
+  if (sumPrevK <= 0) {
+    const perFieldKcal = remainderKcal / fields.length;
+    for (const m of fields) {
+      const coef = macroKcalCoeff(m);
+      out[m] = snapMacroField(m, coef > 0 ? perFieldKcal / coef : 0);
+    }
+    return out;
+  }
+
+  for (const m of fields) {
+    const shareK = remainderKcal * ((macroKcalCoeff(m) * prev[m]) / sumPrevK);
+    const coef = macroKcalCoeff(m);
+    out[m] = snapMacroField(m, coef > 0 ? shareK / coef : 0);
+  }
+  return out;
+}
+
+function computeLinkedNutrientStateLegacy(
   prev: Record<NutrientSliderField, number>,
   field: NutrientSliderField,
   value: number,
@@ -186,6 +288,130 @@ export function computeLinkedNutrientState(
     [field]: value,
     calorie_target: snapCaloriesFromMacros(p, f, c),
   };
+}
+
+function applyCalorieDragWithLocks(
+  prev: Record<NutrientSliderField, number>,
+  value: number,
+  locks: NutrientLockState,
+): Record<NutrientSliderField, number> {
+  const calSpec = nutrientSpec("calorie_target");
+  const targetCal = snapToNutrientStep(
+    clampNutrientValue(value, calSpec.min, calSpec.max, value),
+    calSpec,
+  );
+
+  const unlockedMacros = MACRO_SLIDER_FIELDS.filter((m) => !locks[m]);
+
+  if (unlockedMacros.length === 3) {
+    return computeLinkedNutrientStateLegacy(prev, "calorie_target", value);
+  }
+
+  const next: Record<NutrientSliderField, number> = { ...prev };
+  for (const m of MACRO_SLIDER_FIELDS) {
+    if (locks[m]) next[m] = prev[m];
+  }
+
+  let lockedK = 0;
+  for (const m of MACRO_SLIDER_FIELDS) {
+    if (locks[m]) lockedK += macroKcalCoeff(m) * prev[m];
+  }
+
+  const rem = targetCal - lockedK;
+
+  if (unlockedMacros.length === 0) {
+    next.calorie_target = snapCaloriesFromMacros(
+      next.protein_target_grams,
+      next.fat_target_grams,
+      next.carb_target_grams,
+    );
+    return next;
+  }
+
+  const dist = distributeKcalAcrossMacroFields(prev, unlockedMacros, rem);
+  for (const m of unlockedMacros) {
+    const v = dist[m];
+    if (v !== undefined) next[m] = v;
+  }
+
+  next.calorie_target = snapCaloriesFromMacros(
+    next.protein_target_grams,
+    next.fat_target_grams,
+    next.carb_target_grams,
+  );
+  return next;
+}
+
+function applyMacroDragWithCalorieLock(
+  prev: Record<NutrientSliderField, number>,
+  field: MacroSliderField,
+  value: number,
+  locks: NutrientLockState,
+): Record<NutrientSliderField, number> {
+  const spec = nutrientSpec(field);
+  const v = snapToNutrientStep(
+    clampNutrientValue(value, spec.min, spec.max, value),
+    spec,
+  );
+  const T = prev.calorie_target;
+
+  const next: Record<NutrientSliderField, number> = { ...prev };
+  for (const m of MACRO_SLIDER_FIELDS) {
+    if (locks[m]) next[m] = prev[m];
+  }
+  next[field] = v;
+
+  const adjustable = MACRO_SLIDER_FIELDS.filter((m) => !locks[m] && m !== field);
+
+  let kFixed = 0;
+  for (const m of MACRO_SLIDER_FIELDS) {
+    if (locks[m] || m === field) kFixed += macroKcalCoeff(m) * next[m];
+  }
+
+  const R = T - kFixed;
+
+  if (adjustable.length === 0) {
+    const othersK = MACRO_SLIDER_FIELDS.filter((m) => m !== field).reduce(
+      (s, m) => s + macroKcalCoeff(m) * next[m],
+      0,
+    );
+    next[field] = snapMacroField(field, (T - othersK) / macroKcalCoeff(field));
+  } else {
+    const dist = distributeKcalAcrossMacroFields(prev, adjustable, R);
+    for (const m of adjustable) {
+      const nv = dist[m];
+      if (nv !== undefined) next[m] = nv;
+    }
+  }
+
+  next.calorie_target = snapCaloriesFromMacros(
+    next.protein_target_grams,
+    next.fat_target_grams,
+    next.carb_target_grams,
+  );
+  return next;
+}
+
+/** One slider moved: keep calories = Atwater(macros), or scale macros when calories move. With locks, fixed targets stay put and other sliders absorb the change. */
+export function computeLinkedNutrientState(
+  prev: Record<NutrientSliderField, number>,
+  field: NutrientSliderField,
+  value: number,
+  locks: NutrientLockState = DEFAULT_NUTRIENT_LOCKS,
+): Record<NutrientSliderField, number> {
+  if (nutrientLocksAllOff(locks)) {
+    return computeLinkedNutrientStateLegacy(prev, field, value);
+  }
+
+  if (field === "calorie_target") {
+    return applyCalorieDragWithLocks(prev, value, locks);
+  }
+
+  if (locks.calorie_target) {
+    return applyMacroDragWithCalorieLock(prev, field, value, locks);
+  }
+
+  return computeLinkedNutrientStateLegacy(prev, field, value);
 }
 
 export function patchNutrientTargetsIfChanged(

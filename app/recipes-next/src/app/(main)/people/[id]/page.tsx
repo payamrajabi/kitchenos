@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
+import { PersonMacroPie } from "@/components/person-macro-pie";
 import { PersonDetailForm } from "@/components/person-detail-form";
+import { macroCaloriesFromPerson } from "@/lib/people-macros";
 import type { PersonRow } from "@/types/database";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -69,13 +71,26 @@ export default async function PersonDetailPage({ params }: Props) {
   }
 
   const person = row as PersonRow;
+  const displayName = person.name || "Unnamed";
+  const macros = macroCaloriesFromPerson(person);
 
   return (
     <section className="grid people-view person-detail-page">
-      <PersonDetailForm
-        key={`${person.id}-${person.updated_at ?? person.created_at ?? ""}`}
-        person={person}
-      />
+      <div className="person-detail-layout">
+        <PersonDetailForm
+          key={`${person.id}-${person.updated_at ?? person.created_at ?? ""}`}
+          person={person}
+        />
+        <aside className="person-detail-macro-aside" aria-label="Macro mix">
+          <div className="person-detail-macro-pie-wrap">
+            {macros ? (
+              <PersonMacroPie name={displayName} macros={macros} />
+            ) : (
+              <div className="person-detail-macro-pie-placeholder" aria-hidden />
+            )}
+          </div>
+        </aside>
+      </div>
     </section>
   );
 }
