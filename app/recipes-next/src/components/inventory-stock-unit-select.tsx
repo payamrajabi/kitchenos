@@ -53,6 +53,7 @@ export function InventoryStockUnitSelect({
       onChange={handleChange}
       disabled={isPending || !!externalDisabled}
       aria-label="Stock unit"
+      bareInline
     />
   );
 }

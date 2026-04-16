@@ -1,9 +1,13 @@
 import type { IngredientRow, InventoryItemRow } from "@/types/database";
+import { groceryCategorySortIndex } from "@/lib/ingredient-grocery-category";
 import {
-  getInventoryGroup,
   type InventoryTab,
   ingredientMatchesInventoryTab,
 } from "@/lib/inventory-filters";
+
+/** Applied when inserting a new `inventory_items` row (first stock row for an ingredient). */
+export const DEFAULT_NEW_INVENTORY_MIN_QUANTITY = 1;
+export const DEFAULT_NEW_INVENTORY_MAX_QUANTITY = 2;
 
 export function storageLocationMatchesInventoryTab(
   storageLocation: string,
@@ -124,9 +128,9 @@ export function sortIngredientsForInventoryDisplay(
   ingredients: IngredientRow[],
 ): IngredientRow[] {
   return [...ingredients].sort((a, b) => {
-    const categoryA = getInventoryGroup(a).toLowerCase();
-    const categoryB = getInventoryGroup(b).toLowerCase();
-    if (categoryA !== categoryB) return categoryA.localeCompare(categoryB);
+    const ga = groceryCategorySortIndex(a.grocery_category);
+    const gb = groceryCategorySortIndex(b.grocery_category);
+    if (ga !== gb) return ga - gb;
     return (a.name || "").localeCompare(b.name || "");
   });
 }

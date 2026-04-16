@@ -63,6 +63,36 @@ export function canonicalIngredientUnit(raw: string): string {
   return normalizeIngredientUnitForStorage(raw);
 }
 
+const UNIT_PLURALS: Record<string, string> = {
+  cup: "cups",
+  piece: "pieces",
+  clove: "cloves",
+  slice: "slices",
+  sprig: "sprigs",
+  pinch: "pinches",
+  head: "heads",
+  bunch: "bunches",
+  bag: "bags",
+  box: "boxes",
+  block: "blocks",
+  tub: "tubs",
+  container: "containers",
+  jar: "jars",
+  bottle: "bottles",
+  can: "cans",
+  roll: "rolls",
+  sleeve: "sleeves",
+  lb: "lbs",
+};
+
+/** Display-only plural form for a unit when the quantity is not 1. */
+export function pluralizeUnit(unit: string, amount: string | number | null | undefined): string {
+  if (amount == null || amount === "") return unit;
+  const n = typeof amount === "number" ? amount : parseFloat(String(amount));
+  if (isNaN(n) || n === 1 || n === -1) return unit;
+  return UNIT_PLURALS[unit] ?? unit;
+}
+
 export function defaultRecipeUnitForStockUnit(stockUnit: string | null | undefined): RecipeUnit | "" {
   if (!stockUnit) return "";
   const u = normalizeIngredientUnitForStorage(stockUnit);

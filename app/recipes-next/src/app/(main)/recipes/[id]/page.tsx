@@ -1,11 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
 import { RecipeDetailEditor } from "@/components/recipe-detail-editor";
+import { recipeDescriptionPlainSnippet } from "@/lib/recipe-description-links";
+import { loadRecipeInstructionStepsWithLegacyMigration } from "@/lib/recipe-instruction-steps-migrate";
 import type { IngredientRow, RecipeIngredientSectionRow, RecipeRow } from "@/types/database";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
 type RawRecipeIngredientRow = {
   id: unknown;
@@ -37,16 +42,28 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("recipes")
-    .select("name")
+    .select("name, description")
     .eq("id", id)
     .maybeSingle();
-  const row = data as { name: string } | null;
+  const row = data as { name: string; description?: string | null } | null;
   if (!row?.name) return { title: "Recipe" };
-  return { title: row.name, description: `Recipe: ${row.name}` };
+  const descPlain = row.description?.trim()
+    ? recipeDescriptionPlainSnippet(row.description)
+    : "";
+  const metaDesc = descPlain || `Recipe: ${row.name}`;
+  return {
+    title: row.name,
+    description:
+      metaDesc.length > 160 ? `${metaDesc.slice(0, 157)}…` : metaDesc,
+  };
 }
 
-export default async function RecipeDetailPage({ params }: Props) {
+export default async function RecipeDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const sp = (await searchParams) ?? {};
+  const genParam = sp.gen;
+  const autoGenerating =
+    (Array.isArray(genParam) ? genParam[0] : genParam) === "1";
 
   if (!isSupabaseConfigured()) {
     return (
@@ -106,6 +123,13 @@ export default async function RecipeDetailPage({ params }: Props) {
   }
 
   const r = recipeResult.data as RecipeRow;
+
+  const recipeInstructionSteps = await loadRecipeInstructionStepsWithLegacyMigration(
+    supabase,
+    Number(r.id),
+    r.instructions,
+  );
+
   const availableIngredients = ((ingredientsResult.data ?? []) as Pick<
     IngredientRow,
     "id" | "name" | "parent_ingredient_id" | "variant_sort_order"
@@ -181,7 +205,9 @@ export default async function RecipeDetailPage({ params }: Props) {
         recipe={r}
         recipeIngredients={recipeIngredients}
         recipeIngredientSections={recipeIngredientSections}
+        recipeInstructionSteps={recipeInstructionSteps}
         availableIngredients={availableIngredients}
+        autoGenerating={autoGenerating}
       />
     </>
   );

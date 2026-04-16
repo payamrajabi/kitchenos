@@ -46,25 +46,31 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
     );
   }
 
-  const [recipeResult, ingredientsResult, sectionsResult] = await Promise.all([
-    supabase
-      .from("recipes")
-      .select("*")
-      .eq("id", id)
-      .eq("is_published_to_community", true)
-      .maybeSingle(),
-    supabase
-      .from("recipe_ingredients")
-      .select(
-        "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, ingredients(id, name)",
-      )
-      .eq("recipe_id", id),
-    supabase
-      .from("recipe_ingredient_sections")
-      .select("id, recipe_id, title, sort_order, created_at")
-      .eq("recipe_id", id)
-      .order("sort_order", { ascending: true }),
-  ]);
+  const [recipeResult, ingredientsResult, sectionsResult, instructionStepsResult] =
+    await Promise.all([
+      supabase
+        .from("recipes")
+        .select("*")
+        .eq("id", id)
+        .eq("is_published_to_community", true)
+        .maybeSingle(),
+      supabase
+        .from("recipe_ingredients")
+        .select(
+          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, ingredients(id, name)",
+        )
+        .eq("recipe_id", id),
+      supabase
+        .from("recipe_ingredient_sections")
+        .select("id, recipe_id, title, sort_order, created_at")
+        .eq("recipe_id", id)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("recipe_instruction_steps")
+        .select("body, sort_order")
+        .eq("recipe_id", id)
+        .order("sort_order", { ascending: true }),
+    ]);
 
   if (recipeResult.error || !recipeResult.data) {
     notFound();
@@ -132,11 +138,23 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
     created_at: row.created_at,
   }));
 
+  const instructionSteps = instructionStepsResult.error
+    ? []
+    : (
+        (instructionStepsResult.data ?? []) as { body: unknown; sort_order: unknown }[]
+      )
+        .map((row) => ({
+          body: String(row.body ?? ""),
+          sort_order: Number(row.sort_order ?? 0),
+        }))
+        .sort((a, b) => a.sort_order - b.sort_order);
+
   return (
     <CommunityRecipeDetail
       recipe={recipe}
       recipeIngredients={recipeIngredients}
       sections={sections}
+      instructionSteps={instructionSteps}
       alreadySaved={!!alreadySaved}
       isOwn={isOwn}
     />

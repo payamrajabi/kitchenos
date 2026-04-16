@@ -1,0 +1,7 @@
+/**
+ * Storybook-only: inventory delete is opacity:0 until a table row is hovered
+ * (see globals.css `.inventory-row-delete`). Outside a hovered `<tr>` it reads as “blank”.
+ */
+.sb-inventory-row-delete-preview tr .inventory-row-delete {
+  opacity: 1;
+}

@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { CaretDown } from "@phosphor-icons/react";
 
 export type SelectOption = {
   value: string;
@@ -28,6 +29,12 @@ type Props = {
   placeholder?: string;
   /** When true, list + search field show on mount (no trigger button step). */
   defaultOpen?: boolean;
+  /**
+   * Plain label + caret (no full-width bordered trigger). Used on the inventory table.
+   */
+  bareInline?: boolean;
+  /** Override the label shown on the closed trigger (e.g. for pluralization). */
+  triggerLabel?: string;
 };
 
 function collectScrollContainers(start: HTMLElement | null): HTMLElement[] {
@@ -54,6 +61,8 @@ export function SearchableSelect({
   "aria-label": ariaLabel,
   placeholder = "—",
   defaultOpen = false,
+  bareInline = false,
+  triggerLabel: triggerLabelProp,
 }: Props) {
   const [open, setOpen] = useState(() => Boolean(defaultOpen) && !disabled);
   const [query, setQuery] = useState("");
@@ -187,6 +196,21 @@ export function SearchableSelect({
     [onChange],
   );
 
+  const bareClass = bareInline ? " ss-bare-inline" : "";
+
+  const caretEl = bareInline ? (
+    <CaretDown className="ss-caret ss-caret-phosphor" size={14} weight="bold" aria-hidden />
+  ) : (
+    <svg
+      className="ss-caret"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 256 256"
+      aria-hidden="true"
+    >
+      <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,48,88H208a8,8,0,0,1,5.66,13.66Z" />
+    </svg>
+  );
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "ArrowDown") {
@@ -235,7 +259,7 @@ export function SearchableSelect({
       <>
         <div
           ref={containerRef}
-          className={`ss-root ss-open${className ? ` ${className}` : ""}`}
+          className={`ss-root ss-open${bareClass}${className ? ` ${className}` : ""}`}
         >
           <div ref={inputWrapRef} className="ss-input-wrap">
             <input
@@ -253,14 +277,7 @@ export function SearchableSelect({
               autoComplete="off"
               spellCheck={false}
             />
-            <svg
-              className="ss-caret"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 256 256"
-              aria-hidden="true"
-            >
-              <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,48,88H208a8,8,0,0,1,5.66,13.66Z" />
-            </svg>
+            {caretEl}
           </div>
         </div>
         {mounted &&
@@ -288,7 +305,7 @@ export function SearchableSelect({
   return (
     <div
       ref={containerRef}
-      className={`ss-root${className ? ` ${className}` : ""}`}
+      className={`ss-root${bareClass}${className ? ` ${className}` : ""}`}
     >
       <button
         type="button"
@@ -299,15 +316,8 @@ export function SearchableSelect({
         aria-haspopup="listbox"
         aria-expanded={false}
       >
-        <span className="ss-trigger-label">{selectedLabel}</span>
-        <svg
-          className="ss-caret"
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 256 256"
-          aria-hidden="true"
-        >
-          <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,48,88H208a8,8,0,0,1,5.66,13.66Z" />
-        </svg>
+        <span className="ss-trigger-label">{triggerLabelProp ?? selectedLabel}</span>
+        {caretEl}
       </button>
     </div>
   );

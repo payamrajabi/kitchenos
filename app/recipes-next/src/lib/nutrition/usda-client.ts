@@ -19,9 +19,59 @@ const PROTEIN_ID = 1003;
 const FAT_ID = 1004;
 const CARBS_ID = 1005;
 
-interface USDANutrient {
+/**
+ * Micronutrients we care about beyond the big-four macros.
+ * USDA nutrient IDs → human-readable name + storage unit.
+ */
+export const TRACKED_MICRONUTRIENTS: ReadonlyMap<
+  number,
+  { name: string; unit: string }
+> = new Map([
+  [1079, { name: "Fiber", unit: "g" }],
+  [1087, { name: "Calcium", unit: "mg" }],
+  [1089, { name: "Iron", unit: "mg" }],
+  [1090, { name: "Magnesium", unit: "mg" }],
+  [1091, { name: "Phosphorus", unit: "mg" }],
+  [1092, { name: "Potassium", unit: "mg" }],
+  [1093, { name: "Sodium", unit: "mg" }],
+  [1095, { name: "Zinc", unit: "mg" }],
+  [1098, { name: "Copper", unit: "mg" }],
+  [1101, { name: "Manganese", unit: "mg" }],
+  [1103, { name: "Selenium", unit: "mcg" }],
+  [1162, { name: "Vitamin C", unit: "mg" }],
+  [1165, { name: "Thiamin (B1)", unit: "mg" }],
+  [1166, { name: "Riboflavin (B2)", unit: "mg" }],
+  [1167, { name: "Niacin (B3)", unit: "mg" }],
+  [1170, { name: "Pantothenic Acid (B5)", unit: "mg" }],
+  [1175, { name: "Vitamin B6", unit: "mg" }],
+  [1177, { name: "Folate (B9)", unit: "mcg" }],
+  [1178, { name: "Vitamin B12", unit: "mcg" }],
+  [1106, { name: "Vitamin A (RAE)", unit: "mcg" }],
+  [1114, { name: "Vitamin D", unit: "mcg" }],
+  [1109, { name: "Vitamin E", unit: "mg" }],
+  [1185, { name: "Vitamin K", unit: "mcg" }],
+  [1253, { name: "Cholesterol", unit: "mg" }],
+  [1258, { name: "Saturated Fat", unit: "g" }],
+  [1292, { name: "Monounsaturated Fat", unit: "g" }],
+  [1293, { name: "Polyunsaturated Fat", unit: "g" }],
+  [1235, { name: "Added Sugars", unit: "g" }],
+  [2000, { name: "Total Sugars", unit: "g" }],
+  [1063, { name: "Total Sugars (alt)", unit: "g" }],
+]);
+
+/** A single resolved micronutrient value ready for storage. */
+export type ResolvedNutrient = {
   nutrientId: number;
+  name: string;
   value: number;
+  unit: string;
+};
+
+interface USDANutrient {
+  nutrientId?: number;
+  value?: number;
+  amount?: number;
+  nutrient?: { id?: number; name?: string; unitName?: string };
 }
 
 interface USDAFood {
@@ -48,10 +98,35 @@ export interface USDAFoodDetail {
   description: string;
   dataType: string;
   foodPortions?: USDAFoodPortion[];
+  /** All tracked micronutrients found in the detail response (per 100 g). */
+  micronutrients: ResolvedNutrient[];
 }
 
-function extractNutrient(nutrients: USDANutrient[], id: number): number {
-  return nutrients.find((n) => n.nutrientId === id)?.value ?? 0;
+/**
+ * FDC search/detail payloads vary: some use `value`, others `amount`, and
+ * nutrient id may live on `nutrientId` or nested `nutrient.id`.
+ */
+function extractNutrient(nutrients: USDANutrient[] | undefined, id: number): number {
+  if (!Array.isArray(nutrients)) return 0;
+  for (const raw of nutrients) {
+    if (!raw || typeof raw !== "object") continue;
+    const n = raw as USDANutrient;
+    const nutId =
+      typeof n.nutrientId === "number"
+        ? n.nutrientId
+        : typeof n.nutrient?.id === "number"
+          ? n.nutrient.id
+          : undefined;
+    if (nutId !== id) continue;
+    const v =
+      typeof n.value === "number"
+        ? n.value
+        : typeof n.amount === "number"
+          ? n.amount
+          : NaN;
+    if (Number.isFinite(v)) return v;
+  }
+  return 0;
 }
 
 function getApiKey(explicit?: string): string {
@@ -59,8 +134,51 @@ function getApiKey(explicit?: string): string {
 }
 
 /**
- * Full food record including **foodPortions** (gram weights for count-based derivation).
- * Search results often omit portions — call this when you need edible weight.
+ * Extract all tracked micronutrients from a USDA nutrient array.
+ * Returns only nutrients with a finite positive value.
+ */
+export function extractMicronutrients(
+  nutrients: USDANutrient[] | undefined,
+): ResolvedNutrient[] {
+  if (!Array.isArray(nutrients)) return [];
+  const results: ResolvedNutrient[] = [];
+
+  for (const raw of nutrients) {
+    if (!raw || typeof raw !== "object") continue;
+    const nutId =
+      typeof raw.nutrientId === "number"
+        ? raw.nutrientId
+        : typeof raw.nutrient?.id === "number"
+          ? raw.nutrient.id
+          : undefined;
+    if (nutId == null) continue;
+
+    const meta = TRACKED_MICRONUTRIENTS.get(nutId);
+    if (!meta) continue;
+
+    const v =
+      typeof raw.value === "number"
+        ? raw.value
+        : typeof raw.amount === "number"
+          ? raw.amount
+          : NaN;
+    if (!Number.isFinite(v) || v <= 0) continue;
+
+    results.push({
+      nutrientId: nutId,
+      name: meta.name,
+      value: Math.round(v * 1000) / 1000,
+      unit: meta.unit,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Full food record including **foodPortions** (gram weights for count-based derivation)
+ * and **micronutrients** (all tracked nutrients beyond the big-four macros).
+ * Search results often omit portions — call this when you need edible weight or micros.
  */
 export async function fetchUSDAFoodDetail(
   fdcId: string | number,
@@ -87,6 +205,7 @@ export async function fetchUSDAFoodDetail(
       description: String(data.description ?? ""),
       dataType: String(data.dataType ?? ""),
       foodPortions: Array.isArray(data.foodPortions) ? data.foodPortions : [],
+      micronutrients: extractMicronutrients(data.foodNutrients),
     };
   } catch {
     return null;

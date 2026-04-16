@@ -14,6 +14,7 @@ import {
   useTransition,
 } from "react";
 import { createPortal } from "react-dom";
+import { Trash } from "@phosphor-icons/react";
 
 const emptySubscribe = () => () => {};
 
@@ -203,10 +204,12 @@ export function IngredientDeleteButton({
         type="button"
         className="inventory-row-delete"
         aria-label={`Delete ${ingredientName}`}
+        title={loadingRecipes ? "Checking linked recipes…" : "Delete"}
         onClick={handleDeleteClick}
         disabled={isPending || loadingRecipes}
+        aria-busy={loadingRecipes}
       >
-        {loadingRecipes ? "Checking…" : "Delete"}
+        <Trash size={14} weight="bold" aria-hidden />
       </button>
       {modal ? createPortal(modal, document.body) : null}
     </>

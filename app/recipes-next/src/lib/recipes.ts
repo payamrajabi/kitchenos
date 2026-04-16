@@ -1,5 +1,8 @@
 import type { RecipeRow } from "@/types/database";
 
+/** Short blurb under the recipe title (stored length capped in `updateRecipeAction`). */
+export const RECIPE_DESCRIPTION_MAX_LENGTH = 250;
+
 /** Supabase/PostgREST often returns integer PKs as strings; Map keys must match. */
 export function coerceNumericId(id: unknown): number | null {
   if (id == null) return null;

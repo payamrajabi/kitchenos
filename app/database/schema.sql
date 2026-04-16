@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS recipe_categories (
 CREATE TABLE IF NOT EXISTS recipes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  description TEXT,
   category_id INTEGER,
   image_url TEXT,
   image_focus_y INTEGER,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS ingredients (
   minimum_stock TEXT,
   maximum_stock TEXT,
   category TEXT,
+  grocery_category TEXT,
   price REAL,
   preferred_vendor TEXT,
   brand_or_manufacturer TEXT,
@@ -60,6 +62,8 @@ CREATE TABLE IF NOT EXISTS ingredients (
   ingredients_text TEXT,
   parent_ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE CASCADE,
   variant_sort_order INTEGER NOT NULL DEFAULT 0,
+  food_type TEXT CHECK (food_type IN ('generic', 'branded', 'custom')) DEFAULT 'generic',
+  barcode TEXT,
   kcal REAL,
   fat_g REAL,
   protein_g REAL,
@@ -72,9 +76,33 @@ CREATE TABLE IF NOT EXISTS ingredients (
   nutrition_confidence REAL CHECK (nutrition_confidence >= 0 AND nutrition_confidence <= 1),
   nutrition_needs_review INTEGER NOT NULL DEFAULT 0,
   nutrition_notes TEXT,
+  nutrition_serving_size_g REAL NOT NULL DEFAULT 100 CHECK (nutrition_serving_size_g > 0),
+  nutrition_fetched_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS ingredient_nutrients (
+  ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+  nutrient_id INTEGER NOT NULL,
+  nutrient_name TEXT NOT NULL,
+  value REAL NOT NULL,
+  unit TEXT NOT NULL,
+  PRIMARY KEY (ingredient_id, nutrient_id)
+);
+
+CREATE TABLE IF NOT EXISTS ingredient_portions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+  gram_weight REAL NOT NULL CHECK (gram_weight > 0),
+  description TEXT NOT NULL,
+  source TEXT,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingredient_portions_ingredient
+  ON ingredient_portions (ingredient_id);
 
 CREATE TABLE IF NOT EXISTS equipment (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,6 +161,19 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
   FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
   FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS recipe_instruction_steps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  body TEXT NOT NULL,
+  timer_seconds_low INTEGER,
+  timer_seconds_high INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS recipe_instruction_steps_recipe_sort
+  ON recipe_instruction_steps (recipe_id, sort_order);
 
 CREATE TABLE IF NOT EXISTS inventory_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

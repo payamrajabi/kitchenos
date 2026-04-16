@@ -6,10 +6,22 @@ import {
   INGREDIENT_UNIT_VALUES,
   normalizeIngredientUnitForStorage,
 } from "@/lib/unit-mapping";
-import { defaultStorageLocationForNewInventoryRow } from "@/lib/inventory-display";
+import {
+  defaultStorageLocationForNewInventoryRow,
+  DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
+  DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
+} from "@/lib/inventory-display";
 import type { IngredientRow } from "@/types/database";
 import type { InventoryTab } from "@/lib/inventory-filters";
 import { maybeAutofillNutrition } from "@/app/actions/ingredient-nutrition";
+import { isNutritionEffectivelyEmpty } from "@/lib/inventory-nutrition-display";
+import {
+  INGREDIENT_GROCERY_CATEGORIES,
+  inferGroceryCategoryFromName,
+} from "@/lib/ingredient-grocery-category";
+import { toTitleCaseAP } from "@/lib/ingredient-resolution/normalize";
+
+const VALID_GROCERY_CATEGORIES = new Set<string>(INGREDIENT_GROCERY_CATEGORIES);
 
 const VALID_LOCATIONS = new Set([
   "Fridge",
@@ -66,6 +78,8 @@ async function resolveInventoryRowId(
       storage_location,
       quantity: null,
       unit: null,
+      min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
+      max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
     })
     .select("id")
     .single();
@@ -149,6 +163,7 @@ export async function deleteIngredientAction(ingredientId: number) {
 
   revalidatePath("/inventory");
   revalidatePath("/recipes");
+  revalidatePath("/shop");
   return { ok: true as const };
 }
 
@@ -189,6 +204,8 @@ export async function moveIngredientAction(
       storage_location: newLocation,
       quantity: null,
       unit: null,
+      min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
+      max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
     });
     if (error) return { ok: false as const, error: error.message };
   }
@@ -260,6 +277,7 @@ export async function updateRecipeUnitAction(
   if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/inventory");
+  revalidatePath("/shop");
   return { ok: true as const };
 }
 
@@ -273,7 +291,7 @@ export async function updateIngredientNameAction(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Sign in first." };
 
-  const trimmed = name.trim();
+  const trimmed = toTitleCaseAP(name.trim());
   if (!trimmed) {
     return { ok: false as const, error: "Name is required." };
   }
@@ -288,6 +306,73 @@ export async function updateIngredientNameAction(
   void maybeAutofillNutrition(ingredientId);
 
   revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function updateIngredientNutritionServingSizeAction(
+  ingredientId: number,
+  rawGrams: unknown,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const n =
+    typeof rawGrams === "number"
+      ? rawGrams
+      : Number(String(rawGrams ?? "").trim());
+  if (!Number.isFinite(n) || n <= 0 || n > 100_000) {
+    return {
+      ok: false as const,
+      error: "Serving size must be a positive number (grams).",
+    };
+  }
+  const g = Math.round(n * 10) / 10;
+
+  const { error } = await supabase
+    .from("ingredients")
+    .update({
+      nutrition_serving_size_g: g,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ingredientId);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  revalidatePath("/shop");
+  return { ok: true as const };
+}
+
+export async function updateIngredientGroceryCategoryAction(
+  ingredientId: number,
+  groceryCategory: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  if (!VALID_GROCERY_CATEGORIES.has(groceryCategory)) {
+    return { ok: false as const, error: "Invalid grocery category." };
+  }
+
+  const { error } = await supabase
+    .from("ingredients")
+    .update({
+      grocery_category: groceryCategory,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ingredientId);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  revalidatePath("/shop");
+  revalidatePath("/recipes");
   return { ok: true as const };
 }
 
@@ -318,7 +403,87 @@ export async function updateInventoryStockUnitAction(
   if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/inventory");
+  revalidatePath("/shop");
   return { ok: true as const };
+}
+
+export async function createIngredientForInventoryAction(rawName: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const name = toTitleCaseAP(rawName.trim());
+  if (!name) return { ok: false as const, error: "Name is required." };
+
+  const { data: existing, error: existingError } = await supabase
+    .from("ingredients")
+    .select("*")
+    .ilike("name", name)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingError) {
+    return { ok: false as const, error: existingError.message };
+  }
+
+  let ingredientRow: IngredientRow;
+
+  if (existing) {
+    ingredientRow = existing as IngredientRow;
+    if (isNutritionEffectivelyEmpty(ingredientRow)) {
+      void maybeAutofillNutrition(ingredientRow.id);
+    }
+  } else {
+    const { data: inserted, error } = await supabase
+      .from("ingredients")
+      .insert({
+        name,
+        grocery_category: inferGroceryCategoryFromName(name),
+      })
+      .select("*")
+      .single();
+
+    if (error || !inserted) {
+      return {
+        ok: false as const,
+        error: error?.message ?? "Could not create ingredient.",
+      };
+    }
+
+    ingredientRow = inserted as IngredientRow;
+    void maybeAutofillNutrition(ingredientRow.id);
+  }
+
+  const { data: invExists } = await supabase
+    .from("inventory_items")
+    .select("id")
+    .eq("ingredient_id", ingredientRow.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (!invExists?.id) {
+    const tab: InventoryTab = "Pantry";
+    const storage_location = defaultStorageLocationForNewInventoryRow(
+      ingredientRow,
+      tab,
+    );
+    const { error: invErr } = await supabase.from("inventory_items").insert({
+      ingredient_id: ingredientRow.id,
+      storage_location,
+      quantity: null,
+      unit: null,
+      min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
+      max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
+    });
+    if (invErr) return { ok: false as const, error: invErr.message };
+  }
+
+  revalidatePath("/inventory");
+  revalidatePath("/shop");
+  revalidatePath("/recipes");
+  return { ok: true as const, ingredientId: ingredientRow.id };
 }
 
 export async function addIngredientVariantAction(
@@ -331,12 +496,12 @@ export async function addIngredientVariantAction(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Sign in first." };
 
-  const trimmed = variantName.trim();
+  const trimmed = toTitleCaseAP(variantName.trim());
   if (!trimmed) return { ok: false as const, error: "Name is required." };
 
   const { data: parent, error: parentErr } = await supabase
     .from("ingredients")
-    .select("id, category")
+    .select("id, category, grocery_category")
     .eq("id", parentIngredientId)
     .single();
   if (parentErr || !parent) {
@@ -355,6 +520,8 @@ export async function addIngredientVariantAction(
       ? (siblings[0].variant_sort_order ?? 0) + 1
       : 0;
 
+  const parentGrocery =
+    (parent as { grocery_category?: string | null }).grocery_category ?? null;
   const { data: newIng, error: ingErr } = await supabase
     .from("ingredients")
     .insert({
@@ -362,6 +529,10 @@ export async function addIngredientVariantAction(
       parent_ingredient_id: parentIngredientId,
       variant_sort_order: nextSort,
       category: (parent as { category?: string | null }).category ?? null,
+      grocery_category:
+        parentGrocery && VALID_GROCERY_CATEGORIES.has(parentGrocery)
+          ? parentGrocery
+          : inferGroceryCategoryFromName(trimmed),
     })
     .select("id")
     .single();
@@ -381,6 +552,8 @@ export async function addIngredientVariantAction(
     storage_location,
     quantity: null,
     unit: null,
+    min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
+    max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
   });
 
   void maybeAutofillNutrition(newIng.id);
@@ -459,5 +632,6 @@ export async function updateInventoryQuantityFieldAction(
   if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/inventory");
+  revalidatePath("/shop");
   return { ok: true as const };
 }

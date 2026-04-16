@@ -1,19 +1,33 @@
 "use server";
 
-import { defaultStorageLocationForNewInventoryRow } from "@/lib/inventory-display";
 import {
+  defaultStorageLocationForNewInventoryRow,
+  DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
+  DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
+} from "@/lib/inventory-display";
+import { inferGroceryCategoryFromName } from "@/lib/ingredient-grocery-category";
+import {
+  defaultRecipeUnitForStockUnit,
   INGREDIENT_UNIT_VALUES,
   normalizeIngredientUnitForStorage,
 } from "@/lib/unit-mapping";
 import { createClient } from "@/lib/supabase/server";
+import { formatInstructionStepsToRecipeText } from "@/lib/legacy-instructions-parse";
+import { RECIPE_DESCRIPTION_MAX_LENGTH } from "@/lib/recipes";
 import { normalizeMealTypesForStorage } from "@/lib/recipe-meal-types";
-import type { IngredientRow, RecipeIngredientRow } from "@/types/database";
+import type { IngredientRow, RecipeIngredientRow, RecipeInstructionStepRow } from "@/types/database";
 import { maybeAutofillNutrition } from "@/app/actions/ingredient-nutrition";
+import {
+  resolveRecipeIngredients,
+  applyResolutionPlan,
+  type InventoryIngredient,
+} from "@/lib/ingredient-resolution";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 const UPDATABLE_KEYS = new Set([
   "name",
+  "description",
   "ingredients",
   "instructions",
   "notes",
@@ -37,6 +51,7 @@ const DEFAULT_RECIPE_INGREDIENT_UNIT = "g";
 /** Columns to copy when saving a community recipe into the user's account. */
 const RECIPE_COMMUNITY_COPY_KEYS = [
   "name",
+  "description",
   "image_url",
   "image_urls",
   "image_focus_y",
@@ -170,6 +185,50 @@ function revalidateRecipeIngredientPaths(recipeId: number) {
   revalidatePath("/community");
 }
 
+function safeInt(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeInstructionStepRow(raw: unknown): RecipeInstructionStepRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const id = Number(row.id);
+  const recipe_id = Number(row.recipe_id);
+  const sort_order = Number(row.sort_order ?? 0);
+  if (!Number.isFinite(id) || !Number.isFinite(recipe_id)) return null;
+  return {
+    id,
+    recipe_id,
+    sort_order: Number.isFinite(sort_order) ? sort_order : 0,
+    body: row.body == null ? "" : String(row.body),
+    timer_seconds_low: safeInt(row.timer_seconds_low),
+    timer_seconds_high: safeInt(row.timer_seconds_high),
+    created_at: row.created_at == null ? undefined : String(row.created_at),
+  };
+}
+
+async function syncRecipeInstructionsTextFromSteps(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  recipeId: number,
+) {
+  const { data } = await supabase
+    .from("recipe_instruction_steps")
+    .select("body")
+    .eq("recipe_id", recipeId)
+    .order("sort_order", { ascending: true });
+  const bodies = (data ?? []).map((r) => String((r as { body: unknown }).body ?? ""));
+  const text = formatInstructionStepsToRecipeText(bodies);
+  await supabase
+    .from("recipes")
+    .update({
+      instructions: text.trim() === "" ? null : text,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", recipeId);
+}
+
 const RECIPE_INGREDIENT_SELECT =
   "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name)";
 
@@ -212,6 +271,42 @@ async function nextLineSortOrder(
   return { ok: true as const, next: last + 1 };
 }
 
+/**
+ * Default unit for a new recipe line: Inventory "Recipe unit" when set, otherwise
+ * the usual stock→recipe default, otherwise grams.
+ */
+async function resolveDefaultRecipeIngredientUnit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ingredientId: number,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("unit, recipe_unit")
+    .eq("ingredient_id", ingredientId);
+
+  if (error || !data?.length) {
+    return DEFAULT_RECIPE_INGREDIENT_UNIT;
+  }
+
+  for (const row of data) {
+    const raw = row.recipe_unit != null ? String(row.recipe_unit).trim() : "";
+    if (!raw) continue;
+    const norm = normalizeIngredientUnitForStorage(raw);
+    if (norm && INGREDIENT_UNIT_VALUES.has(norm)) {
+      return norm;
+    }
+  }
+
+  for (const row of data) {
+    const stock = row.unit != null ? String(row.unit).trim() : "";
+    if (!stock) continue;
+    const fromStock = defaultRecipeUnitForStockUnit(stock);
+    if (fromStock) return fromStock;
+  }
+
+  return DEFAULT_RECIPE_INGREDIENT_UNIT;
+}
+
 async function ensureInventoryRowForIngredient(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ingredient: Pick<IngredientRow, "id" | "category">,
@@ -251,12 +346,69 @@ async function ensureInventoryRowForIngredient(
     storage_location,
     quantity: null,
     unit: null,
+    min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
+    max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
   });
 
   if (error) {
     return { ok: false as const, error: error.message };
   }
   return { ok: true as const };
+}
+
+/**
+ * Load the current user's full ingredient list in the shape the resolution
+ * pipeline expects.
+ */
+async function loadUserInventoryIngredients(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<InventoryIngredient[]> {
+  const { data } = await supabase
+    .from("ingredients")
+    .select("id, name, parent_ingredient_id, category, grocery_category");
+  if (!data) return [];
+  return data.map((row) => ({
+    id: Number(row.id),
+    name: String(row.name ?? ""),
+    parent_ingredient_id:
+      row.parent_ingredient_id != null ? Number(row.parent_ingredient_id) : null,
+    category: row.category as string | null,
+    grocery_category: (row as Record<string, unknown>).grocery_category as string | null,
+  }));
+}
+
+/**
+ * Resolve a single ingredient name against the user's inventory using the
+ * full resolution pipeline (deterministic + LLM), then apply the plan.
+ *
+ * Returns the resolved ingredient id and whether it was newly created.
+ */
+async function resolveAndApplySingleIngredient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  name: string,
+): Promise<
+  | { ok: true; ingredientId: number; ingredientName: string; wasCreated: boolean }
+  | { ok: false; error: string }
+> {
+  const inventory = await loadUserInventoryIngredients(supabase);
+  const plan = await resolveRecipeIngredients([name], inventory);
+
+  if (plan.resolutions.length === 0) {
+    return { ok: false, error: "Could not resolve ingredient." };
+  }
+
+  const result = await applyResolutionPlan(supabase, plan);
+  if (!result.ok) return result;
+
+  const applied = result.applied[0];
+  if (!applied) return { ok: false, error: "Could not resolve ingredient." };
+
+  return {
+    ok: true,
+    ingredientId: applied.ingredientId,
+    ingredientName: applied.ingredientName,
+    wasCreated: applied.wasCreated,
+  };
 }
 
 async function insertRecipeIngredientLine(
@@ -268,13 +420,15 @@ async function insertRecipeIngredientLine(
   const ord = await nextLineSortOrder(supabase, recipeId, sectionId);
   if (!ord.ok) return ord;
 
+  const defaultUnit = await resolveDefaultRecipeIngredientUnit(supabase, ingredientId);
+
   const { data, error } = await supabase
     .from("recipe_ingredients")
     .insert({
       recipe_id: recipeId,
       ingredient_id: ingredientId,
       amount: null,
-      unit: DEFAULT_RECIPE_INGREDIENT_UNIT,
+      unit: defaultUnit,
       is_optional: false,
       section_id: sectionId,
       line_sort_order: ord.next,
@@ -366,6 +520,12 @@ export async function updateRecipeAction(
       }
     } else if (key === "meal_types") {
       updates[key] = normalizeMealTypesForStorage(raw);
+    } else if (key === "description") {
+      let s = String(raw ?? "").trim();
+      if (s.length > RECIPE_DESCRIPTION_MAX_LENGTH) {
+        s = s.slice(0, RECIPE_DESCRIPTION_MAX_LENGTH);
+      }
+      updates[key] = s === "" ? null : s;
     } else {
       const s = String(raw ?? "").trim();
       updates[key] = s === "" ? null : s;
@@ -437,59 +597,23 @@ export async function createIngredientAndAddToRecipeAction(
     return { ok: false as const, error: "Ingredient name is required." };
   }
 
-  const { data: existing, error: existingError } = await supabase
-    .from("ingredients")
-    .select("id, name, category")
-    .ilike("name", name)
-    .limit(1)
-    .maybeSingle();
+  const resolved = await resolveAndApplySingleIngredient(supabase, name);
+  if (!resolved.ok) return resolved;
 
-  if (existingError) {
-    return { ok: false as const, error: existingError.message };
-  }
-
-  let ingredient =
-    existing == null
-      ? null
-      : ({
-          id: Number(existing.id),
-          name: String(existing.name ?? ""),
-          category: existing.category == null ? null : String(existing.category),
-        } as Pick<IngredientRow, "id" | "name" | "category">);
-
-  let ingredientCreated = false;
-
-  if (!ingredient) {
-    const { data: inserted, error } = await supabase
-      .from("ingredients")
-      .insert({ name })
-      .select("id, name, category")
-      .single();
-
-    if (error || !inserted) {
-      return { ok: false as const, error: error?.message ?? "Could not create ingredient." };
-    }
-
-    ingredient = {
-      id: Number(inserted.id),
-      name: String(inserted.name ?? ""),
-      category: inserted.category == null ? null : String(inserted.category),
-    };
-    ingredientCreated = true;
-  }
-
-  const ensuredInventory = await ensureInventoryRowForIngredient(supabase, ingredient);
-  if (!ensuredInventory.ok) return ensuredInventory;
-
-  const attached = await insertRecipeIngredientLine(supabase, recipeId, ingredient.id, sectionId);
+  const attached = await insertRecipeIngredientLine(
+    supabase,
+    recipeId,
+    resolved.ingredientId,
+    sectionId,
+  );
   if (!attached.ok) return attached;
 
-  if (ingredientCreated) void maybeAutofillNutrition(ingredient.id);
+  if (resolved.wasCreated) void maybeAutofillNutrition(resolved.ingredientId);
 
   revalidateRecipeIngredientPaths(recipeId);
   return {
     ok: true as const,
-    ingredientCreated,
+    ingredientCreated: resolved.wasCreated,
     row: attached.row,
   };
 }
@@ -510,53 +634,17 @@ export async function createIngredientAndAssignToRecipeLineAction(
     return { ok: false as const, error: "Ingredient name is required." };
   }
 
-  const { data: existing, error: existingError } = await supabase
-    .from("ingredients")
-    .select("id, name, category")
-    .ilike("name", name)
-    .limit(1)
-    .maybeSingle();
+  const resolved = await resolveAndApplySingleIngredient(supabase, name);
+  if (!resolved.ok) return resolved;
 
-  if (existingError) {
-    return { ok: false as const, error: existingError.message };
-  }
-
-  let ingredient =
-    existing == null
-      ? null
-      : ({
-          id: Number(existing.id),
-          name: String(existing.name ?? ""),
-          category: existing.category == null ? null : String(existing.category),
-        } as Pick<IngredientRow, "id" | "name" | "category">);
-
-  let ingredientCreated = false;
-
-  if (!ingredient) {
-    const { data: inserted, error } = await supabase
-      .from("ingredients")
-      .insert({ name })
-      .select("id, name, category")
-      .single();
-
-    if (error || !inserted) {
-      return { ok: false as const, error: error?.message ?? "Could not create ingredient." };
-    }
-
-    ingredient = {
-      id: Number(inserted.id),
-      name: String(inserted.name ?? ""),
-      category: inserted.category == null ? null : String(inserted.category),
-    };
-    ingredientCreated = true;
-  }
-
-  const ensuredInventory = await ensureInventoryRowForIngredient(supabase, ingredient);
-  if (!ensuredInventory.ok) return ensuredInventory;
+  const defaultUnit = await resolveDefaultRecipeIngredientUnit(
+    supabase,
+    resolved.ingredientId,
+  );
 
   const { error: updateError } = await supabase
     .from("recipe_ingredients")
-    .update({ ingredient_id: ingredient.id })
+    .update({ ingredient_id: resolved.ingredientId, unit: defaultUnit })
     .eq("recipe_id", recipeId)
     .eq("id", lineId);
 
@@ -564,7 +652,7 @@ export async function createIngredientAndAssignToRecipeLineAction(
     return { ok: false as const, error: updateError.message };
   }
 
-  if (ingredientCreated) void maybeAutofillNutrition(ingredient.id);
+  if (resolved.wasCreated) void maybeAutofillNutrition(resolved.ingredientId);
 
   const row = await loadRecipeIngredientRowByLineId(supabase, lineId);
   if (!row.ok) return row;
@@ -572,7 +660,7 @@ export async function createIngredientAndAssignToRecipeLineAction(
   revalidateRecipeIngredientPaths(recipeId);
   return {
     ok: true as const,
-    ingredientCreated,
+    ingredientCreated: resolved.wasCreated,
     row: row.row,
   };
 }
@@ -617,12 +705,20 @@ export async function updateRecipeIngredientAction(
     }
   }
 
+  let newIngredientIdForDefaultUnit: number | null = null;
   if (Object.prototype.hasOwnProperty.call(patch, "ingredient_id")) {
     const ingredientId = Number(patch.ingredient_id);
     if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
       return { ok: false as const, error: "Invalid ingredient." };
     }
     updates.ingredient_id = Math.trunc(ingredientId);
+    if (!Object.prototype.hasOwnProperty.call(patch, "unit")) {
+      newIngredientIdForDefaultUnit = updates.ingredient_id;
+    }
+  }
+
+  if (newIngredientIdForDefaultUnit != null) {
+    updates.unit = await resolveDefaultRecipeIngredientUnit(supabase, newIngredientIdForDefaultUnit);
   }
 
   if (Object.prototype.hasOwnProperty.call(patch, "is_optional")) {
@@ -1068,93 +1164,67 @@ export async function saveRecipeFromCommunityAction(sourceRecipeId: number) {
     return { ok: false as const, error: linesErr.message };
   }
 
-  const { data: userIngredientRows } = await supabase
-    .from("ingredients")
-    .select("id, name, category")
-    .eq("owner_id", user.id);
-
-  const ingredientByLowerName = new Map<
-    string,
-    { id: number; category: string | null }
-  >();
-  for (const row of userIngredientRows ?? []) {
-    const n = String(row.name ?? "").trim();
-    if (!n) continue;
-    ingredientByLowerName.set(n.toLowerCase(), {
-      id: Number(row.id),
-      category: row.category as string | null,
-    });
-  }
-
   if (sourceLines?.length) {
+    // Fetch source ingredient names for all lines
+    const sourceIngredientIds = [
+      ...new Set(
+        sourceLines
+          .map((l) => Number(l.ingredient_id))
+          .filter((id) => Number.isFinite(id)),
+      ),
+    ];
+
+    const { data: sourceIngRows, error: srcIngErr } = await supabase
+      .from("ingredients")
+      .select("id, name")
+      .in("id", sourceIngredientIds);
+
+    if (srcIngErr) {
+      await rollbackRecipe();
+      return { ok: false as const, error: srcIngErr.message };
+    }
+
+    const sourceIngNameById = new Map<number, string>();
+    for (const row of sourceIngRows ?? []) {
+      sourceIngNameById.set(Number(row.id), String(row.name ?? "").trim());
+    }
+
+    // Collect unique ingredient names to resolve in one batch
+    const uniqueNames = [
+      ...new Set(
+        sourceIngredientIds
+          .map((id) => sourceIngNameById.get(id))
+          .filter((n): n is string => !!n),
+      ),
+    ];
+
+    // Run the resolution pipeline (deterministic + LLM) in one batch call
+    const inventory = await loadUserInventoryIngredients(supabase);
+    const plan = await resolveRecipeIngredients(uniqueNames, inventory);
+    const planResult = await applyResolutionPlan(supabase, plan);
+
+    if (!planResult.ok) {
+      await rollbackRecipe();
+      return { ok: false as const, error: planResult.error };
+    }
+
+    // Build a lookup: source ingredient name → resolved ingredient id
+    const resolvedByName = new Map<string, number>();
+    for (const applied of planResult.applied) {
+      resolvedByName.set(applied.recipeName, applied.ingredientId);
+      if (applied.wasCreated) void maybeAutofillNutrition(applied.ingredientId);
+    }
+
+    // Create recipe_ingredients rows using resolved ids
     for (const line of sourceLines) {
       const sourceIngredientId = Number(line.ingredient_id);
       if (!Number.isFinite(sourceIngredientId)) continue;
 
-      const { data: sourceIng, error: ingFetchErr } = await supabase
-        .from("ingredients")
-        .select("id, name, category")
-        .eq("id", sourceIngredientId)
-        .maybeSingle();
-
-      if (ingFetchErr) {
-        await rollbackRecipe();
-        return { ok: false as const, error: ingFetchErr.message };
-      }
-
-      const ingName = String(sourceIng?.name ?? "").trim();
+      const ingName = sourceIngNameById.get(sourceIngredientId);
       if (!ingName) continue;
 
-      const lower = ingName.toLowerCase();
-      let ingredientId: number;
-      let ingredientCategory: string | null = null;
-
-      const cached = ingredientByLowerName.get(lower);
-      if (cached) {
-        ingredientId = cached.id;
-        ingredientCategory = cached.category;
-      } else {
-        const { data: created, error: createErr } = await supabase
-          .from("ingredients")
-          .insert({ name: ingName })
-          .select("id, category")
-          .single();
-
-        if (createErr?.code === "23505") {
-          const { data: retry } = await supabase
-            .from("ingredients")
-            .select("id, category, name")
-            .eq("owner_id", user.id);
-          const match = retry?.find(
-            (x) => String(x.name ?? "").trim().toLowerCase() === lower,
-          );
-          if (!match) {
-            await rollbackRecipe();
-            return {
-              ok: false as const,
-              error: "Could not match ingredient after duplicate.",
-            };
-          }
-          ingredientId = Number(match.id);
-          ingredientCategory = match.category as string | null;
-        } else if (createErr || !created) {
-          await rollbackRecipe();
-          return {
-            ok: false as const,
-            error: createErr?.message ?? "Could not create ingredient for copy.",
-          };
-        } else {
-          ingredientId = Number(created.id);
-          ingredientCategory = created.category as string | null;
-        }
-        ingredientByLowerName.set(lower, { id: ingredientId, category: ingredientCategory });
-        void maybeAutofillNutrition(ingredientId);
-      }
-
-      await ensureInventoryRowForIngredient(supabase, {
-        id: ingredientId,
-        category: ingredientCategory,
-      });
+      const ingredientId = resolvedByName.get(ingName);
+      if (ingredientId == null) continue;
 
       const newSectionId = line.section_id
         ? sectionMap.get(String(line.section_id)) ?? null
@@ -1179,10 +1249,345 @@ export async function saveRecipeFromCommunityAction(sourceRecipeId: number) {
     }
   }
 
+  const { data: sourceInstructionSteps, error: srcInstErr } = await supabase
+    .from("recipe_instruction_steps")
+    .select("sort_order, body, timer_seconds_low, timer_seconds_high")
+    .eq("recipe_id", sourceRecipeId)
+    .order("sort_order", { ascending: true });
+
+  if (srcInstErr) {
+    await rollbackRecipe();
+    return { ok: false as const, error: srcInstErr.message };
+  }
+
+  if (sourceInstructionSteps?.length) {
+    const { error: instInsErr } = await supabase.from("recipe_instruction_steps").insert(
+      sourceInstructionSteps.map((s) => {
+        const raw = s as Record<string, unknown>;
+        return {
+          recipe_id: newRecipeId,
+          sort_order: Number(s.sort_order ?? 0),
+          body: String(s.body ?? ""),
+          timer_seconds_low: safeInt(raw.timer_seconds_low),
+          timer_seconds_high: safeInt(raw.timer_seconds_high),
+        };
+      }),
+    );
+    if (instInsErr) {
+      await rollbackRecipe();
+      return { ok: false as const, error: instInsErr.message };
+    }
+  }
+
   revalidatePath("/recipes");
   revalidatePath("/community");
   revalidatePath("/inventory");
   redirect(`/recipes/${newRecipeId}`);
+}
+
+export async function addRecipeInstructionStepAction(recipeId: number, rawBody?: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const body = rawBody === undefined || rawBody === null ? "" : String(rawBody);
+
+  const { data: top } = await supabase
+    .from("recipe_instruction_steps")
+    .select("sort_order")
+    .eq("recipe_id", recipeId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let nextSort = 0;
+  if (top != null && top.sort_order != null) {
+    const n = Number(top.sort_order);
+    nextSort = Number.isFinite(n) ? n + 1 : 0;
+  }
+
+  const { data, error } = await supabase
+    .from("recipe_instruction_steps")
+    .insert({ recipe_id: recipeId, sort_order: nextSort, body })
+    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .single();
+
+  if (error || !data) {
+    return { ok: false as const, error: error?.message ?? "Could not add step." };
+  }
+
+  const row = normalizeInstructionStepRow(data);
+  if (!row) return { ok: false as const, error: "Could not add step." };
+
+  await syncRecipeInstructionsTextFromSteps(supabase, recipeId);
+  revalidateRecipeIngredientPaths(recipeId);
+  return { ok: true as const, row };
+}
+
+/**
+ * Split one instruction step at `splitAt` (UTF-16 offset, same as textarea selection).
+ * Text before the split stays in the original step; text after becomes a new step
+ * immediately below, preserving order of other steps.
+ */
+export async function splitRecipeInstructionStepAction(
+  recipeId: number,
+  stepId: number,
+  splitAt: number,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  if (!Number.isInteger(splitAt) || splitAt < 0) {
+    return { ok: false as const, error: "Invalid split position." };
+  }
+
+  const { data: steps, error: listErr } = await supabase
+    .from("recipe_instruction_steps")
+    .select("id, sort_order, body")
+    .eq("recipe_id", recipeId)
+    .order("sort_order", { ascending: true });
+
+  if (listErr) return { ok: false as const, error: listErr.message };
+
+  const list = steps ?? [];
+  const idx = list.findIndex((s) => Number((s as { id: unknown }).id) === stepId);
+  if (idx < 0) return { ok: false as const, error: "Step not found." };
+
+  const body = String((list[idx] as { body: unknown }).body ?? "");
+  if (splitAt > body.length) {
+    return { ok: false as const, error: "Invalid split position." };
+  }
+
+  const before = body.slice(0, splitAt);
+  const after = body.slice(splitAt);
+  if (splitAt === body.length || after.trim() === "") {
+    return { ok: false as const, error: "Nothing to move into a new step." };
+  }
+
+  const { data: top } = await supabase
+    .from("recipe_instruction_steps")
+    .select("sort_order")
+    .eq("recipe_id", recipeId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let nextSort = 0;
+  if (top != null && top.sort_order != null) {
+    const n = Number(top.sort_order);
+    nextSort = Number.isFinite(n) ? n + 1 : 0;
+  }
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("recipe_instruction_steps")
+    .insert({
+      recipe_id: recipeId,
+      sort_order: nextSort,
+      body: after,
+    })
+    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .single();
+
+  if (insErr || !inserted) {
+    return { ok: false as const, error: insErr?.message ?? "Could not add step." };
+  }
+
+  const newId = Number((inserted as { id: unknown }).id);
+  if (!Number.isFinite(newId)) {
+    return { ok: false as const, error: "Could not add step." };
+  }
+
+  const { error: uErr } = await supabase
+    .from("recipe_instruction_steps")
+    .update({ body: before })
+    .eq("id", stepId)
+    .eq("recipe_id", recipeId);
+
+  if (uErr) {
+    await supabase.from("recipe_instruction_steps").delete().eq("id", newId).eq("recipe_id", recipeId);
+    return { ok: false as const, error: uErr.message };
+  }
+
+  const orderedIds = [
+    ...list.slice(0, idx + 1).map((s) => Number((s as { id: unknown }).id)),
+    newId,
+    ...list.slice(idx + 1).map((s) => Number((s as { id: unknown }).id)),
+  ];
+
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error: ordErr } = await supabase
+      .from("recipe_instruction_steps")
+      .update({ sort_order: i })
+      .eq("id", orderedIds[i])
+      .eq("recipe_id", recipeId);
+    if (ordErr) return { ok: false as const, error: ordErr.message };
+  }
+
+  const { data: firstData } = await supabase
+    .from("recipe_instruction_steps")
+    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .eq("id", stepId)
+    .eq("recipe_id", recipeId)
+    .single();
+
+  const { data: secondData } = await supabase
+    .from("recipe_instruction_steps")
+    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .eq("id", newId)
+    .eq("recipe_id", recipeId)
+    .single();
+
+  const firstRow = normalizeInstructionStepRow(firstData);
+  const newRow = normalizeInstructionStepRow(secondData);
+  if (!firstRow || !newRow) return { ok: false as const, error: "Could not load steps." };
+
+  await syncRecipeInstructionsTextFromSteps(supabase, recipeId);
+  revalidateRecipeIngredientPaths(recipeId);
+  return { ok: true as const, firstRow, newRow };
+}
+
+export async function updateRecipeInstructionStepAction(
+  recipeId: number,
+  stepId: number,
+  patch: {
+    body?: string;
+    timer_seconds_low?: number | null;
+    timer_seconds_high?: number | null;
+  },
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const updates: Record<string, unknown> = {};
+  if (patch.body !== undefined) {
+    updates.body = patch.body === null ? "" : String(patch.body);
+  }
+  if ("timer_seconds_low" in patch) {
+    updates.timer_seconds_low = safeInt(patch.timer_seconds_low);
+  }
+  if ("timer_seconds_high" in patch) {
+    updates.timer_seconds_high = safeInt(patch.timer_seconds_high);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return { ok: false as const, error: "Nothing to update." };
+  }
+
+  const { data: prior } = await supabase
+    .from("recipe_instruction_steps")
+    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .eq("id", stepId)
+    .eq("recipe_id", recipeId)
+    .maybeSingle();
+
+  if (
+    prior &&
+    updates.body !== undefined &&
+    Object.keys(updates).length === 1 &&
+    String((prior as { body: unknown }).body ?? "") === updates.body
+  ) {
+    const row = normalizeInstructionStepRow(prior);
+    if (row) return { ok: true as const, row };
+  }
+
+  const { data, error } = await supabase
+    .from("recipe_instruction_steps")
+    .update(updates)
+    .eq("id", stepId)
+    .eq("recipe_id", recipeId)
+    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .single();
+
+  if (error || !data) {
+    return { ok: false as const, error: error?.message ?? "Could not update step." };
+  }
+
+  const row = normalizeInstructionStepRow(data);
+  if (!row) return { ok: false as const, error: "Could not update step." };
+
+  await syncRecipeInstructionsTextFromSteps(supabase, recipeId);
+  revalidateRecipeIngredientPaths(recipeId);
+  return { ok: true as const, row };
+}
+
+export async function deleteRecipeInstructionStepAction(recipeId: number, stepId: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const { error: delErr } = await supabase
+    .from("recipe_instruction_steps")
+    .delete()
+    .eq("id", stepId)
+    .eq("recipe_id", recipeId);
+
+  if (delErr) return { ok: false as const, error: delErr.message };
+
+  const { data: remaining, error: listErr } = await supabase
+    .from("recipe_instruction_steps")
+    .select("id")
+    .eq("recipe_id", recipeId)
+    .order("sort_order", { ascending: true });
+
+  if (listErr) return { ok: false as const, error: listErr.message };
+
+  for (let i = 0; i < (remaining ?? []).length; i++) {
+    const id = Number((remaining![i] as { id: unknown }).id);
+    const { error: uErr } = await supabase
+      .from("recipe_instruction_steps")
+      .update({ sort_order: i })
+      .eq("id", id)
+      .eq("recipe_id", recipeId);
+    if (uErr) return { ok: false as const, error: uErr.message };
+  }
+
+  await syncRecipeInstructionsTextFromSteps(supabase, recipeId);
+  revalidateRecipeIngredientPaths(recipeId);
+  return { ok: true as const };
+}
+
+export async function reorderRecipeInstructionStepsAction(recipeId: number, orderedIds: number[]) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const { data: rows, error: listErr } = await supabase
+    .from("recipe_instruction_steps")
+    .select("id")
+    .eq("recipe_id", recipeId);
+
+  if (listErr) return { ok: false as const, error: listErr.message };
+
+  const idSet = new Set((rows ?? []).map((r) => Number((r as { id: unknown }).id)));
+  const uniqueOrdered = [...new Set(orderedIds)];
+  if (uniqueOrdered.length !== idSet.size || !uniqueOrdered.every((id) => idSet.has(id))) {
+    return { ok: false as const, error: "Invalid reorder payload." };
+  }
+
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error: uErr } = await supabase
+      .from("recipe_instruction_steps")
+      .update({ sort_order: i })
+      .eq("id", orderedIds[i])
+      .eq("recipe_id", recipeId);
+    if (uErr) return { ok: false as const, error: uErr.message };
+  }
+
+  await syncRecipeInstructionsTextFromSteps(supabase, recipeId);
+  revalidateRecipeIngredientPaths(recipeId);
+  return { ok: true as const };
 }
 
 export async function deleteRecipeAction(recipeId: number) {

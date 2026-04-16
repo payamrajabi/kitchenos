@@ -13,6 +13,7 @@ import {
   updateRecipeIngredientSectionAction,
 } from "@/app/actions/recipes";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
+import { useIsRecipeEditing } from "@/components/recipe-edit-mode";
 import {
   DndContext,
   type DragEndEvent,
@@ -26,24 +27,31 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DotsSixVertical, Trash } from "@phosphor-icons/react";
-import { RECIPE_UNITS } from "@/lib/unit-mapping";
+import { DotsSixVertical, DotsThree, Trash } from "@phosphor-icons/react";
+import { displayAmount } from "@/lib/parse-amount";
+import { pluralizeUnit, RECIPE_UNITS } from "@/lib/unit-mapping";
 import type { RecipeIngredientRow, RecipeIngredientSectionRow } from "@/types/database";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
   type CSSProperties,
   type Dispatch,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type Ref,
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { createPortal } from "react-dom";
+
+const emptySubscribe = () => () => {};
 
 type IngredientOption = {
   id: number;
@@ -63,8 +71,11 @@ type Suggestion =
   | {
       kind: "existing";
       key: string;
+      /** Plain full line for accessibility / create rows. */
       label: string;
       ingredient: IngredientOption;
+      /** When set, show "Parent > Variant" with parent and separator muted. */
+      parentDisplayName?: string;
     }
   | {
       kind: "create";
@@ -92,6 +103,95 @@ function coalesceIsOptional(raw: unknown): boolean {
 
 function sortIngredientOptions(options: IngredientOption[]) {
   return [...options].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function IngredientRowActionsMenu({
+  disabled,
+  ingredientLabel,
+  isOptional,
+  onToggleOptional,
+  onRemove,
+}: {
+  disabled: boolean;
+  ingredientLabel: string;
+  isOptional: boolean;
+  onToggleOptional: (next: boolean) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e: globalThis.MouseEvent) => {
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const panelOpen = open && !disabled;
+
+  const stopMenuMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  }, []);
+
+  return (
+    <div ref={rootRef} className="recipe-ingredient-actions-menu">
+      <button
+        type="button"
+        className="recipe-ingredient-actions-trigger"
+        disabled={disabled}
+        aria-haspopup="true"
+        aria-expanded={panelOpen}
+        aria-label={`More options for ${ingredientLabel}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <DotsThree className="recipe-ingredient-actions-icon" size={16} weight="bold" aria-hidden />
+      </button>
+      {panelOpen ? (
+        <div
+          className="recipe-ingredient-actions-panel"
+          role="menu"
+          aria-label={`Options for ${ingredientLabel}`}
+          onMouseDown={stopMenuMouseDown}
+        >
+          <label className="recipe-ingredient-actions-menu-option" role="menuitemcheckbox" aria-checked={isOptional}>
+            <input
+              type="checkbox"
+              className="recipe-ingredient-actions-menu-checkbox"
+              checked={isOptional}
+              disabled={disabled}
+              onChange={(e) => onToggleOptional(e.target.checked)}
+              aria-label={`Optional for ${ingredientLabel}`}
+            />
+            <span>Optional</span>
+          </label>
+          <button
+            type="button"
+            className="recipe-ingredient-actions-menu-remove"
+            role="menuitem"
+            disabled={disabled}
+            onClick={() => {
+              setOpen(false);
+              onRemove();
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function sortSectionsCopy(sections: RecipeIngredientSectionRow[]) {
@@ -249,6 +349,9 @@ function replaceSegmentInFullList(
   return inserted ? next : full;
 }
 
+/** Ingredient name autocomplete: avoid a huge list on focus; wait for a few typed characters. */
+const MIN_INGREDIENT_AUTOCOMPLETE_CHARS = 3;
+
 function IngredientSearchControl({
   knownIngredients,
   disabled,
@@ -284,21 +387,8 @@ function IngredientSearchControl({
 
   const trimmedQuery = query.trim();
   const loweredQuery = trimmedQuery.toLowerCase();
-
-  const variantsByParent = useMemo(() => {
-    const map = new Map<number, IngredientOption[]>();
-    for (const ing of knownIngredients) {
-      if (ing.parentIngredientId) {
-        const list = map.get(ing.parentIngredientId) ?? [];
-        list.push(ing);
-        map.set(ing.parentIngredientId, list);
-      }
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => (a.variantSortOrder ?? 0) - (b.variantSortOrder ?? 0));
-    }
-    return map;
-  }, [knownIngredients]);
+  const queryMeetsAutocompleteThreshold =
+    trimmedQuery.length >= MIN_INGREDIENT_AUTOCOMPLETE_CHARS;
 
   const parentNameById = useMemo(() => {
     const map = new Map<number, string>();
@@ -311,11 +401,11 @@ function IngredientSearchControl({
   }, [knownIngredients]);
 
   const matchingIngredients = useMemo(() => {
-    if (!loweredQuery) return knownIngredients.slice(0, 12);
+    if (!queryMeetsAutocompleteThreshold) return [];
     return knownIngredients.filter((ingredient) =>
       ingredient.name.toLowerCase().includes(loweredQuery),
     );
-  }, [knownIngredients, loweredQuery]);
+  }, [knownIngredients, loweredQuery, queryMeetsAutocompleteThreshold]);
 
   const exactMatchExists = useMemo(
     () =>
@@ -333,25 +423,20 @@ function IngredientSearchControl({
         ? parentNameById.get(ingredient.parentIngredientId!) ?? null
         : null;
 
-      const hasVariants = !isVariant && variantsByParent.has(ingredient.id);
-      let resolvedIngredient = ingredient;
-      if (hasVariants) {
-        const firstVariant = variantsByParent.get(ingredient.id)?.[0];
-        if (firstVariant) resolvedIngredient = firstVariant;
-      }
-
-      const label = isVariant && parentName
-        ? `${ingredient.name}  ‹${parentName}›`
-        : ingredient.name;
+      const label =
+        isVariant && parentName
+          ? `${parentName} > ${ingredient.name}`
+          : ingredient.name;
 
       return {
         kind: "existing" as const,
         key: `ingredient-${ingredient.id}`,
         label,
-        ingredient: resolvedIngredient,
+        ingredient,
+        ...(isVariant && parentName ? { parentDisplayName: parentName } : {}),
       };
     });
-    if (trimmedQuery && !exactMatchExists) {
+    if (queryMeetsAutocompleteThreshold && trimmedQuery && !exactMatchExists) {
       next.push({
         kind: "create",
         key: `create-${trimmedQuery.toLowerCase()}`,
@@ -360,7 +445,13 @@ function IngredientSearchControl({
       });
     }
     return next;
-  }, [exactMatchExists, matchingIngredients, trimmedQuery, variantsByParent, parentNameById]);
+  }, [
+    exactMatchExists,
+    matchingIngredients,
+    trimmedQuery,
+    parentNameById,
+    queryMeetsAutocompleteThreshold,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -395,9 +486,12 @@ function IngredientSearchControl({
 
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
+      const thresholdOk =
+        event.currentTarget.value.trim().length >= MIN_INGREDIENT_AUTOCOMPLETE_CHARS;
+
       if (!open && event.key === "ArrowDown") {
         event.preventDefault();
-        setOpen(true);
+        if (thresholdOk) setOpen(true);
         return;
       }
 
@@ -433,6 +527,8 @@ function IngredientSearchControl({
     [closePicker, highlightIdx, onCancel, open, pickSuggestion, suggestions],
   );
 
+  const listOpen = open && queryMeetsAutocompleteThreshold;
+
   return (
     <div ref={rootRef} className="recipe-ingredients-add-cell-inner">
       {labelHidden ? (
@@ -448,13 +544,16 @@ function IngredientSearchControl({
           className="ss-input recipe-ingredients-add-input"
           value={query}
           onChange={(event) => {
-            setQuery(event.target.value);
+            const next = event.target.value;
+            setQuery(next);
             setHighlightIdx(0);
-            setOpen(true);
+            setOpen(next.trim().length >= MIN_INGREDIENT_AUTOCOMPLETE_CHARS);
           }}
           onFocus={() => {
             setHighlightIdx(0);
-            setOpen(true);
+            if (query.trim().length >= MIN_INGREDIENT_AUTOCOMPLETE_CHARS) {
+              setOpen(true);
+            }
           }}
           onKeyDown={handleInputKeyDown}
           placeholder={placeholder}
@@ -464,7 +563,7 @@ function IngredientSearchControl({
           aria-label={ariaLabel}
         />
       </div>
-      {open ? (
+      {listOpen ? (
         <ul className="ss-list recipe-ingredients-suggestions" role="listbox">
           {suggestions.length ? (
             suggestions.map((suggestion, index) => (
@@ -479,7 +578,17 @@ function IngredientSearchControl({
                 }}
                 onMouseEnter={() => setHighlightIdx(index)}
               >
-                {suggestion.label}
+                {suggestion.kind === "existing" && suggestion.parentDisplayName ? (
+                  <>
+                    <span className="recipe-ingredients-suggestion-muted">
+                      {suggestion.parentDisplayName}
+                      {" > "}
+                    </span>
+                    {suggestion.ingredient.name}
+                  </>
+                ) : (
+                  suggestion.label
+                )}
               </li>
             ))
           ) : (
@@ -508,8 +617,11 @@ function RecipeIngredientItemRow({
   focusAmountLineId,
   onConsumeFocusAmount,
   addIngredientInputId,
+  prepared,
+  onTogglePrepared,
   rowRef,
   rowStyle,
+  rowClassName,
   dragHandleSlot,
 }: {
   recipeId: number;
@@ -528,30 +640,43 @@ function RecipeIngredientItemRow({
   focusAmountLineId: number | null;
   onConsumeFocusAmount: () => void;
   addIngredientInputId: string | null;
+  prepared: boolean;
+  onTogglePrepared: () => void;
   rowRef?: Ref<HTMLTableRowElement>;
   rowStyle?: CSSProperties;
+  rowClassName?: string;
   dragHandleSlot?: ReactNode;
 }) {
+  const isEditing = useIsRecipeEditing();
   const [amount, setAmount] = useState(item.amount ?? "");
+  const [editingAmount, setEditingAmount] = useState(false);
   const [naming, setNaming] = useState(false);
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setAmount(item.amount ?? "");
+  }, [item.amount]);
+
+  useEffect(() => {
     if (focusAmountLineId !== item.id) return;
     const frame = requestAnimationFrame(() => {
-      const el = amountInputRef.current;
-      if (el) {
-        el.focus();
-        el.select();
-      }
+      setEditingAmount(true);
       onConsumeFocusAmount();
     });
     return () => cancelAnimationFrame(frame);
   }, [focusAmountLineId, item.id, onConsumeFocusAmount]);
 
+  useEffect(() => {
+    if (editingAmount && amountInputRef.current) {
+      amountInputRef.current.focus();
+      amountInputRef.current.select();
+    }
+  }, [editingAmount]);
+
   const commitAmount = useCallback(() => {
     const next = amount.trim();
     const prev = (item.amount ?? "").trim();
+    setEditingAmount(false);
     if (next === prev) return;
     onSaveAmount(item.id, next);
   }, [amount, item.amount, item.id, onSaveAmount]);
@@ -609,12 +734,25 @@ function RecipeIngredientItemRow({
   );
 
   return (
-    <tr ref={rowRef} style={rowStyle}>
+    <tr
+      ref={rowRef}
+      style={rowStyle}
+      className={["recipe-ingredient-row", prepared ? "recipe-ingredient-row--prepared" : "", rowClassName].filter(Boolean).join(" ")}
+    >
+      <td className="recipe-ingredient-prep-cell">
+        <input
+          type="checkbox"
+          className="recipe-ingredient-prep-checkbox"
+          checked={prepared}
+          onChange={onTogglePrepared}
+          aria-label={`Mark ${item.ingredients?.name ?? "ingredient"} as prepared`}
+        />
+      </td>
       {dragHandleSlot != null ? (
         <td className="recipe-ingredient-drag-cell">{dragHandleSlot}</td>
       ) : null}
       <td className="recipe-ingredient-name-cell">
-        {naming ? (
+        {isEditing && naming ? (
           <IngredientSearchControl
             key={`${item.id}-${item.ingredient_id}`}
             knownIngredients={knownIngredients}
@@ -627,73 +765,102 @@ function RecipeIngredientItemRow({
             onPickSuggestion={pickLineIngredient}
             onCancel={() => setNaming(false)}
           />
-        ) : (
+        ) : isEditing ? (
           <button
             type="button"
             className="recipe-ingredient-name-button"
             disabled={namePickerDisabled}
             onClick={() => setNaming(true)}
           >
-            <span className="recipe-ingredient-name">{displayName}</span>
+            <span className="recipe-ingredient-name">
+              {displayName}
+              {item.is_optional ? (
+                <span className="recipe-ingredient-optional-flag"> (optional)</span>
+              ) : null}
+            </span>
           </button>
+        ) : (
+          <span className="recipe-ingredient-name recipe-ingredient-name--static">
+            {displayName}
+            {item.is_optional ? (
+              <span className="recipe-ingredient-optional-flag"> (optional)</span>
+            ) : null}
+          </span>
         )}
       </td>
       <td className="recipe-ingredient-amount-cell">
-        <input
-          ref={amountInputRef}
-          type="text"
-          className="recipe-ingredient-amount-input"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          onBlur={commitAmount}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (addIngredientInputId) {
-                document.getElementById(addIngredientInputId)?.focus();
-              } else {
-                (e.target as HTMLInputElement).blur();
+        {isEditing && editingAmount ? (
+          <input
+            ref={amountInputRef}
+            type="text"
+            className="recipe-ingredient-amount-input"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onBlur={commitAmount}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (addIngredientInputId) {
+                  document.getElementById(addIngredientInputId)?.focus();
+                } else {
+                  (e.target as HTMLInputElement).blur();
+                }
               }
-            }
-          }}
-          disabled={disabled}
-          placeholder="Amount"
-          aria-label={`Amount for ${item.ingredients?.name ?? "ingredient"}`}
-        />
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setAmount(item.amount ?? "");
+                setEditingAmount(false);
+              }
+            }}
+            disabled={disabled}
+            placeholder="—"
+            aria-label={`Amount for ${item.ingredients?.name ?? "ingredient"}`}
+          />
+        ) : isEditing ? (
+          <button
+            type="button"
+            className="recipe-ingredient-amount-display"
+            disabled={disabled}
+            onClick={() => setEditingAmount(true)}
+            aria-label={`Edit amount for ${item.ingredients?.name ?? "ingredient"}`}
+          >
+            {displayAmount(item.amount) || "—"}
+          </button>
+        ) : (
+          <span className="recipe-ingredient-amount-display recipe-ingredient-amount-display--static">
+            {displayAmount(item.amount) || "—"}
+          </span>
+        )}
       </td>
       <td className="recipe-ingredient-unit-cell">
-        <SearchableSelect
-          className="inventory-unit-select recipe-ingredient-unit-select"
-          options={UNIT_OPTIONS}
-          value={item.unit || DEFAULT_UNIT}
-          onChange={(unit) => onChangeUnit(item.id, unit || DEFAULT_UNIT)}
-          disabled={disabled}
-          aria-label={`Unit for ${item.ingredients?.name ?? "ingredient"}`}
-          placeholder={DEFAULT_UNIT}
-        />
-      </td>
-      <td className="recipe-ingredient-optional-cell">
-        <label className="recipe-ingredient-optional-label">
-          <input
-            type="checkbox"
-            className="recipe-ingredient-optional-input"
-            checked={item.is_optional}
-            onChange={(e) => onToggleOptional(item.id, e.target.checked)}
+        {isEditing ? (
+          <SearchableSelect
+            className="inventory-unit-select recipe-ingredient-unit-select"
+            bareInline
+            options={UNIT_OPTIONS}
+            value={item.unit || DEFAULT_UNIT}
+            onChange={(unit) => onChangeUnit(item.id, unit || DEFAULT_UNIT)}
             disabled={disabled}
-            aria-label={`Mark ${item.ingredients?.name ?? "ingredient"} as optional`}
+            aria-label={`Unit for ${item.ingredients?.name ?? "ingredient"}`}
+            placeholder={DEFAULT_UNIT}
+            triggerLabel={pluralizeUnit(item.unit || DEFAULT_UNIT, amount)}
           />
-        </label>
+        ) : (
+          <span className="recipe-ingredient-unit-text">
+            {pluralizeUnit(item.unit || DEFAULT_UNIT, amount)}
+          </span>
+        )}
       </td>
-      <td className="recipe-ingredient-remove-cell">
-        <button
-          type="button"
-          className="recipe-ingredient-remove-button"
-          onClick={() => onRemove(item.id)}
-          disabled={disabled}
-          aria-label={`Remove ${item.ingredients?.name ?? "ingredient"}`}
-        >
-          Remove
-        </button>
+      <td className="recipe-ingredient-actions-cell">
+        {isEditing ? (
+          <IngredientRowActionsMenu
+            disabled={disabled}
+            ingredientLabel={item.ingredients?.name ?? "ingredient"}
+            isOptional={item.is_optional}
+            onToggleOptional={(v) => onToggleOptional(item.id, v)}
+            onRemove={() => onRemove(item.id)}
+          />
+        ) : null}
       </td>
     </tr>
   );
@@ -716,6 +883,8 @@ function SortableRecipeIngredientRow({
   focusAmountLineId,
   onConsumeFocusAmount,
   addIngredientInputId,
+  prepared,
+  onTogglePrepared,
   dragDisabled,
 }: {
   recipeId: number;
@@ -734,11 +903,14 @@ function SortableRecipeIngredientRow({
   focusAmountLineId: number | null;
   onConsumeFocusAmount: () => void;
   addIngredientInputId: string | null;
+  prepared: boolean;
+  onTogglePrepared: () => void;
   dragDisabled: boolean;
 }) {
+  const isEditing = useIsRecipeEditing();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(item.id),
-    disabled: dragDisabled,
+    disabled: dragDisabled || !isEditing,
   });
   const rowStyle: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -766,42 +938,26 @@ function SortableRecipeIngredientRow({
       focusAmountLineId={focusAmountLineId}
       onConsumeFocusAmount={onConsumeFocusAmount}
       addIngredientInputId={addIngredientInputId}
+      prepared={prepared}
+      onTogglePrepared={onTogglePrepared}
       rowRef={setNodeRef}
       rowStyle={rowStyle}
+      rowClassName={isDragging ? "recipe-ingredient-row--dragging" : undefined}
       dragHandleSlot={
-        <button
-          type="button"
-          className="recipe-ingredient-drag-handle"
-          {...attributes}
-          {...listeners}
-          disabled={dragDisabled}
-          aria-label={`Reorder ${item.ingredients?.name ?? "ingredient"}`}
-        >
-          <DotsSixVertical className="recipe-ingredient-drag-icon" size={20} weight="bold" aria-hidden />
-        </button>
+        isEditing ? (
+          <button
+            type="button"
+            className="recipe-ingredient-drag-handle"
+            {...attributes}
+            {...listeners}
+            disabled={dragDisabled}
+            aria-label={`Reorder ${item.ingredients?.name ?? "ingredient"}`}
+          >
+            <DotsSixVertical className="recipe-ingredient-drag-icon" size={12} weight="bold" aria-hidden />
+          </button>
+        ) : null
       }
     />
-  );
-}
-
-function IngredientsTableHeadRow() {
-  return (
-    <thead>
-      <tr>
-        <th className="recipe-ingredient-drag-header" scope="col">
-          <span className="visually-hidden">Reorder</span>
-        </th>
-        <th>Name</th>
-        <th>Amount</th>
-        <th>Unit</th>
-        <th className="recipe-ingredient-optional-header" scope="col" title="Optional ingredient">
-          Opt.
-        </th>
-        <th className="recipe-ingredient-remove-header">
-          <span className="visually-hidden">Remove ingredient</span>
-        </th>
-      </tr>
-    </thead>
   );
 }
 
@@ -823,6 +979,8 @@ function IngredientLinesSortable({
   focusAmountLineId,
   onConsumeFocusAmount,
   addIngredientInputId,
+  preparedIds,
+  onTogglePrepared,
 }: {
   recipeId: number;
   /** Distinct SortableContext id when one DndContext hosts multiple tbodys (flat layout). */
@@ -842,6 +1000,8 @@ function IngredientLinesSortable({
   focusAmountLineId: number | null;
   onConsumeFocusAmount: () => void;
   addIngredientInputId: string | null;
+  preparedIds: Set<number>;
+  onTogglePrepared: (lineId: number) => void;
 }) {
   const ids = useMemo(() => items.map((i) => String(i.id)), [items]);
 
@@ -879,6 +1039,8 @@ function IngredientLinesSortable({
               focusAmountLineId={focusAmountLineId}
               onConsumeFocusAmount={onConsumeFocusAmount}
               addIngredientInputId={addIngredientInputId}
+              prepared={preparedIds.has(item.id)}
+              onTogglePrepared={() => onTogglePrepared(item.id)}
               dragDisabled={isPending}
             />
           );
@@ -899,12 +1061,23 @@ function ComponentSectionHeading({
   onCommit: (nextTitle: string) => void;
   onDelete?: () => void;
 }) {
+  const isEditing = useIsRecipeEditing();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
 
   useEffect(() => {
     setDraft(title);
   }, [title]);
+
+  if (!isEditing) {
+    return (
+      <div className="recipe-ingredient-section-heading recipe-ingredient-section-heading--static">
+        <h4 className="recipe-ingredient-section-static-title">
+          {title.trim() || "Untitled component"}
+        </h4>
+      </div>
+    );
+  }
 
   if (editing) {
     return (
@@ -939,8 +1112,8 @@ function ComponentSectionHeading({
             className="recipe-ingredient-section-delete"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
-              onDelete();
               setEditing(false);
+              onDelete();
             }}
             disabled={disabled}
             aria-label="Delete component"
@@ -968,6 +1141,7 @@ function ComponentSectionHeading({
           className="recipe-ingredient-section-delete"
           onClick={(e) => {
             e.stopPropagation();
+            setEditing(false);
             onDelete();
           }}
           disabled={disabled}
@@ -1003,6 +1177,7 @@ function IngredientAddTableRow({
   setError: (msg: string | null) => void;
   onLineAdded?: (lineId: number) => void;
 }) {
+  const isEditing = useIsRecipeEditing();
   const [fieldKey, setFieldKey] = useState(0);
 
   const pickSuggestion = useCallback(
@@ -1056,8 +1231,14 @@ function IngredientAddTableRow({
     [onLineAdded, recipeId, runAction, sectionId, setError, setKnownIngredients, upsertLocalRow],
   );
 
+  if (!isEditing) return null;
+
   return (
     <tr className="recipe-ingredients-add-row">
+      <td
+        className="recipe-ingredient-prep-cell recipe-ingredients-add-placeholder-cell"
+        aria-hidden="true"
+      />
       <td
         className="recipe-ingredient-drag-cell recipe-ingredients-add-placeholder-cell"
         aria-hidden="true"
@@ -1081,13 +1262,9 @@ function IngredientAddTableRow({
       <td className="recipe-ingredient-unit-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
         —
       </td>
-      <td
-        className="recipe-ingredient-optional-cell recipe-ingredients-add-placeholder-cell"
-        aria-hidden="true"
-      >
+      <td className="recipe-ingredient-actions-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
         —
       </td>
-      <td className="recipe-ingredient-remove-cell" />
     </tr>
   );
 }
@@ -1099,6 +1276,7 @@ export function RecipeIngredientsEditor({
   ingredientOptions,
 }: Props) {
   const router = useRouter();
+  const isEditing = useIsRecipeEditing();
   const [sections, setSections] = useState(() => sortSectionsCopy(initialSections));
   const sectionsRef = useRef(sections);
   sectionsRef.current = sections;
@@ -1112,6 +1290,23 @@ export function RecipeIngredientsEditor({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [focusAmountLineId, setFocusAmountLineId] = useState<number | null>(null);
+  const [preparedIds, setPreparedIds] = useState(() => new Set<number>());
+  const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const sectionDeleteTitleId = useId();
+  const sectionDeleteCancelRef = useRef<HTMLButtonElement>(null);
+  const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
+
+  const togglePrepared = useCallback((lineId: number) => {
+    setPreparedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  }, []);
 
   const consumeFocusAmount = useCallback(() => {
     setFocusAmountLineId(null);
@@ -1309,6 +1504,87 @@ export function RecipeIngredientsEditor({
     [recipeId, runAction],
   );
 
+  const closeSectionDeleteModal = useCallback(() => {
+    setSectionDeleteConfirm(null);
+  }, []);
+
+  const confirmDeleteSection = useCallback(() => {
+    const target = sectionDeleteConfirm;
+    if (!target) return;
+    setSectionDeleteConfirm(null);
+    removeSection(target.id);
+  }, [sectionDeleteConfirm, removeSection]);
+
+  useEffect(() => {
+    if (!sectionDeleteConfirm) return;
+    const id = requestAnimationFrame(() => sectionDeleteCancelRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [sectionDeleteConfirm]);
+
+  useEffect(() => {
+    if (!sectionDeleteConfirm) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") closeSectionDeleteModal();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sectionDeleteConfirm, closeSectionDeleteModal]);
+
+  const sectionDeleteModal =
+    isClient && sectionDeleteConfirm ? (
+      <div className="modal open" aria-hidden="false" role="presentation">
+        <button
+          type="button"
+          className="modal-backdrop"
+          aria-label="Close delete confirmation"
+          onClick={closeSectionDeleteModal}
+        />
+        <div
+          className="modal-card modal-delete-recipe"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={sectionDeleteTitleId}
+        >
+          <button
+            type="button"
+            className="modal-close icon-ghost"
+            aria-label="Close"
+            onClick={closeSectionDeleteModal}
+          >
+            <i className="ph ph-x" aria-hidden="true" />
+          </button>
+          <div className="delete-ingredient-modal-body">
+            <h2 id={sectionDeleteTitleId} className="delete-ingredient-modal-title">
+              Delete component
+            </h2>
+            <p className="delete-ingredient-modal-warning">
+              Delete <strong>{sectionDeleteConfirm.title}</strong>? Ingredients in this component stay on the recipe; they
+              are only ungrouped from this heading.
+            </p>
+            <div className="delete-ingredient-modal-actions">
+              <button
+                ref={sectionDeleteCancelRef}
+                type="button"
+                className="delete-ingredient-modal-cancel"
+                onClick={closeSectionDeleteModal}
+                disabled={isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="delete-ingredient-modal-confirm"
+                onClick={confirmDeleteSection}
+                disabled={isPending}
+              >
+                Delete component
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   const sectionIdSet = useMemo(() => new Set(sections.map((s) => s.id)), [sections]);
   const orphanItems = useMemo(
     () =>
@@ -1319,6 +1595,7 @@ export function RecipeIngredientsEditor({
   );
 
   return (
+    <>
     <section className="section">
       <h3>Ingredients</h3>
       <div className="recipe-ingredients-editor">
@@ -1337,7 +1614,9 @@ export function RecipeIngredientsEditor({
                 onReorderFlat={reorderFlatLayout}
               >
                 <table className="ingredients-table recipe-ingredients-table">
-                  <IngredientsTableHeadRow />
+                  <caption className="visually-hidden">
+                    Ingredients: reorder, name, amount, unit, row menu.
+                  </caption>
                   <IngredientLinesSortable
                     recipeId={recipeId}
                     sortableListId={`recipe-${recipeId}-flat-all`}
@@ -1356,6 +1635,8 @@ export function RecipeIngredientsEditor({
                     focusAmountLineId={focusAmountLineId}
                     onConsumeFocusAmount={consumeFocusAmount}
                     addIngredientInputId="recipe-ingredient-add-flat"
+                    preparedIds={preparedIds}
+                    onTogglePrepared={togglePrepared}
                   />
                   <tbody>
                     <IngredientAddTableRow
@@ -1385,7 +1666,12 @@ export function RecipeIngredientsEditor({
                     title={sec.title}
                     disabled={isPending}
                     onCommit={(t) => saveSectionTitle(sec.id, t)}
-                    onDelete={() => removeSection(sec.id)}
+                    onDelete={() =>
+                      setSectionDeleteConfirm({
+                        id: sec.id,
+                        title: sec.title.trim() || "Untitled component",
+                      })
+                    }
                   />
                   <div className="table-container recipe-ingredients-table-wrap">
                     <RecipeIngredientsTableDndSection
@@ -1395,7 +1681,9 @@ export function RecipeIngredientsEditor({
                       onReorderSegment={reorderSegment}
                     >
                       <table className="ingredients-table recipe-ingredients-table">
-                        <IngredientsTableHeadRow />
+                        <caption className="visually-hidden">
+                          Ingredients: reorder, name, amount, unit, row menu.
+                        </caption>
                         <IngredientLinesSortable
                           recipeId={recipeId}
                           sortableListId={`grouped-${sec.id}`}
@@ -1414,6 +1702,8 @@ export function RecipeIngredientsEditor({
                           focusAmountLineId={focusAmountLineId}
                           onConsumeFocusAmount={consumeFocusAmount}
                           addIngredientInputId={`recipe-ingredient-add-${sec.id}`}
+                          preparedIds={preparedIds}
+                          onTogglePrepared={togglePrepared}
                         />
                         <tbody>
                           <IngredientAddTableRow
@@ -1439,9 +1729,11 @@ export function RecipeIngredientsEditor({
             {orphanItems.length ? (
               <section className="recipe-ingredient-section-block recipe-ingredient-section-orphan">
                 <h4 className="recipe-ingredient-section-static-title">Other ingredients</h4>
-                <p className="recipe-ingredients-orphan-hint">
-                  These ingredients are not assigned to a component—you can still edit them here.
-                </p>
+                {isEditing ? (
+                  <p className="recipe-ingredients-orphan-hint">
+                    These ingredients are not assigned to a component—you can still edit them here.
+                  </p>
+                ) : null}
                 <div className="table-container recipe-ingredients-table-wrap">
                   <RecipeIngredientsTableDndSection
                     dndId={`recipe-${recipeId}-orphans`}
@@ -1450,7 +1742,9 @@ export function RecipeIngredientsEditor({
                     onReorderSegment={reorderSegment}
                   >
                     <table className="ingredients-table recipe-ingredients-table">
-                      <IngredientsTableHeadRow />
+                      <caption className="visually-hidden">
+                        Ingredients: reorder, name, amount, unit, row menu.
+                      </caption>
                       <IngredientLinesSortable
                         recipeId={recipeId}
                         sortableListId="orphan"
@@ -1469,6 +1763,8 @@ export function RecipeIngredientsEditor({
                         focusAmountLineId={focusAmountLineId}
                         onConsumeFocusAmount={consumeFocusAmount}
                         addIngredientInputId={null}
+                        preparedIds={preparedIds}
+                        onTogglePrepared={togglePrepared}
                       />
                     </table>
                   </RecipeIngredientsTableDndSection>
@@ -1478,17 +1774,21 @@ export function RecipeIngredientsEditor({
           </div>
         )}
 
-        <div className="recipe-ingredients-add-component-wrap">
-          <button
-            type="button"
-            className="recipe-ingredients-add-component"
-            onClick={addComponent}
-            disabled={isPending}
-          >
-            Add component
-          </button>
-        </div>
+        {isEditing ? (
+          <div className="recipe-ingredients-add-component-wrap">
+            <button
+              type="button"
+              className="recipe-ingredients-add-component"
+              onClick={addComponent}
+              disabled={isPending}
+            >
+              Add component
+            </button>
+          </div>
+        ) : null}
       </div>
     </section>
+    {sectionDeleteModal ? createPortal(sectionDeleteModal, document.body) : null}
+    </>
   );
 }

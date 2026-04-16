@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { runNutritionPipeline } from "../pipeline";
-import type { FoodMatch, PipelineInput, NutritionSources } from "../types";
+import {
+  NUTRITION_SOURCE_LLM_ESTIMATE,
+  type FoodMatch,
+  type PipelineInput,
+  type NutritionSources,
+} from "../types";
 import type { USDAFoodDetail } from "../usda-client";
 
 function mockSources(overrides?: {
@@ -16,6 +21,9 @@ function mockSources(overrides?: {
 }
 
 const noopLlm = vi.fn().mockResolvedValue(null);
+/** Default: no approximate LLM fill (preserves old “no_match when APIs empty” behavior). */
+const noopLlmEstimate = vi.fn().mockResolvedValue(null);
+const pipelineTestDeps = { llmAssist: noopLlm, llmEstimate: noopLlmEstimate };
 
 const chickenCnf: FoodMatch = {
   sourceName: "Canadian Nutrient File",
@@ -105,9 +113,7 @@ describe("generic whole food — CNF first", () => {
       stockUnit: "g",
     };
 
-    const result = await runNutritionPipeline(input, sources, {
-      llmAssist: noopLlm,
-    });
+    const result = await runNutritionPipeline(input, sources, pipelineTestDeps);
 
     expect(result.status).toBe("filled");
     expect(result.basis).toBe("per_100g");
@@ -135,7 +141,7 @@ describe("generic — Foundation when CNF missing", () => {
         stockUnit: "g",
       },
       sources,
-      { llmAssist: noopLlm },
+      pipelineTestDeps,
     );
 
     expect(result.status).toBe("filled");
@@ -164,7 +170,7 @@ describe("branded packaged food", () => {
         stockUnit: "g",
       },
       sources,
-      { llmAssist: noopLlm },
+      pipelineTestDeps,
     );
 
     expect(result.kcal).toBe(100);
@@ -180,6 +186,7 @@ describe("macros always per 100 g", () => {
       description: "Egg",
       dataType: "Foundation",
       foodPortions: [{ gramWeight: 50, modifier: "1 large" }],
+      micronutrients: [],
     };
     const fetchFoodDetail = vi.fn().mockResolvedValue(detail);
 
@@ -209,7 +216,7 @@ describe("macros always per 100 g", () => {
         stockUnit: "count",
       },
       sources,
-      { llmAssist: noopLlm, fetchFoodDetail },
+      { ...pipelineTestDeps, fetchFoodDetail },
     );
 
     expect(result.kcal).toBe(143);
@@ -234,7 +241,7 @@ describe("ambiguous Foundation matches", () => {
         stockUnit: "g",
       },
       sources,
-      { llmAssist: noopLlm },
+      pipelineTestDeps,
     );
 
     expect(result.kcal).toBeGreaterThan(0);
@@ -254,7 +261,7 @@ describe("deterministic JSON shape", () => {
         stockUnit: "g",
       },
       sources,
-      { llmAssist: noopLlm },
+      pipelineTestDeps,
     );
 
     for (const key of [
@@ -272,14 +279,17 @@ describe("deterministic JSON shape", () => {
       "confidence",
       "needs_review",
       "notes",
+      "micronutrients",
+      "portions",
+      "food_type",
     ] as const) {
       expect(result).toHaveProperty(key);
     }
   });
 });
 
-describe("no API macro invention", () => {
-  it("never sets nutrients without a source row", async () => {
+describe("no official match", () => {
+  it("returns no_match when APIs are empty and LLM estimate is unavailable", async () => {
     const sources = mockSources({
       cnf: [],
       usda: vi.fn().mockResolvedValue([]),
@@ -292,10 +302,46 @@ describe("no API macro invention", () => {
         stockUnit: "g",
       },
       sources,
-      { llmAssist: noopLlm },
+      pipelineTestDeps,
     );
 
     expect(result.status).toBe("no_match");
     expect(result.kcal).toBeNull();
+    expect(result.notes ?? "").toMatch(
+      /OPENAI_API_KEY|Approximate AI fallback did not return usable/,
+    );
+  });
+
+  it("uses approximate LLM values when official sources find nothing", async () => {
+    const sources = mockSources({
+      cnf: [],
+      usda: vi.fn().mockResolvedValue([]),
+    });
+    const mockEstimate = vi.fn().mockResolvedValue({
+      kcalPer100g: 31,
+      fatPer100g: 0.3,
+      proteinPer100g: 1,
+      carbsPer100g: 7,
+      gramsPerCountUnit: null,
+      rationale: "Assumed raw sweet green pepper.",
+    });
+
+    const result = await runNutritionPipeline(
+      {
+        ingredientId: 42,
+        name: "Green bell pepper",
+        brand: null,
+        stockUnit: "g",
+      },
+      sources,
+      { llmAssist: noopLlm, llmEstimate: mockEstimate },
+    );
+
+    expect(result.status).toBe("needs_review");
+    expect(result.source_name).toBe(NUTRITION_SOURCE_LLM_ESTIMATE);
+    expect(result.kcal).toBe(31);
+    expect(result.protein_g).toBe(1);
+    expect(result.needs_review).toBe(true);
+    expect(mockEstimate).toHaveBeenCalled();
   });
 });

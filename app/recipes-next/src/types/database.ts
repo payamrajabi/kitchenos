@@ -1,6 +1,8 @@
 export type RecipeRow = {
   id: number;
   name: string;
+  /** Short summary under the title; UI caps at 250 characters. */
+  description?: string | null;
   image_url: string | null;
   image_urls: unknown;
   /** 0–100: vertical focal point for square cover crops (default 50). */
@@ -28,6 +30,8 @@ export type RecipeRow = {
   updated_at?: string;
 };
 
+export type FoodType = "generic" | "branded" | "custom";
+
 export type IngredientRow = {
   id: number;
   name: string;
@@ -37,12 +41,18 @@ export type IngredientRow = {
   minimum_stock: string | null;
   maximum_stock: string | null;
   category: string | null;
+  /** Grocery store section (Produce, Pantry, …). Not the fridge/freezer `category`. */
+  grocery_category?: string | null;
   notes: string | null;
   ingredients_text: string | null;
   preferred_vendor?: string | null;
   brand_or_manufacturer?: string | null;
   parent_ingredient_id?: number | null;
   variant_sort_order?: number;
+  /** generic = research-grade (USDA/CNF), branded = label data, custom = user-entered. */
+  food_type?: FoodType;
+  /** UPC / EAN / GTIN barcode for branded products. */
+  barcode?: string | null;
   kcal?: number | null;
   fat_g?: number | null;
   protein_g?: number | null;
@@ -55,6 +65,34 @@ export type IngredientRow = {
   nutrition_confidence?: number | null;
   nutrition_needs_review?: boolean;
   nutrition_notes?: string | null;
+  /** Grams; UI scales per-100g kcal/macros for display. Default 100. */
+  nutrition_serving_size_g?: number;
+  /** When nutrition data was last fetched from an external source. */
+  nutrition_fetched_at?: string | null;
+};
+
+export type IngredientNutrientRow = {
+  ingredient_id: number;
+  /** USDA nutrient ID (canonical key, e.g. 1079 = fiber, 1089 = iron). */
+  nutrient_id: number;
+  nutrient_name: string;
+  /** Amount per the ingredient's nutrition basis (typically per 100 g). */
+  value: number;
+  /** Measurement unit: "g", "mg", "mcg", "IU". */
+  unit: string;
+};
+
+export type IngredientPortionRow = {
+  id: number;
+  ingredient_id: number;
+  /** Weight in grams for this named portion. */
+  gram_weight: number;
+  /** Human-readable label, e.g. "1 large", "1 cup chopped", "1 tbsp". */
+  description: string;
+  /** Where this portion data came from. */
+  source?: string | null;
+  is_default?: boolean;
+  created_at?: string;
 };
 
 export type RecipeIngredientSectionRow = {
@@ -77,6 +115,18 @@ export type RecipeIngredientRow = {
   is_optional: boolean;
   created_at?: string;
   ingredients?: Pick<IngredientRow, "id" | "name"> | null;
+};
+
+export type RecipeInstructionStepRow = {
+  id: number;
+  recipe_id: number;
+  sort_order: number;
+  body: string;
+  /** Low end of the timer range in seconds (or the single value when no range). */
+  timer_seconds_low?: number | null;
+  /** High end of the timer range in seconds. Null when there is no range. */
+  timer_seconds_high?: number | null;
+  created_at?: string;
 };
 
 export type InventoryItemRow = {

@@ -63,6 +63,7 @@ export function RecipeUnitSelect({
       onChange={handleChange}
       disabled={isPending || !!externalDisabled}
       aria-label="Recipe unit"
+      bareInline
     />
   );
 }

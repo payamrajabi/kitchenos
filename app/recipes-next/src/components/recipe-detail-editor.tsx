@@ -5,19 +5,28 @@ import {
   publishRecipeToCommunityAction,
   updateRecipeAction,
 } from "@/app/actions/recipes";
+import { generateRecipeImageAction } from "@/app/actions/recipe-image";
 import { RecipeIngredientsEditor } from "@/components/recipe-ingredients-editor";
+import { RecipeInstructionsEditor } from "@/components/recipe-instructions-editor";
+import { RecipeEditModeProvider } from "@/components/recipe-edit-mode";
+import { RecipeDescriptionRichText } from "@/components/recipe-description-rich-text";
 import { isSupabaseConfigured, recipeImagesBucket } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
-import { primaryImageUrl, recipeImageFocusYPercent } from "@/lib/recipes";
+import { applyMarkdownLinkPaste } from "@/lib/recipe-description-links";
+import {
+  primaryImageUrl,
+  recipeImageFocusYPercent,
+  RECIPE_DESCRIPTION_MAX_LENGTH,
+} from "@/lib/recipes";
 import type {
   RecipeIngredientRow,
   RecipeIngredientSectionRow,
+  RecipeInstructionStepRow,
   RecipeRow,
 } from "@/types/database";
 import { RecipeMealTypesField } from "@/components/recipe-meal-types-field";
-import { LimitedRecipeTextField } from "@/components/limited-recipe-text-field";
 import { mealTypesEqual, normalizeMealTypesFromDb } from "@/lib/recipe-meal-types";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -27,11 +36,13 @@ import {
   useSyncExternalStore,
   useTransition,
   type ChangeEvent,
+  type ClipboardEvent,
   type DragEvent,
   type MouseEvent,
   type PointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 
 const emptySubscribe = () => () => {};
 
@@ -46,7 +57,9 @@ type Props = {
   recipe: RecipeRow;
   recipeIngredients: RecipeIngredientRow[];
   recipeIngredientSections: RecipeIngredientSectionRow[];
+  recipeInstructionSteps: RecipeInstructionStepRow[];
   availableIngredients: RecipeIngredientOption[];
+  autoGenerating?: boolean;
 };
 
 function str(v: string | null | undefined) {
@@ -62,9 +75,14 @@ export function RecipeDetailEditor({
   recipe: initial,
   recipeIngredients,
   recipeIngredientSections,
+  recipeInstructionSteps,
   availableIngredients,
+  autoGenerating = false,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const autoGenFlag = searchParams?.get("gen") === "1";
+  const effectiveAutoGenerating = autoGenerating || autoGenFlag;
   const fileRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const replaceImageClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -76,11 +94,12 @@ export function RecipeDetailEditor({
   const [isPending, startTransition] = useTransition();
   const [imageBusy, setImageBusy] = useState(false);
   const [imageMessage, setImageMessage] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isImageDragOver, setIsImageDragOver] = useState(false);
   const [focusY, setFocusY] = useState(() => recipeImageFocusYPercent(initial));
   const [cropMode, setCropMode] = useState(false);
   const [name, setName] = useState(() => str(initial.name));
-  const [instructions, setInstructions] = useState(() => str(initial.instructions));
+  const [description, setDescription] = useState(() => str(initial.description));
   const [notes, setNotes] = useState(() => str(initial.notes));
   const [sourceUrl, setSourceUrl] = useState(() => str(initial.source_url));
   const [servings, setServings] = useState(() =>
@@ -107,6 +126,19 @@ export function RecipeDetailEditor({
   );
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Recipes always open in read-only "view" mode — whether you came from Plan,
+  // the recipe list, or a deep link. Authoring UI lives behind the Edit toggle.
+  const [isEditing, setIsEditing] = useState(false);
+  const toggleEditing = useCallback(() => {
+    setIsEditing((value) => {
+      if (value) {
+        // Leaving edit mode — flush any in-progress crop gesture so we don't
+        // leave the image panel stuck in crop state.
+        setCropMode(false);
+      }
+      return !value;
+    });
+  }, []);
   const deleteModalTitleId = useId();
   const deleteModalCancelRef = useRef<HTMLButtonElement>(null);
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -133,6 +165,39 @@ export function RecipeDetailEditor({
     };
   }, []);
 
+  const hasImage = Boolean(primaryImageUrl(initial));
+  const [autoGenTimedOut, setAutoGenTimedOut] = useState(false);
+  const isAutoGenerating =
+    effectiveAutoGenerating && !hasImage && !autoGenTimedOut;
+
+  useEffect(() => {
+    if (!isAutoGenerating) return;
+    const startedAt = Date.now();
+    const MAX_MS = 150_000;
+    const interval = setInterval(() => {
+      if (Date.now() - startedAt > MAX_MS) {
+        setAutoGenTimedOut(true);
+        clearInterval(interval);
+        return;
+      }
+      router.refresh();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isAutoGenerating, router]);
+
+  useEffect(() => {
+    if (!effectiveAutoGenerating) return;
+    if (hasImage || autoGenTimedOut) {
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("gen")) {
+          url.searchParams.delete("gen");
+          router.replace(`${url.pathname}${url.search}${url.hash}`);
+        }
+      }
+    }
+  }, [effectiveAutoGenerating, hasImage, autoGenTimedOut, router]);
+
   const save = useCallback(
     (
       patch: Record<string, unknown>,
@@ -158,12 +223,57 @@ export function RecipeDetailEditor({
   }, [name, initial.name, save]);
 
   const blurText = useCallback(
-    (field: "ingredients" | "instructions" | "notes", value: string, initialVal: string) => {
+    (field: "notes" | "description", value: string, initialVal: string) => {
       const next = value;
       if (next === initialVal) return;
       save({ [field]: next });
     },
     [save],
+  );
+
+  const onDescriptionPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const pasted = e.clipboardData.getData("text/plain").trim();
+      const ta = e.currentTarget;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const res = applyMarkdownLinkPaste({
+        value: description,
+        selStart: start,
+        selEnd: end,
+        pasted,
+        maxLen: RECIPE_DESCRIPTION_MAX_LENGTH,
+      });
+      if (!res) return;
+      e.preventDefault();
+      setDescription(res.value);
+      queueMicrotask(() => {
+        ta.setSelectionRange(res.caret, res.caret);
+      });
+    },
+    [description],
+  );
+
+  const onNotesPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const pasted = e.clipboardData.getData("text/plain").trim();
+      const ta = e.currentTarget;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const res = applyMarkdownLinkPaste({
+        value: notes,
+        selStart: start,
+        selEnd: end,
+        pasted,
+      });
+      if (!res) return;
+      e.preventDefault();
+      setNotes(res.value);
+      queueMicrotask(() => {
+        ta.setSelectionRange(res.caret, res.caret);
+      });
+    },
+    [notes],
   );
 
   const blurSource = useCallback(() => {
@@ -390,6 +500,34 @@ export function RecipeDetailEditor({
     [initial, router],
   );
 
+  const handleGenerateImage = useCallback(async () => {
+    if (isGeneratingImage || imageBusy || isPending) return;
+    setIsGeneratingImage(true);
+    setImageMessage(null);
+    const toastId = toast.loading("Generating recipe image…", {
+      description: "This usually takes 15–30 seconds.",
+    });
+    try {
+      const result = await generateRecipeImageAction(initial.id);
+      if (result.ok) {
+        toast.success("Recipe image generated", { id: toastId });
+        router.refresh();
+      } else {
+        toast.error("Image generation failed", {
+          id: toastId,
+          description: result.error,
+        });
+        setImageMessage(result.error);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Image generation failed.";
+      toast.error("Image generation failed", { id: toastId, description: msg });
+      setImageMessage(msg);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  }, [initial.id, isGeneratingImage, imageBusy, isPending, router]);
+
   const onPhotoAreaClick = useCallback(() => {
     if (cropMode || imageBusy || isPending) return;
     if (replaceImageClickTimerRef.current !== null) {
@@ -498,6 +636,24 @@ export function RecipeDetailEditor({
 
   const img = primaryImageUrl(initial);
 
+  // Compact nutrition summary for view mode — only show values that exist.
+  // Servings is rendered separately (just above the Ingredients list) per the
+  // current design, so it's deliberately omitted from this inline row.
+  const viewNutritionParts: { key: string; value: string; unit: string }[] = [];
+  if (initial.calories != null)
+    viewNutritionParts.push({ key: "calories", value: String(initial.calories), unit: "kcal" });
+  if (initial.protein_grams != null)
+    viewNutritionParts.push({ key: "protein", value: `${initial.protein_grams}g`, unit: "protein" });
+  if (initial.fat_grams != null)
+    viewNutritionParts.push({ key: "fat", value: `${initial.fat_grams}g`, unit: "fat" });
+  if (initial.carbs_grams != null)
+    viewNutritionParts.push({ key: "carbs", value: `${initial.carbs_grams}g`, unit: "carbs" });
+
+  const servingsLabel =
+    initial.servings != null && Number(initial.servings) > 0
+      ? `Serves ${initial.servings}`
+      : null;
+
   const deleteConfirmModal =
     isClient && deleteModalOpen ? (
       <div className="modal open" aria-hidden="false" role="presentation">
@@ -558,20 +714,89 @@ export function RecipeDetailEditor({
     ) : null;
 
   return (
-    <>
-    <article className="recipe-detail">
+    <RecipeEditModeProvider mode={isEditing ? "edit" : "view"}>
+    <article className={`recipe-detail recipe-detail--${isEditing ? "edit" : "view"}`}>
       <div className="recipe-detail-layout">
         <div className="recipe-detail-main">
-          <input
-            type="text"
-            className="recipe-detail-title-input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={blurName}
+          {isEditing ? (
+            <input
+              type="text"
+              className="recipe-detail-title-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={blurName}
+              disabled={isPending}
+              aria-label="Recipe name"
+            />
+          ) : (
+            <h1 className="recipe-detail-title-static">
+              {str(initial.name).trim() || "Untitled recipe"}
+            </h1>
+          )}
+          {isEditing ? (
+            <textarea
+              className="recipe-pre recipe-detail-textarea recipe-detail-description-input"
+              value={description}
+              onChange={(e) =>
+                setDescription(
+                  e.target.value.slice(0, RECIPE_DESCRIPTION_MAX_LENGTH),
+                )
+              }
+              onPaste={onDescriptionPaste}
+              onBlur={() =>
+                blurText("description", description, str(initial.description))
+              }
+              disabled={isPending}
+              rows={3}
+              maxLength={RECIPE_DESCRIPTION_MAX_LENGTH}
+              aria-label="Recipe description"
+              placeholder="Short description…"
+            />
+          ) : str(initial.description).trim() ? (
+            <RecipeDescriptionRichText
+              as="p"
+              className="recipe-pre recipe-detail-description-static"
+              text={str(initial.description)}
+            />
+          ) : null}
+      {!isEditing && servingsLabel ? (
+        <p className="recipe-detail-servings-static">{servingsLabel}</p>
+      ) : null}
+      <RecipeIngredientsEditor
+        recipeId={initial.id}
+        initialItems={recipeIngredients}
+        initialSections={recipeIngredientSections}
+        ingredientOptions={availableIngredients}
+      />
+      <section className="section">
+        <h3>Instructions</h3>
+        <RecipeInstructionsEditor recipeId={initial.id} recipeName={initial.name} initialSteps={recipeInstructionSteps} />
+      </section>
+      {isEditing ? (
+        <section className="section">
+          <h3>Notes</h3>
+          <textarea
+            className="recipe-pre recipe-detail-textarea"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onPaste={onNotesPaste}
+            onBlur={() => blurText("notes", notes, str(initial.notes))}
             disabled={isPending}
-            aria-label="Recipe name"
+            rows={4}
+            aria-label="Notes"
+            placeholder="Optional notes…"
           />
-          <div className="meta recipe-detail-meta-editable">
+        </section>
+      ) : str(initial.notes).trim() ? (
+        <section className="section">
+          <h3>Notes</h3>
+          <p className="recipe-pre recipe-detail-notes-static">
+            {str(initial.notes)}
+          </p>
+        </section>
+      ) : null}
+      {isEditing ? (
+      <div className="meta recipe-detail-meta-editable">
         <label className="recipe-meta-field recipe-meta-field--nutrition recipe-meta-field--nutrition-servings">
           <span className="recipe-meta-label">Servings</span>
           <span className="recipe-nutrition-field">
@@ -663,43 +888,42 @@ export function RecipeDetailEditor({
           </span>
         </label>
       </div>
-      <RecipeIngredientsEditor
-        recipeId={initial.id}
-        initialItems={recipeIngredients}
-        initialSections={recipeIngredientSections}
-        ingredientOptions={availableIngredients}
-      />
-      <section className="section">
-        <h3>Instructions</h3>
-        <LimitedRecipeTextField
-          variant="instructions"
-          value={instructions}
-          onChange={setInstructions}
-          onBlur={() =>
-            blurText("instructions", instructions, str(initial.instructions))
-          }
-          disabled={isPending}
-          rows={12}
-          ariaLabel="Instructions"
-          placeholder="Steps…"
-        />
-      </section>
-      <section className="section">
-        <h3>Notes</h3>
-        <textarea
-          className="recipe-pre recipe-detail-textarea"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => blurText("notes", notes, str(initial.notes))}
-          disabled={isPending}
-          rows={4}
-          aria-label="Notes"
-          placeholder="Optional notes…"
-        />
-      </section>
+      ) : viewNutritionParts.length ? (
+        <ul className="recipe-detail-meta-static">
+          {viewNutritionParts.map((part) => (
+            <li key={part.key} className="recipe-detail-meta-static-item">
+              <span className="recipe-detail-meta-static-value">{part.value}</span>
+              <span className="recipe-detail-meta-static-unit">{part.unit}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
         </div>
         <aside className="recipe-detail-aside" aria-label="Recipe image and recipe options">
           <div className="recipe-detail-aside-stack">
+          {isAutoGenerating ? (
+            <div
+              className="recipe-detail-photo-panel recipe-detail-photo-panel--generating"
+              role="status"
+              aria-live="polite"
+              aria-label="Generating recipe image"
+            >
+              <div className="recipe-detail-photo-generating-shimmer" aria-hidden />
+              <div className="recipe-detail-photo-generating-copy">
+                <span className="recipe-detail-photo-generating-title">
+                  Generating image…
+                </span>
+                <span className="recipe-detail-photo-generating-sub">
+                  This usually takes 15–30 seconds.
+                </span>
+              </div>
+            </div>
+          ) : effectiveAutoGenerating && autoGenTimedOut && !img && isEditing ? (
+            <p className="recipe-detail-image-message" role="status">
+              Image is still being generated. Try refreshing in a moment, or click Regenerate image below.
+            </p>
+          ) : null}
+          {isEditing && !isAutoGenerating ? (
           <div
             ref={panelRef}
             className={[
@@ -784,70 +1008,150 @@ export function RecipeDetailEditor({
               </button>
             )}
           </div>
-          {imageMessage ? (
+          ) : img ? (
+            <div
+              className="recipe-detail-photo-panel recipe-detail-photo-panel--static"
+              aria-label="Recipe image"
+            >
+              <div
+                className="recipe-detail-photo recipe-detail-photo--static"
+                role="img"
+                aria-label={`Image for ${str(initial.name).trim() || "recipe"}`}
+                style={{
+                  backgroundImage: `url('${img}')`,
+                  backgroundPosition: `center ${focusY}%`,
+                }}
+              />
+            </div>
+          ) : null}
+          {!isEditing ? (
+            <div className="recipe-detail-aside-edit-wrap">
+              <button
+                type="button"
+                className="recipe-detail-mode-btn"
+                onClick={toggleEditing}
+                aria-label="Edit recipe"
+              >
+                Edit
+              </button>
+            </div>
+          ) : null}
+          {isEditing && !isAutoGenerating ? (
+            <div className="recipe-detail-generate-image-wrap">
+              <button
+                type="button"
+                className="secondary recipe-detail-generate-image-btn"
+                onClick={handleGenerateImage}
+                disabled={isGeneratingImage || imageBusy || isPending}
+                aria-label={
+                  img
+                    ? "Regenerate recipe image with AI"
+                    : "Generate a recipe image with AI"
+                }
+              >
+                {isGeneratingImage
+                  ? "Generating…"
+                  : img
+                    ? "Regenerate image"
+                    : "Generate image"}
+              </button>
+            </div>
+          ) : null}
+          {isEditing && imageMessage ? (
             <p className="recipe-detail-image-message" role="status">
               {imageMessage}
             </p>
           ) : null}
-          <RecipeMealTypesField
-            value={mealTypes}
-            disabled={isPending}
-            onCommit={commitMealTypes}
-          />
-          {mealTypesError ? (
+          {isEditing ? (
+            <RecipeMealTypesField
+              value={mealTypes}
+              disabled={isPending}
+              onCommit={commitMealTypes}
+            />
+          ) : null}
+          {isEditing && mealTypesError ? (
             <p className="recipe-detail-image-message" role="alert">
               {mealTypesError}
             </p>
           ) : null}
-          <div className="recipe-publish-toggle">
-            <button
-              type="button"
-              className={`secondary recipe-publish-btn${isPublished ? " recipe-publish-btn--active" : ""}`}
-              onClick={togglePublish}
-              disabled={isPending}
-            >
-              {isPublished ? "Published to Community" : "Publish to Community"}
-            </button>
-          </div>
-          <section className="section recipe-source-section">
-            <p className="recipe-source-row">
-              <label className="recipe-source-label" htmlFor="recipe-source-url">
-                Source URL
-              </label>
-              <input
-                id="recipe-source-url"
-                type="url"
-                className="recipe-source-input"
-                value={sourceUrl}
-                onChange={(e) => setSourceUrl(e.target.value)}
-                onBlur={blurSource}
+          {isEditing ? (
+            <div className="recipe-publish-toggle">
+              <button
+                type="button"
+                className={`secondary recipe-publish-btn${isPublished ? " recipe-publish-btn--active" : ""}`}
+                onClick={togglePublish}
                 disabled={isPending}
-                placeholder="https://…"
-              />
-            </p>
-            {sourceUrl.trim() ? (
+              >
+                {isPublished ? "Published to Community" : "Publish to Community"}
+              </button>
+            </div>
+          ) : null}
+          {isEditing ? (
+            <section className="section recipe-source-section">
+              <p className="recipe-source-row">
+                <label className="recipe-source-label" htmlFor="recipe-source-url">
+                  Source URL
+                </label>
+                <input
+                  id="recipe-source-url"
+                  type="url"
+                  className="recipe-source-input"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                  onBlur={blurSource}
+                  disabled={isPending}
+                  placeholder="https://…"
+                />
+              </p>
+              {sourceUrl.trim() ? (
+                <p className="recipe-source-open-wrap">
+                  <a className="source-link" href={sourceUrl.trim()} target="_blank" rel="noreferrer">
+                    Open source
+                  </a>
+                </p>
+              ) : null}
+            </section>
+          ) : str(initial.source_url).trim() ? (
+            <section className="section recipe-source-section recipe-source-section--static">
+              <span className="recipe-source-label">Source</span>
               <p className="recipe-source-open-wrap">
-                <a className="source-link" href={sourceUrl.trim()} target="_blank" rel="noreferrer">
+                <a
+                  className="source-link"
+                  href={str(initial.source_url).trim()}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Open source
                 </a>
               </p>
-            ) : null}
-          </section>
-          <div className="recipe-detail-delete-wrap">
-            <button
-              type="button"
-              className="recipe-detail-delete"
-              onClick={openDeleteModal}
-              disabled={isPending}
-            >
-              Delete recipe
-            </button>
-          </div>
+            </section>
+          ) : null}
+          {isEditing ? (
+            <div className="recipe-detail-delete-wrap">
+              <button
+                type="button"
+                className="recipe-detail-mode-btn recipe-detail-mode-btn--editing"
+                onClick={toggleEditing}
+                aria-pressed={isEditing}
+                aria-label="Finish editing recipe"
+              >
+                Done
+              </button>
+              <button
+                type="button"
+                className="recipe-detail-delete"
+                onClick={openDeleteModal}
+                disabled={isPending}
+              >
+                Delete recipe
+              </button>
+            </div>
+          ) : null}
           </div>
         </aside>
       </div>
     </article>
     {deleteConfirmModal ? createPortal(deleteConfirmModal, document.body) : null}
-    </>
+    </RecipeEditModeProvider>
   );
 }

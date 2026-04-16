@@ -1,0 +1,25 @@
+---
+description: Ingredient names must always be AP-style Title Case
+alwaysApply: true
+---
+
+# Ingredient Name Formatting: AP-Style Title Case
+
+All ingredient names stored in the `ingredients` table must use **AP-style Title Case**.
+
+## Rules
+
+- Capitalise the first word and all major words
+- Keep these words lowercase (unless they start the name): a, an, the, and, but, or, nor, for, yet, so, of, in, to, on, at, by, with, from, as, per, vs
+- Examples: "Soy Milk", "All-Purpose Flour", "Salt", "Tomato Paste", "Extra Virgin Olive Oil"
+
+## Where this applies
+
+- **Recipe import** (`parse-recipe.ts` system prompt already instructs the LLM to return Title Case names)
+- **Ingredient creation** (`apply-plan.ts` runs `toTitleCaseAP()` on every new ingredient name before inserting)
+- **Manual ingredient add** in the inventory UI
+- **Any future code** that inserts into `ingredients.name`
+
+## Implementation
+
+Use `toTitleCaseAP()` from `@/lib/ingredient-resolution/normalize` whenever creating or renaming an ingredient. Never store lowercase or ALL-CAPS ingredient names.

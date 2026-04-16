@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { ConfigBanner } from "@/components/config-banner";
+import { AppToaster } from "@/components/app-toaster";
+import { StepTimerWatcher } from "@/components/step-timer-watcher";
 
 export const metadata: Metadata = {
   title: {
@@ -26,6 +28,8 @@ export default function RootLayout({
       </head>
       <body>
         <ConfigBanner />
+        <AppToaster />
+        <StepTimerWatcher />
         {children}
       </body>
     </html>

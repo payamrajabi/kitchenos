@@ -1,7 +1,10 @@
 "use client";
 
+import { InstructionStepFormattedBody } from "@/components/instruction-step-formatted-body";
+import { RecipeDescriptionRichText } from "@/components/recipe-description-rich-text";
 import { saveRecipeFromCommunityAction } from "@/app/actions/recipes";
 import { primaryImageUrl, recipeImageFocusYPercent } from "@/lib/recipes";
+import { pluralizeUnit } from "@/lib/unit-mapping";
 import type { RecipeRow, RecipeIngredientSectionRow } from "@/types/database";
 import { useState, useTransition } from "react";
 
@@ -19,6 +22,7 @@ type Props = {
   recipe: RecipeRow;
   recipeIngredients: IngredientLine[];
   sections: RecipeIngredientSectionRow[];
+  instructionSteps: { body: string }[];
   alreadySaved: boolean;
   isOwn: boolean;
 };
@@ -26,7 +30,7 @@ type Props = {
 function formatAmount(amount: string | null, unit: string | null) {
   const parts: string[] = [];
   if (amount) parts.push(amount);
-  if (unit) parts.push(unit);
+  if (unit) parts.push(pluralizeUnit(unit, amount));
   return parts.join(" ");
 }
 
@@ -34,6 +38,7 @@ export function CommunityRecipeDetail({
   recipe,
   recipeIngredients,
   sections,
+  instructionSteps,
   alreadySaved: initialSaved,
   isOwn,
 }: Props) {
@@ -85,6 +90,14 @@ export function CommunityRecipeDetail({
       <div className="community-detail-layout">
         <div className="community-detail-main">
           <h1 className="community-detail-title">{recipe.name}</h1>
+
+          {recipe.description?.trim() ? (
+            <RecipeDescriptionRichText
+              as="p"
+              text={recipe.description.trim()}
+              className="community-detail-description"
+            />
+          ) : null}
 
           <div className="community-detail-actions">
             {isOwn ? (
@@ -168,7 +181,18 @@ export function CommunityRecipeDetail({
             </section>
           ) : null}
 
-          {recipe.instructions ? (
+          {instructionSteps.length > 0 ? (
+            <section className="section">
+              <h3>Instructions</h3>
+              <ol className="community-instruction-steps">
+                {instructionSteps.map((step, i) => (
+                  <li key={i} className="community-instruction-step">
+                    <InstructionStepFormattedBody body={step.body} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : recipe.instructions ? (
             <section className="section">
               <h3>Instructions</h3>
               <pre className="community-detail-pre">{recipe.instructions}</pre>
@@ -178,7 +202,11 @@ export function CommunityRecipeDetail({
           {recipe.notes ? (
             <section className="section">
               <h3>Notes</h3>
-              <pre className="community-detail-pre">{recipe.notes}</pre>
+              <RecipeDescriptionRichText
+                as="div"
+                text={recipe.notes}
+                className="community-detail-pre community-detail-pre--rich"
+              />
             </section>
           ) : null}
 

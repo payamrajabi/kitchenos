@@ -2,8 +2,53 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { runNutritionPipeline } from "@/lib/nutrition/pipeline";
-import type { PipelineInput } from "@/lib/nutrition/types";
+import type { PipelineInput, NutritionPipelineResult } from "@/lib/nutrition/types";
 import { revalidatePath } from "next/cache";
+import { isNutritionEffectivelyEmpty } from "@/lib/inventory-nutrition-display";
+
+/**
+ * Persist micronutrients and portions from a pipeline result into
+ * the new ingredient_nutrients / ingredient_portions tables.
+ */
+async function persistEnrichedNutrition(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ingredientId: number,
+  result: NutritionPipelineResult,
+) {
+  if (result.micronutrients.length > 0) {
+    await supabase
+      .from("ingredient_nutrients")
+      .delete()
+      .eq("ingredient_id", ingredientId);
+
+    await supabase.from("ingredient_nutrients").insert(
+      result.micronutrients.map((n) => ({
+        ingredient_id: ingredientId,
+        nutrient_id: n.nutrientId,
+        nutrient_name: n.name,
+        value: n.value,
+        unit: n.unit,
+      })),
+    );
+  }
+
+  if (result.portions.length > 0) {
+    await supabase
+      .from("ingredient_portions")
+      .delete()
+      .eq("ingredient_id", ingredientId);
+
+    await supabase.from("ingredient_portions").insert(
+      result.portions.map((p) => ({
+        ingredient_id: ingredientId,
+        gram_weight: p.gramWeight,
+        description: p.description,
+        source: p.source,
+        is_default: p.isDefault,
+      })),
+    );
+  }
+}
 
 /**
  * Full autofill action — callable from a UI button or programmatically.
@@ -12,6 +57,7 @@ import { revalidatePath } from "next/cache";
  */
 export async function autofillIngredientNutritionAction(
   ingredientId: number,
+  options?: { force?: boolean },
 ) {
   const supabase = await createClient();
   const {
@@ -31,12 +77,8 @@ export async function autofillIngredientNutritionAction(
     return { ok: false as const, error: "Ingredient not found." };
   }
 
-  if (
-    ingredient.kcal != null ||
-    ingredient.fat_g != null ||
-    ingredient.protein_g != null ||
-    ingredient.carbs_g != null
-  ) {
+  const force = options?.force === true;
+  if (!force && !isNutritionEffectivelyEmpty(ingredient)) {
     return {
       ok: true as const,
       skipped: true,
@@ -59,6 +101,7 @@ export async function autofillIngredientNutritionAction(
   };
 
   const result = await runNutritionPipeline(input);
+  const now = new Date().toISOString();
 
   if (result.status === "no_match") {
     await supabase
@@ -66,7 +109,7 @@ export async function autofillIngredientNutritionAction(
       .update({
         nutrition_needs_review: true,
         nutrition_notes: result.notes,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq("id", ingredientId);
 
@@ -89,11 +132,15 @@ export async function autofillIngredientNutritionAction(
       nutrition_confidence: result.confidence,
       nutrition_needs_review: result.needs_review,
       nutrition_notes: result.notes,
-      updated_at: new Date().toISOString(),
+      food_type: result.food_type,
+      nutrition_fetched_at: now,
+      updated_at: now,
     })
     .eq("id", ingredientId);
 
   if (updateErr) return { ok: false as const, error: updateErr.message };
+
+  await persistEnrichedNutrition(supabase, ingredientId, result);
 
   revalidatePath("/inventory");
   return { ok: true as const, result };
@@ -112,4 +159,67 @@ export async function maybeAutofillNutrition(
   } catch {
     // Silent — nutrition is a nice-to-have, not a gate.
   }
+}
+
+/**
+ * Backfill micronutrients + portions for all ingredients that already have
+ * a USDA source record but are missing enriched data (no rows in
+ * ingredient_nutrients yet). Processes in batches to avoid API rate limits.
+ *
+ * Returns a summary: how many were processed, skipped, or errored.
+ */
+export async function backfillEnrichedNutritionAction() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const { data: candidates } = await supabase
+    .from("ingredients")
+    .select("id, name, brand_or_manufacturer, nutrition_source_name, nutrition_source_record_id")
+    .not("nutrition_source_record_id", "is", null)
+    .order("id");
+
+  if (!candidates?.length) {
+    return { ok: true as const, processed: 0, skipped: 0, errors: 0 };
+  }
+
+  const { data: alreadyDone } = await supabase
+    .from("ingredient_nutrients")
+    .select("ingredient_id")
+    .in(
+      "ingredient_id",
+      candidates.map((c) => c.id),
+    );
+
+  const doneSet = new Set((alreadyDone ?? []).map((r) => r.ingredient_id));
+
+  const toProcess = candidates.filter((c) => !doneSet.has(c.id));
+
+  let processed = 0;
+  let errors = 0;
+
+  for (const ing of toProcess) {
+    try {
+      await autofillIngredientNutritionAction(ing.id as number, {
+        force: true,
+      });
+      processed++;
+    } catch {
+      errors++;
+    }
+    // Pace ourselves: 200ms between calls to stay under USDA rate limits.
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  revalidatePath("/inventory");
+
+  return {
+    ok: true as const,
+    processed,
+    skipped: doneSet.size,
+    errors,
+    total: candidates.length,
+  };
 }

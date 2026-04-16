@@ -123,39 +123,10 @@ export function InventoryQtyField({
     ],
   );
 
-  const step = useCallback(
-    (delta: number) => {
-      const parsed = parseCommit(text);
-      const base = parsed.ok ? parsed.n : 0;
-      const next = base + delta;
-      if (!isAllowedValue(field, next, minBound, maxBound)) return;
-
-      setText(String(next));
-      startTransition(async () => {
-        await updateInventoryQuantityFieldAction(
-          ingredientId,
-          resolvedInventoryId,
-          field,
-          next,
-        );
-      });
-    },
-    [ingredientId, resolvedInventoryId, field, text, minBound, maxBound],
-  );
-
   const fieldDisabled = isPending || !!externalDisabled;
 
   return (
     <div className={`inventory-qty-wrap${externalDisabled ? " inventory-qty-locked" : ""}`}>
-      <button
-        type="button"
-        className="inventory-qty-btn"
-        aria-label={`Decrease ${ariaLabel}`}
-        disabled={fieldDisabled}
-        onClick={() => step(-1)}
-      >
-        −
-      </button>
       <input
         type="text"
         inputMode="numeric"
@@ -171,15 +142,6 @@ export function InventoryQtyField({
           }
         }}
       />
-      <button
-        type="button"
-        className="inventory-qty-btn"
-        aria-label={`Increase ${ariaLabel}`}
-        disabled={fieldDisabled}
-        onClick={() => step(1)}
-      >
-        +
-      </button>
     </div>
   );
 }
