@@ -1,12 +1,13 @@
 import type { PlanSlotKey } from "@/lib/meal-plan";
 
-/** Canonical order: day progression, then snack and dessert. */
+/** Canonical order: tabs on the recipes list match this sequence. */
 export const RECIPE_MEAL_TYPES = [
   "Breakfast",
+  "Snack",
   "Lunch",
   "Dinner",
-  "Snack",
   "Dessert",
+  "Drink",
 ] as const;
 
 export type RecipeMealType = (typeof RECIPE_MEAL_TYPES)[number];
@@ -17,6 +18,7 @@ const ALLOWED = new Set<string>(RECIPE_MEAL_TYPES);
 function canonicalizeStoredTag(raw: string): string | null {
   if (raw === "School snack") return "Snack";
   if (raw === "Brunch") return null;
+  if (raw === "Beverage") return "Drink";
   if (ALLOWED.has(raw)) return raw;
   return null;
 }

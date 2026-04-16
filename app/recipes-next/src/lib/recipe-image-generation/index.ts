@@ -3,13 +3,11 @@
  *
  * Steps (stop on irrecoverable error, log and return):
  *   1. Load recipe + resolved ingredient names + instruction step bodies
- *   2. Build a search query and a generation prompt (with vessel inference)
- *   3. SerpAPI Google Images search → ~12 candidates
- *   4. GPT-4o vision curation → top 3 reference photos
- *   5. Flux Kontext Max generation (fallback: gpt-image-1)
- *   6. GPT-4o QC pass; one retry on fail with a tightened prompt
- *   7. Upload bytes to `recipe-images` bucket via the service-role client
- *   8. Update `recipes.image_url`, `image_urls`, `image_focus_y` and revalidate
+ *   2. Creative Director (reasoning model) writes a rich generation prompt
+ *   3. gpt-image-1 renders the prompt at 1024x1024, quality "high"
+ *   4. GPT-4o vision QC pass; one retry on fail with a tightened prompt
+ *   5. Upload bytes to `recipe-images` bucket via the service-role client
+ *   6. Update `recipes.image_url`, `image_urls`, `image_focus_y` and revalidate
  *
  * Safe to call from a Next.js `after()` callback — no user cookies required.
  */
@@ -18,14 +16,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
 import { buildRecipeImagePrompt, type PromptInput } from "./build-prompt";
-import { searchReferenceImages } from "./search-references";
-import { curateReferenceCandidates } from "./curate-references";
 import { generateRecipeImage } from "./generate-image";
 import { qcRecipeImage, bytesToDataUrl } from "./qc-image";
 import { uploadGeneratedRecipeImage } from "./upload-image";
 
 export type GenerateAttachResult =
-  | { ok: true; imageUrl: string; provider: string; qcNote?: string }
+  | {
+      ok: true;
+      imageUrl: string;
+      provider: string;
+      sceneConcept: string;
+      qcNote?: string;
+    }
   | { ok: false; error: string; stage: string };
 
 /**
@@ -56,9 +58,7 @@ async function loadRecipeContext(
 ): Promise<{ ok: true; ctx: LoadedContext } | { ok: false; error: string }> {
   const { data: recipe, error: recipeErr } = await admin
     .from("recipes")
-    .select(
-      "id, name, description, meal_types, servings, image_urls",
-    )
+    .select("id, name, description, meal_types, servings, image_urls")
     .eq("id", recipeId)
     .maybeSingle();
 
@@ -111,7 +111,7 @@ function headline(names: string[]): string[] {
   return names
     .filter(
       (n) =>
-        !/^(salt|pepper|black pepper|white pepper|water|olive oil|oil|butter|cooking spray|kosher salt|sea salt)$/i.test(
+        !/^(salt|pepper|black pepper|white pepper|water|olive oil|oil|butter|cooking spray|kosher salt|sea salt|flaky sea salt)$/i.test(
           n,
         ),
     )
@@ -123,7 +123,11 @@ export async function generateAndAttachRecipeImage(
   opts: { logPrefix?: string } = {},
 ): Promise<GenerateAttachResult> {
   const log = (...args: unknown[]) =>
-    console.log(opts.logPrefix ?? "[recipe-image]", `recipe=${recipeId}`, ...args);
+    console.log(
+      opts.logPrefix ?? "[recipe-image]",
+      `recipe=${recipeId}`,
+      ...args,
+    );
 
   const admin = createAdminClient();
 
@@ -144,48 +148,15 @@ export async function generateAndAttachRecipeImage(
     servings: ctx.servings,
   };
 
-  const { searchQuery, generationPrompt } =
+  const { generationPrompt, sceneConcept } =
     await buildRecipeImagePrompt(promptInput);
-  log("searchQuery:", searchQuery);
-
-  const search = await searchReferenceImages(searchQuery);
-  const refs =
-    search.ok && search.candidates.length > 0 ? search.candidates : [];
-  if (!search.ok) {
-    log("search failed:", search.error);
-  }
+  log("sceneConcept:", sceneConcept);
 
   const headlineIngredients = headline(ctx.ingredientNames);
 
-  let picked: { imageUrl: string }[] = [];
-  if (refs.length > 0) {
-    const curation = await curateReferenceCandidates({
-      recipeName: ctx.recipeName,
-      headlineIngredients,
-      candidates: refs,
-    });
-    if (curation.ok) {
-      picked = curation.result.picked;
-      log(
-        "curation picked",
-        picked.length,
-        "refs -",
-        curation.result.notes ?? "",
-      );
-    } else {
-      picked = refs.slice(0, 3);
-      log("curation failed, using first 3 refs:", curation.error);
-    }
-  }
-
-  const referenceImageUrls = picked.map((p) => p.imageUrl);
-
   let gen;
   try {
-    gen = await generateRecipeImage({
-      prompt: generationPrompt,
-      referenceImageUrls,
-    });
+    gen = await generateRecipeImage({ prompt: generationPrompt });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log("generation failed:", message);
@@ -202,20 +173,21 @@ export async function generateAndAttachRecipeImage(
 
   let finalBytes = gen.bytes;
   let finalContentType = gen.contentType;
-  let finalProvider = gen.provider;
+  let finalProvider: string = gen.provider;
   let finalQcNote = firstVerdict.reason;
 
   if (!firstVerdict.pass) {
     const tightenedPrompt = [
       generationPrompt,
-      `Strictly correct this issue: ${firstVerdict.reason ?? "previous attempt looked AI-generated"}. The result must look like an unretouched real photograph with natural imperfections, correct ingredients, and no AI artefacts.`,
-    ].join("\n\n");
+      "",
+      `Correct this specific issue from the previous attempt: ${
+        firstVerdict.reason ?? "it looked AI-generated."
+      }`,
+      "The result must look like an unretouched real photograph — natural light, natural colours, tack-sharp subject with a gentle background blur, honest shadows, no AI artefacts, no plastic sheen, no CGI, no cartoon.",
+    ].join("\n");
 
     try {
-      const retry = await generateRecipeImage({
-        prompt: tightenedPrompt,
-        referenceImageUrls,
-      });
+      const retry = await generateRecipeImage({ prompt: tightenedPrompt });
       log("retried via", retry.provider);
       const retryVerdict = await qcRecipeImage({
         recipeName: ctx.recipeName,
@@ -223,7 +195,9 @@ export async function generateAndAttachRecipeImage(
         imageDataUrl: bytesToDataUrl(retry.bytes, retry.contentType),
       });
       log("qc pass2:", retryVerdict);
-      if (retryVerdict.pass || !firstVerdict.realismScore ||
+      if (
+        retryVerdict.pass ||
+        !firstVerdict.realismScore ||
         (retryVerdict.realismScore ?? 0) >= (firstVerdict.realismScore ?? 0)
       ) {
         finalBytes = retry.bytes;
@@ -272,6 +246,7 @@ export async function generateAndAttachRecipeImage(
     ok: true,
     imageUrl: upload.publicUrl,
     provider: finalProvider,
+    sceneConcept,
     qcNote: finalQcNote,
   };
 }

@@ -194,8 +194,11 @@ function StepTimerDisplay({
     timerToDisplayString(item.timer_seconds_low, item.timer_seconds_high),
   );
 
+  // Sync the timer edit field with the underlying step when the user is not
+  // mid-edit. Intentional sync of local form state with prop.
   useEffect(() => {
     if (!editingTimer) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditValue(timerToDisplayString(item.timer_seconds_low, item.timer_seconds_high));
     }
   }, [editingTimer, item.timer_seconds_low, item.timer_seconds_high]);
@@ -369,7 +372,10 @@ function InstructionActionsMenu({
     timerToDisplayString(item.timer_seconds_low, item.timer_seconds_high),
   );
 
+  // Sync the timer edit field when the underlying step's timer changes.
+  // Intentional sync of local form state with prop.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditValue(timerToDisplayString(item.timer_seconds_low, item.timer_seconds_high));
   }, [item.timer_seconds_low, item.timer_seconds_high]);
 

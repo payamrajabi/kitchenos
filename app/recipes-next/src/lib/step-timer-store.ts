@@ -30,9 +30,9 @@ export type TimerEvent =
   | { kind: "done"; entry: TimerEntry };
 
 let timers: Map<number, TimerEntry> = new Map();
-let intervals: Map<number, ReturnType<typeof setInterval>> = new Map();
-let listeners: Set<Listener> = new Set();
-let eventCallbacks: Set<(event: TimerEvent) => void> = new Set();
+const intervals: Map<number, ReturnType<typeof setInterval>> = new Map();
+const listeners: Set<Listener> = new Set();
+const eventCallbacks: Set<(event: TimerEvent) => void> = new Set();
 
 function replaceTimers() {
   timers = new Map(timers);

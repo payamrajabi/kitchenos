@@ -913,6 +913,66 @@ textarea {
   gap: var(--space-12);
 }
 
+/* Full-width row above the card grid (recipe grid columns are narrow; without this the
+   meal-type pills sit in a single column and wrap like a 2×3 block). */
+.grid.recipes-page .recipes-meal-filter-strip {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+.grid.recipes-page .recipes-meal-filter-empty {
+  grid-column: 1 / -1;
+}
+
+/* Spotify-style meal filters: single row; clear control matches pill height. */
+.recipes-meal-filter-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0;
+  margin-bottom: var(--space-12);
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Outer height of `.secondary-tab-button`: padding-block + min-height */
+.recipes-meal-filter-clear {
+  --recipes-meal-filter-chip-size: calc(var(--space-28) + var(--space-6) * 2);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: var(--recipes-meal-filter-chip-size);
+  height: var(--recipes-meal-filter-chip-size);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--space-6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--mist);
+  transition: background-color 120ms ease, color 120ms ease;
+  font-family: inherit;
+}
+
+.recipes-meal-filter-clear:hover,
+.recipes-meal-filter-clear:focus-visible {
+  outline: none;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--mist) 85%, var(--ink));
+}
+
+.recipes-meal-filter-solo-label {
+  cursor: default;
+  pointer-events: none;
+}
+
 .grid-recipes-hint {
   grid-column: 1 / -1;
   margin: 0;

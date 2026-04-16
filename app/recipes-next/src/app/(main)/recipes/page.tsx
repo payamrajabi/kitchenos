@@ -3,7 +3,7 @@ import { isSupabaseConfigured } from "@/lib/env";
 import { DraftImportsProvider } from "@/components/draft-imports-provider";
 import { DraftRecipeCards } from "@/components/draft-recipe-cards";
 import { RecipeAddFab } from "@/components/recipe-add-fab";
-import { RecipeCard } from "@/components/recipe-card";
+import { RecipesMealFilterSection } from "@/components/recipes-meal-filter-section";
 import type { RecipeRow } from "@/types/database";
 
 export default async function RecipesPage() {
@@ -51,9 +51,7 @@ export default async function RecipesPage() {
     <DraftImportsProvider>
       <section className={`grid recipes-page${list.length ? "" : " grid-recipes-empty"}`}>
         <DraftRecipeCards />
-        {list.map((recipe) => (
-          <RecipeCard key={recipe.id} recipe={recipe} />
-        ))}
+        <RecipesMealFilterSection recipes={list} />
         {!list.length ? (
           <p className="grid-recipes-hint">
             Your recipes show up here after you add one with the + button in the corner.

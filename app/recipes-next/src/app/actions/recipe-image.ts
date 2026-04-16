@@ -53,17 +53,14 @@ export async function generateRecipeImageAction(
 }
 
 function friendlyError(stage: string, raw: string): string {
-  if (raw.includes("SERPAPI_KEY")) {
-    return "Image search isn't configured. Add SERPAPI_KEY in your env and try again.";
-  }
-  if (raw.includes("BFL_API_KEY") && raw.includes("OPENAI_API_KEY")) {
-    return "No image generator is configured. Add BFL_API_KEY or OPENAI_API_KEY.";
+  if (raw.includes("OPENAI_API_KEY")) {
+    return "Image generation isn't configured. Add OPENAI_API_KEY in .env.local and try again.";
   }
   if (raw.includes("SUPABASE_SERVICE_ROLE_KEY")) {
-    return "Service-role upload isn't configured. Add SUPABASE_SERVICE_ROLE_KEY.";
+    return "Service-role upload isn't configured. Add SUPABASE_SERVICE_ROLE_KEY in .env.local.";
   }
   if (stage === "generate") {
-    return `Generator failed: ${raw}`;
+    return `Image generator failed: ${raw}`;
   }
   if (stage === "upload") {
     return `Could not save image: ${raw}`;

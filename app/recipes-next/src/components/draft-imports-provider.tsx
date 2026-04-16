@@ -97,10 +97,13 @@ export function DraftImportsProvider({ children }: { children: ReactNode }) {
   const [drafts, setDrafts] = useState<DraftImport[]>([]);
   const dataRef = useRef(new Map<string, DraftRecipeData>());
 
+  // Hydrate drafts from sessionStorage on mount. SessionStorage is unavailable
+  // during SSR, so this must run in an effect.
   useEffect(() => {
     const stored = loadStoredDrafts();
     if (!stored.length) return;
     for (const s of stored) dataRef.current.set(s.id, s.draftData);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDrafts(
       stored.map((s) => ({
         id: s.id,

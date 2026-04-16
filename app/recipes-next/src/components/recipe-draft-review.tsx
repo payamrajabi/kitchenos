@@ -148,6 +148,8 @@ export function RecipeDraftReview() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
+  // Load the draft from sessionStorage on mount. SessionStorage is unavailable
+  // during SSR, so this must run in an effect.
   useEffect(() => {
     const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) {
@@ -156,6 +158,7 @@ export function RecipeDraftReview() {
     }
     try {
       const data = JSON.parse(raw) as DraftRecipeData;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraft(data);
       setResolutions(data.resolutions);
     } catch {

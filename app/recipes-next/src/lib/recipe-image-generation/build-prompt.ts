@@ -1,32 +1,27 @@
 /**
- * Build the generation prompt and Google Image search query for a recipe.
+ * Creative Director step.
  *
- * Inputs live in Supabase. We accept them already-loaded so this function
- * stays pure and easy to test.
+ * We hand the full recipe context to a reasoning-capable chat model and ask
+ * it to act as a world-class food photography art director: pick a scene,
+ * vessel, lighting mood, framing, and props that suit the dish, then write a
+ * rich cinematic generation prompt that the image model will render verbatim.
+ *
+ * The hard constraints from art-direction.ts are communicated in the system
+ * prompt AND stapled onto the final prompt by the orchestrator — belt and
+ * braces so the model can't quietly drift off-brief.
  */
 
-import {
-  DEFAULT_VESSEL,
-  HOUSE_STYLE_BLOCK,
-  describeVessel,
-  type ArtDirectionContext,
-  type VesselKind,
-} from "./art-direction";
+import { hardConstraintsBlock, HOUSE_NEGATIVE_PROMPT } from "./art-direction";
 
-const VESSEL_INFER_MODEL = "gpt-4o-mini";
-const VESSEL_INFER_TIMEOUT_MS = 15_000;
+/**
+ * Reasoning-capable chat model used to direct each shot. Tune here.
+ * `gpt-5` is the strongest available at the time of writing; `gpt-4.1` is a
+ * reasonable cheaper fallback, `o3` for maximum reasoning depth.
+ */
+const CREATIVE_DIRECTOR_MODEL =
+  process.env.RECIPE_IMAGE_DIRECTOR_MODEL?.trim() || "gpt-5";
 
-const VESSEL_VALUES: VesselKind[] = [
-  "bowl",
-  "plate",
-  "shallow-bowl",
-  "wide-plate",
-  "glass",
-  "mug",
-  "baking-dish",
-  "cutting-board",
-  "skillet",
-];
+const CREATIVE_DIRECTOR_TIMEOUT_MS = 60_000;
 
 export type PromptInput = {
   name: string;
@@ -38,161 +33,180 @@ export type PromptInput = {
 };
 
 export type PromptResult = {
-  /** Short phrase for Google Images — what a human would type. */
-  searchQuery: string;
-  /** Full text prompt for Flux Kontext Max / gpt-image-1. */
+  /** The full text prompt handed to the image generator. */
   generationPrompt: string;
-  /** What vessel we picked (so QC / logs can reason about it). */
-  vessel: VesselKind;
+  /** Short model-provided summary of the creative choice (for logs). */
+  sceneConcept: string;
 };
 
 /**
- * Trim down an ingredient list to the 5-8 that most visually define the dish.
- * Leading ingredients in a recipe are usually the bulk — oil/salt/pepper at
- * the bottom are rarely visually identifying.
+ * Drop clearly-invisible pantry staples from the ingredient list before
+ * showing it to the director — they rarely help define the shot and waste
+ * tokens. Returns at most 12 headline ingredients.
  */
 function headlineIngredients(names: string[]): string[] {
-  const cleaned = names
+  return names
     .map((n) => n.trim())
     .filter((n) => n.length > 0)
     .filter(
       (n) =>
-        !/^(salt|pepper|black pepper|white pepper|water|olive oil|oil|butter|cooking spray|kosher salt|sea salt)$/i.test(
+        !/^(salt|pepper|black pepper|white pepper|water|olive oil|oil|butter|cooking spray|kosher salt|sea salt|flaky sea salt)$/i.test(
           n,
         ),
-    );
-  return cleaned.slice(0, 8);
+    )
+    .slice(0, 12);
 }
 
-/**
- * Use a small LLM call to pick the most believable vessel for the dish.
- * Falls back to a safe default if the call fails or the output is bogus.
- */
-export async function inferVessel(
-  input: PromptInput,
-): Promise<{ vessel: VesselKind; finish?: string }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return { vessel: DEFAULT_VESSEL };
+const SYSTEM_PROMPT = `You are a world-class food photography art director for an editorial cookbook publisher. Given a recipe, you make a single thoughtful creative decision about how the dish should be photographed, then write a rich, cinematic image-generation prompt that another model will render verbatim.
 
-  const firstInstructions = input.instructionStepBodies
-    .slice(0, 4)
+Think carefully about what the dish IS in real life and what SCENE would make it look most appetising to a reader. Make specific, evocative choices. Avoid generic "bowl on a table" staging — pick the scene a great editorial photographer would pick.
+
+You have full creative freedom over these:
+- Serving vessel. Be specific and appropriate (e.g. enamel Le Creuset dutch oven for chili, Waterford crystal coupe for a classic cocktail, a scuffed PlanetBox metal lunch tin for school lunches, a worn wooden board for bread, a wide rimmed ceramic pasta plate, a clay tagine, a small ramekin, a cast-iron skillet straight from the oven).
+- Lighting mood. Match the dish and occasion: bright morning window light for breakfast; warm golden late-afternoon for comfort food; dim moody low-lit bar for cocktails; soft overcast daylight for a picnic; candlelit dusk for a date-night plate; cool open shade outdoors.
+- Setting and surface. Linen, pine farm table, marble counter, bar top with a brass rail, a kid's school table, a picnic blanket on grass, a tiled kitchen counter, a rustic cutting board — pick what fits.
+- Composition and framing. Tight cross-section, three-quarter overhead, straight overhead flat lay, 45-degree hero angle, close subject with breathing room, cropped in tight. Whatever best sells the dish.
+- Props. One or two subtle, unstyled props that reinforce the scene (a folded napkin, a spoon mid-dip, a small bowl of salt flakes, a glass of wine slightly out of focus, a crumpled bill at the bar, a lunchbox thermos). Never crowd the hero.
+
+Hard constraints you must build into the prompt (these are non-negotiable):
+${hardConstraintsBlock()}
+
+Also explicitly avoid: ${HOUSE_NEGATIVE_PROMPT.join(", ")}.
+
+OUTPUT FORMAT — return STRICT JSON with exactly these two keys and nothing else. No markdown fences, no commentary:
+{
+  "scene_concept": "<one sentence summary of your creative choice, e.g. 'Scuffed enamel dutch oven of chili on a pine farm table in warm late-afternoon light'>",
+  "prompt": "<the full image-generation prompt, 2-4 paragraphs of rich cinematic description, written the way a photographer would brief an AI image model. Must encode every hard constraint. Name the specific vessel, the lens, the aperture, the light, the surface, the props, the framing, the mood.>"
+}`;
+
+function buildUserMessage(input: PromptInput): string {
+  const lines: string[] = [];
+  lines.push(`Recipe name: ${input.name.trim()}`);
+  if (input.description?.trim()) {
+    lines.push(`Description: ${input.description.trim()}`);
+  }
+  if (input.mealTypes?.length) {
+    lines.push(`Meal types: ${input.mealTypes.join(", ")}`);
+  }
+  if (input.servings != null && input.servings > 0) {
+    lines.push(`Servings: ${input.servings}`);
+  }
+  const headline = headlineIngredients(input.ingredientNames);
+  if (headline.length) {
+    lines.push(`Key ingredients (in order of importance): ${headline.join(", ")}`);
+  }
+  const steps = input.instructionStepBodies
     .map((s) => s.trim())
     .filter(Boolean)
-    .join(" | ");
-
-  const userContent = [
-    `Recipe name: ${input.name}`,
-    input.description ? `Description: ${input.description}` : null,
-    input.mealTypes?.length ? `Meal types: ${input.mealTypes.join(", ")}` : null,
-    input.ingredientNames.length
-      ? `Key ingredients: ${headlineIngredients(input.ingredientNames).join(", ")}`
-      : null,
-    firstInstructions ? `First steps: ${firstInstructions}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const systemPrompt = `You pick the most believable serving vessel for a finished dish in a food photograph.
-
-Return a single JSON object of this exact shape (no prose, no markdown):
-{ "vessel": "<one of: ${VESSEL_VALUES.join(" | ")}>", "finish": "<optional short descriptor like 'matte stoneware' or 'warm cream ceramic', or null>" }
-
-Guidance:
-- Soups, stews, curries, ramen, grain bowls → "bowl" or "shallow-bowl"
-- Pasta, risotto, rice dishes with sauce → "shallow-bowl"
-- Steaks, roasted veg, sandwiches, salads → "plate" or "wide-plate"
-- Smoothies, cocktails → "glass"
-- Hot drinks, porridge → "mug" or "bowl"
-- Casseroles, lasagnas, baked pasta that's shown straight from the oven → "baking-dish"
-- Bread, charcuterie, whole roasted meats → "cutting-board"
-- One-pan pan-fried dishes shown in the pan → "skillet"
-
-If uncertain, pick "shallow-bowl". Keep "finish" short (3-5 words) or null.`;
-
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: VESSEL_INFER_MODEL,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        max_tokens: 80,
-        temperature: 0.2,
-      }),
-      signal: AbortSignal.timeout(VESSEL_INFER_TIMEOUT_MS),
+    .slice(0, 10);
+  if (steps.length) {
+    lines.push("Instructions:");
+    steps.forEach((body, idx) => {
+      lines.push(`${idx + 1}. ${body}`);
     });
-    if (!res.ok) return { vessel: DEFAULT_VESSEL };
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
-    const parsed = JSON.parse(raw) as { vessel?: string; finish?: string | null };
-    const v = (parsed.vessel ?? "").toLowerCase().trim();
-    const vessel = (VESSEL_VALUES as string[]).includes(v)
-      ? (v as VesselKind)
-      : DEFAULT_VESSEL;
-    const finish = parsed.finish && typeof parsed.finish === "string"
-      ? parsed.finish.trim() || undefined
-      : undefined;
-    return { vessel, finish };
+  }
+  return lines.join("\n");
+}
+
+type DirectorResponse = {
+  scene_concept?: string;
+  prompt?: string;
+};
+
+async function callCreativeDirector(
+  input: PromptInput,
+  apiKey: string,
+): Promise<DirectorResponse> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: CREATIVE_DIRECTOR_MODEL,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: buildUserMessage(input) },
+      ],
+    }),
+    signal: AbortSignal.timeout(CREATIVE_DIRECTOR_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(
+      `Creative Director call failed (${res.status}): ${txt.slice(0, 300)}`,
+    );
+  }
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!raw) throw new Error("Creative Director returned empty content.");
+  try {
+    return JSON.parse(raw) as DirectorResponse;
   } catch {
-    return { vessel: DEFAULT_VESSEL };
+    throw new Error("Creative Director returned non-JSON content.");
   }
 }
 
 /**
- * Build the final generation prompt + search query. Pure, aside from an
- * optional LLM call delegated to `inferVessel`.
+ * Minimal fallback if the director call fails entirely — produces a generic
+ * but safe prompt so the pipeline can still produce an image.
  */
-export async function buildRecipeImagePrompt(
-  input: PromptInput,
-): Promise<PromptResult> {
+function fallbackPrompt(input: PromptInput): PromptResult {
   const headline = headlineIngredients(input.ingredientNames);
-  const { vessel, finish } = await inferVessel(input);
-  const ctx: ArtDirectionContext = { vessel, vesselFinish: finish };
-  const vesselPhrase = describeVessel(ctx);
-
-  const searchQuery = buildSearchQuery(input.name, headline);
-
-  const subjectLine = [
-    `Subject: a finished serving of "${input.name.trim()}"`,
+  const subject = [
+    `A finished serving of "${input.name.trim()}"`,
     headline.length ? `featuring ${headline.join(", ")}` : null,
-    `${vesselPhrase}`,
   ]
     .filter(Boolean)
     .join(", ");
 
-  const referenceNote =
-    "Use the attached reference photographs as a guide for the dish's real-world colour, plating, texture, and garnish. Do not copy any single reference — produce a fresh photograph that matches the spirit of the best elements.";
+  const prompt = [
+    `${subject}, photographed as a single hero image for a modern editorial cookbook.`,
+    "Served in a visually appropriate vessel on a neutral linen or worn wood surface, with soft natural window light from the side and one or two subtle unstyled props nearby.",
+    "Shot on a full-frame camera with an 85mm prime lens at f/2.0 — shallow depth of field, the subject tack-sharp, the background gently out of focus. Composition is a three-quarter overhead view with the food as the visual hero.",
+    "The image must look like an unretouched real photograph, honest colours, slightly muted, natural shadows. No text, no watermarks, no logos, no hands, no 3D or CGI, no cartoon, no plastic sheen.",
+  ].join("\n\n");
 
-  const generationPrompt = [subjectLine + ".", HOUSE_STYLE_BLOCK, referenceNote]
-    .join("\n\n")
-    .trim();
-
-  return { searchQuery, generationPrompt, vessel };
+  return {
+    generationPrompt: prompt,
+    sceneConcept: "Fallback: neutral editorial hero shot (director unavailable).",
+  };
 }
 
 /**
- * A short phrase you'd actually type into Google Images. Deterministic so
- * tests can assert on it.
+ * Build the final generation prompt using the Creative Director. Returns a
+ * safe fallback prompt if the director call fails for any reason — we don't
+ * want a transient OpenAI blip to block image generation entirely.
  */
-export function buildSearchQuery(
-  recipeName: string,
-  headlineIngredientsList: string[],
-): string {
-  const name = recipeName.trim();
-  const parts: string[] = [];
-  if (name) parts.push(name);
-  if (headlineIngredientsList.length) {
-    parts.push(headlineIngredientsList.slice(0, 3).join(" "));
+export async function buildRecipeImagePrompt(
+  input: PromptInput,
+): Promise<PromptResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return fallbackPrompt(input);
   }
-  parts.push("food photography");
-  return parts.join(" ").replace(/\s+/g, " ").trim();
+
+  try {
+    const result = await callCreativeDirector(input, apiKey);
+    const prompt = (result.prompt ?? "").trim();
+    const sceneConcept = (result.scene_concept ?? "").trim();
+    if (!prompt) {
+      return fallbackPrompt(input);
+    }
+    return {
+      generationPrompt: prompt,
+      sceneConcept: sceneConcept || "Director returned no scene summary.",
+    };
+  } catch (err) {
+    console.warn(
+      "[recipe-image] Creative Director call failed; using fallback prompt",
+      err,
+    );
+    return fallbackPrompt(input);
+  }
 }

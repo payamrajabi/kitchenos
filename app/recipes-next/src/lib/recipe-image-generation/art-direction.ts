@@ -1,91 +1,62 @@
 /**
- * Single source of truth for the kitchenOS recipe photo art direction.
+ * House rules for kitchenOS recipe photos.
  *
- * The goal of this block is to push the generator AWAY from the typical
- * "AI food" look (plastic highlights, cartoon sheen, over-saturated colour,
- * perfectly symmetric plating, studio gradient backgrounds) and TOWARD
- * real-camera food photography: natural light, shallow depth of field,
- * believable imperfections, honest colour.
+ * These are the non-negotiables that appear in every generation prompt
+ * regardless of what scene the Creative Director model invents.
  *
- * Edit this file to tune the house style — nothing else needs to change.
+ * The goal is to push the generator AWAY from the typical "AI food" look
+ * (plastic highlights, cartoon sheen, over-saturated colour, perfectly
+ * symmetric plating, studio gradient backgrounds) and TOWARD real-camera
+ * food photography: natural light, shallow depth of field, believable
+ * imperfections, honest colour.
+ *
+ * Edit this file to tune the locked-in constraints. Creative choices
+ * (vessel, lighting mood, setting, framing) are made by the Creative
+ * Director in build-prompt.ts.
  */
-
-export type VesselKind =
-  | "bowl"
-  | "plate"
-  | "shallow-bowl"
-  | "wide-plate"
-  | "glass"
-  | "mug"
-  | "baking-dish"
-  | "cutting-board"
-  | "skillet";
-
-export type ArtDirectionContext = {
-  vessel: VesselKind;
-  /** A short phrase to add to the vessel description, e.g. "matte stoneware". */
-  vesselFinish?: string;
-};
 
 /**
- * The fixed technical + aesthetic block that every generation inherits.
- * Kept short on purpose — long prompts tend to make Flux drift.
+ * Hard constraints. The Creative Director is told to respect every one
+ * of these, and the orchestrator also appends them to the final prompt
+ * verbatim as a safety net.
  */
-export const HOUSE_STYLE_BLOCK = [
-  "Editorial food photography, 1:1 square crop.",
-  "Natural window light from the side, soft diffused highlights, honest shadows.",
-  "Shot on a 50mm prime lens at f/2.8, shallow depth of field, subject tack sharp and the background gently out of focus.",
-  "Camera angle roughly 30 degrees above the table (three-quarter overhead), food takes up about 70% of the frame, a small amount of negative space.",
-  "Neutral linen or light wood tabletop, one or two subtle unstyled props nearby (a folded napkin, a spoon, a small dish of salt) never crowding the hero.",
-  "Colours natural and slightly muted — no over-saturation, no orange cast, no shiny plastic reflections.",
-  "Appetising imperfection: a small drip, a few stray crumbs, irregular plating. Never symmetrical, never glossy, never cartoon.",
-  "No text, no watermarks, no logos, no hands, no utensils mid-motion, no pack-shot product staging.",
-].join(" ");
+export const HARD_CONSTRAINTS: string[] = [
+  "Square 1:1 composition at 1024x1024.",
+  "Shot on a full-frame camera with a 50-85mm prime lens at f/1.2 to f/2.8 — shallow depth of field, subject tack-sharp, background softly out of focus.",
+  "Natural-looking light only (window light, morning, afternoon, golden hour, overcast daylight, candle, low bar light). Never ring flash, never a studio gradient, never product-shot rim lighting.",
+  "The food is the undisputed visual hero of the frame.",
+  "The image must look like an unretouched real photograph taken by a skilled photographer — imperfect, honest, slightly muted colour, natural shadows.",
+];
 
 /**
- * Negative prompt shared across generations. Kept generic so we can feed it
- * to any provider that supports one (Flux does, gpt-image-1 does not).
+ * Everything we explicitly do not want, phrased as a negative list that we
+ * append to the positive prompt. gpt-image-1 doesn't support a separate
+ * negative prompt field, so these are folded into the positive prompt.
  */
-export const HOUSE_NEGATIVE_PROMPT = [
-  "plastic",
-  "artificial sheen",
-  "oversaturated",
-  "3d render",
-  "cgi",
-  "illustration",
-  "cartoon",
-  "stock photo watermark",
-  "text overlay",
-  "logos",
-  "ai artifacts",
-  "extra fingers",
-  "warped utensils",
-  "blurry subject",
-  "harsh flash",
-  "studio gradient background",
-].join(", ");
+export const HOUSE_NEGATIVE_PROMPT: string[] = [
+  "no text",
+  "no watermarks",
+  "no logos",
+  "no hands in mid-motion",
+  "no floating utensils",
+  "no 3D render, no CGI, no illustration, no cartoon",
+  "no plastic sheen",
+  "no artificial oversaturation",
+  "no stock photo watermark",
+  "no studio gradient background",
+  "no harsh flash or ring light",
+  "no warped cutlery or extra fingers",
+  "no AI artefacts",
+];
 
-const VESSEL_DESCRIPTION: Record<VesselKind, string> = {
-  bowl: "served in a deep matte stoneware bowl",
-  "shallow-bowl": "served in a wide shallow ceramic bowl",
-  plate: "plated on a matte ceramic dinner plate",
-  "wide-plate": "plated on a wide rimmed ceramic plate",
-  glass: "served in a simple clear drinking glass",
-  mug: "served in a plain ceramic mug",
-  "baking-dish": "still in a well-loved ceramic baking dish",
-  "cutting-board": "resting on a worn wooden cutting board",
-  skillet: "still in a cast iron skillet",
-};
-
-export function describeVessel(ctx: ArtDirectionContext): string {
-  const base = VESSEL_DESCRIPTION[ctx.vessel];
-  const finish = ctx.vesselFinish?.trim();
-  if (!finish) return base;
-  return `${base} (${finish})`;
+/**
+ * A short human-readable string of the constraints, appended to every prompt
+ * as a tail. Kept concise so it doesn't dilute the creative body.
+ */
+export function hardConstraintsBlock(): string {
+  return [
+    "HARD CONSTRAINTS (must all be true in the final image):",
+    ...HARD_CONSTRAINTS.map((c) => `• ${c}`),
+    `Explicit avoid list: ${HOUSE_NEGATIVE_PROMPT.join(", ")}.`,
+  ].join("\n");
 }
-
-/**
- * Default fallback when vessel inference fails or is skipped.
- * A matte stoneware bowl works for ~80% of dishes without looking wrong.
- */
-export const DEFAULT_VESSEL: VesselKind = "shallow-bowl";

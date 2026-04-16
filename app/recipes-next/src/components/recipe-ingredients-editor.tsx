@@ -653,7 +653,10 @@ function RecipeIngredientItemRow({
   const [naming, setNaming] = useState(false);
   const amountInputRef = useRef<HTMLInputElement>(null);
 
+  // Reset the controlled amount when the underlying item changes (e.g. after
+  // ingredient swap). Intentional sync of local form state with prop.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAmount(item.amount ?? "");
   }, [item.amount]);
 

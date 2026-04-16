@@ -90,7 +90,7 @@ Rules:
 4. UNITS: Use these exact unit strings when applicable: count, g, kg, oz, lb, ml, l, fl oz, cup, tsp, tbsp, ea, piece, dozen, whole, clove, slice, sprig, pinch, head, bunch, pkg, bag, box, block, tub, container, jar, bottle, can, roll, sleeve. Use null for unitless items (e.g. "salt to taste").
 5. INSTRUCTION SIMPLIFICATION: Rewrite instructions to be scannable — short, direct sentences. Keep important technique details and temperatures. Remove filler text, personal stories, and excessive explanation. Each step should focus on one action.
 6. TIMERS: Extract timing from instructions. If a step says "cook for 15 minutes", set timer_seconds_low=900 and timer_seconds_high=900. For ranges like "bake 25-30 min", set timer_seconds_low=1500 and timer_seconds_high=1800. Only set timers when there is an explicit wait/cook/bake/rest duration. Both null otherwise.
-7. MEAL TYPES: Choose from exactly: "Breakfast", "Lunch", "Dinner", "Snack", "Dessert". A recipe can have multiple. Pick based on what the recipe is.
+7. MEAL TYPES: Choose from exactly: "Breakfast", "Snack", "Lunch", "Dinner", "Dessert", "Drink". A recipe can have multiple. Pick based on what the recipe is (use "Drink" for cocktails, smoothies, and other beverages).
 8. DESCRIPTION: Summarize the recipe's appeal or the author's note in 1-2 sentences (max 250 chars). This is NOT the full instructions — it's a tagline.
 9. AMOUNTS: Keep amounts as strings to preserve fractions like "1/2", "3/4". Use null for "to taste" or unspecified amounts.
 10. Return ONLY valid JSON. No markdown, no explanation, no extra text.`;
@@ -111,10 +111,11 @@ function safeInt(v: unknown): number | null {
 
 const VALID_MEAL_TYPES = new Set([
   "Breakfast",
+  "Snack",
   "Lunch",
   "Dinner",
-  "Snack",
   "Dessert",
+  "Drink",
 ]);
 
 function sanitizeParsedRecipe(raw: Record<string, unknown>): ParsedRecipe | null {
