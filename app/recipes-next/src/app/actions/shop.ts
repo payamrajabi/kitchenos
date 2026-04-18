@@ -3,7 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { parseAmount } from "@/lib/parse-amount";
-import { planDateKeyLocalAnchor, addDaysToDateString } from "@/lib/dates";
+import { planDateKeyInTZ, addDaysToDateString } from "@/lib/dates";
+import { getUserTimeZone } from "@/lib/timezone-server";
 import {
   defaultStorageLocationForNewInventoryRow,
   DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
@@ -103,7 +104,7 @@ export async function getShoppingListAction(): Promise<
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Sign in first." };
 
-  const today = planDateKeyLocalAnchor();
+  const today = planDateKeyInTZ(await getUserTimeZone());
   const endDate = addDaysToDateString(today, 6);
 
   // Get all meal plan entries for the next 7 days that reference a recipe

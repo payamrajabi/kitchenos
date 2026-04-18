@@ -2,13 +2,14 @@
 
 import {
   deleteRecipeAction,
-  publishRecipeToCommunityAction,
   updateRecipeAction,
 } from "@/app/actions/recipes";
 import { generateRecipeImageAction } from "@/app/actions/recipe-image";
 import { RecipeIngredientsEditor } from "@/components/recipe-ingredients-editor";
 import { RecipeInstructionsEditor } from "@/components/recipe-instructions-editor";
 import { RecipeEditModeProvider } from "@/components/recipe-edit-mode";
+import { RecipeServingsScaleProvider } from "@/components/recipe-servings-scale";
+import { Minus, Plus } from "@phosphor-icons/react";
 import { RecipeDescriptionRichText } from "@/components/recipe-description-rich-text";
 import { isSupabaseConfigured, recipeImagesBucket } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
@@ -105,6 +106,17 @@ export function RecipeDetailEditor({
   const [servings, setServings] = useState(() =>
     initial.servings != null ? String(initial.servings) : "",
   );
+  // Base servings = what the author stored. View-mode stepper adjusts
+  // `viewServings`; the ratio becomes a display-only multiplier for ingredient
+  // amounts (nothing is written back to the DB).
+  const baseServings = (() => {
+    const n = Math.floor(Number(initial.servings));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
+  const [viewServings, setViewServings] = useState<number | null>(baseServings);
+  useEffect(() => {
+    setViewServings(baseServings);
+  }, [baseServings]);
   const [calories, setCalories] = useState(() =>
     initial.calories != null ? String(initial.calories) : "",
   );
@@ -121,9 +133,6 @@ export function RecipeDetailEditor({
     normalizeMealTypesFromDb(initial.meal_types),
   );
   const [mealTypesError, setMealTypesError] = useState<string | null>(null);
-  const [isPublished, setIsPublished] = useState(
-    () => initial.is_published_to_community === true,
-  );
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Recipes always open in read-only "view" mode — whether you came from Plan,
@@ -342,16 +351,6 @@ export function RecipeDetailEditor({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [deleteModalOpen, closeDeleteModal]);
-
-  const togglePublish = useCallback(() => {
-    const next = !isPublished;
-    setIsPublished(next);
-    startTransition(async () => {
-      const r = await publishRecipeToCommunityAction(initial.id, next);
-      if (!r.ok) setIsPublished(!next);
-      else router.refresh();
-    });
-  }, [isPublished, initial.id, router]);
 
   const blurMeta = useCallback(
     (
@@ -654,6 +653,28 @@ export function RecipeDetailEditor({
       ? `Serves ${initial.servings}`
       : null;
 
+  // View-mode ingredient scale: 1 when no base servings, otherwise current /
+  // base. Clamp the stepper to a sensible range so users can't divide by zero
+  // or ask for 500 servings by accident.
+  const VIEW_SERVINGS_MIN = 1;
+  const VIEW_SERVINGS_MAX = 99;
+  const servingsScale =
+    !isEditing && baseServings && viewServings && viewServings > 0
+      ? viewServings / baseServings
+      : 1;
+  const decrementViewServings = useCallback(() => {
+    setViewServings((cur) => {
+      const n = cur ?? baseServings ?? VIEW_SERVINGS_MIN;
+      return Math.max(VIEW_SERVINGS_MIN, n - 1);
+    });
+  }, [baseServings]);
+  const incrementViewServings = useCallback(() => {
+    setViewServings((cur) => {
+      const n = cur ?? baseServings ?? VIEW_SERVINGS_MIN;
+      return Math.min(VIEW_SERVINGS_MAX, n + 1);
+    });
+  }, [baseServings]);
+
   const deleteConfirmModal =
     isClient && deleteModalOpen ? (
       <div className="modal open" aria-hidden="false" role="presentation">
@@ -715,6 +736,7 @@ export function RecipeDetailEditor({
 
   return (
     <RecipeEditModeProvider mode={isEditing ? "edit" : "view"}>
+    <RecipeServingsScaleProvider scale={servingsScale}>
     <article className={`recipe-detail recipe-detail--${isEditing ? "edit" : "view"}`}>
       <div className="recipe-detail-layout">
         <div className="recipe-detail-main">
@@ -759,7 +781,35 @@ export function RecipeDetailEditor({
               text={str(initial.description)}
             />
           ) : null}
-      {!isEditing && servingsLabel ? (
+      {!isEditing && baseServings ? (
+        <div
+          className="recipe-detail-servings-stepper"
+          role="group"
+          aria-label="Adjust servings to scale ingredient amounts"
+        >
+          <button
+            type="button"
+            className="recipe-detail-servings-stepper-btn"
+            onClick={decrementViewServings}
+            disabled={(viewServings ?? baseServings) <= VIEW_SERVINGS_MIN}
+            aria-label="Decrease servings"
+          >
+            <Minus size={12} weight="bold" aria-hidden />
+          </button>
+          <span className="recipe-detail-servings-stepper-label">
+            {viewServings ?? baseServings} servings
+          </span>
+          <button
+            type="button"
+            className="recipe-detail-servings-stepper-btn"
+            onClick={incrementViewServings}
+            disabled={(viewServings ?? baseServings) >= VIEW_SERVINGS_MAX}
+            aria-label="Increase servings"
+          >
+            <Plus size={12} weight="bold" aria-hidden />
+          </button>
+        </div>
+      ) : !isEditing && servingsLabel ? (
         <p className="recipe-detail-servings-static">{servingsLabel}</p>
       ) : null}
       <RecipeIngredientsEditor
@@ -1075,18 +1125,6 @@ export function RecipeDetailEditor({
             </p>
           ) : null}
           {isEditing ? (
-            <div className="recipe-publish-toggle">
-              <button
-                type="button"
-                className={`secondary recipe-publish-btn${isPublished ? " recipe-publish-btn--active" : ""}`}
-                onClick={togglePublish}
-                disabled={isPending}
-              >
-                {isPublished ? "Published to Community" : "Publish to Community"}
-              </button>
-            </div>
-          ) : null}
-          {isEditing ? (
             <section className="section recipe-source-section">
               <p className="recipe-source-row">
                 <label className="recipe-source-label" htmlFor="recipe-source-url">
@@ -1152,6 +1190,7 @@ export function RecipeDetailEditor({
       </div>
     </article>
     {deleteConfirmModal ? createPortal(deleteConfirmModal, document.body) : null}
+    </RecipeServingsScaleProvider>
     </RecipeEditModeProvider>
   );
 }

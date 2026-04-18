@@ -34,6 +34,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     today: "2026-04-16",
+    timeZone: "America/New_York",
     days,
     entries: [
       mockMealPlanEntry({

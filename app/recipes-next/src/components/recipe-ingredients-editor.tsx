@@ -14,6 +14,7 @@ import {
 } from "@/app/actions/recipes";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import { useIsRecipeEditing } from "@/components/recipe-edit-mode";
+import { useRecipeServingsScale } from "@/components/recipe-servings-scale";
 import {
   DndContext,
   type DragEndEvent,
@@ -28,7 +29,7 @@ import {
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DotsSixVertical, DotsThree, Trash } from "@phosphor-icons/react";
-import { displayAmount } from "@/lib/parse-amount";
+import { displayAmount, scaleAmountForDisplay } from "@/lib/parse-amount";
 import { pluralizeUnit, RECIPE_UNITS } from "@/lib/unit-mapping";
 import type { RecipeIngredientRow, RecipeIngredientSectionRow } from "@/types/database";
 import { useRouter } from "next/navigation";
@@ -212,6 +213,12 @@ function normalizeRow(row: RecipeIngredientRow): RecipeIngredientRow {
       ? {
           id: Number(row.ingredients.id),
           name: String(row.ingredients.name ?? ""),
+          density_g_per_ml:
+            typeof row.ingredients.density_g_per_ml === "number" &&
+            Number.isFinite(row.ingredients.density_g_per_ml) &&
+            row.ingredients.density_g_per_ml > 0
+              ? row.ingredients.density_g_per_ml
+              : null,
         }
       : null,
   };
@@ -648,7 +655,21 @@ function RecipeIngredientItemRow({
   dragHandleSlot?: ReactNode;
 }) {
   const isEditing = useIsRecipeEditing();
+  const servingsScale = useRecipeServingsScale();
   const [amount, setAmount] = useState(item.amount ?? "");
+  // Only rescale in view mode — in edit mode the author is editing the stored
+  // amount, so it must render exactly as persisted.
+  const effectiveScale = isEditing ? 1 : servingsScale;
+  const displayedAmountText =
+    effectiveScale === 1
+      ? displayAmount(item.amount) || "—"
+      : scaleAmountForDisplay(item.amount, effectiveScale) || "—";
+  // Pluralization (cup/cups, tsp/tsps) should follow the *displayed* number,
+  // so scaling 1 cup → 1.5 cups picks up the plural form.
+  const unitPluralAmount =
+    effectiveScale === 1
+      ? amount
+      : scaleAmountForDisplay(item.amount, effectiveScale);
   const [editingAmount, setEditingAmount] = useState(false);
   const [naming, setNaming] = useState(false);
   const amountInputRef = useRef<HTMLInputElement>(null);
@@ -742,18 +763,19 @@ function RecipeIngredientItemRow({
       style={rowStyle}
       className={["recipe-ingredient-row", prepared ? "recipe-ingredient-row--prepared" : "", rowClassName].filter(Boolean).join(" ")}
     >
-      <td className="recipe-ingredient-prep-cell">
-        <input
-          type="checkbox"
-          className="recipe-ingredient-prep-checkbox"
-          checked={prepared}
-          onChange={onTogglePrepared}
-          aria-label={`Mark ${item.ingredients?.name ?? "ingredient"} as prepared`}
-        />
+      <td className="recipe-ingredient-lead-cell">
+        {isEditing && dragHandleSlot != null ? (
+          dragHandleSlot
+        ) : (
+          <input
+            type="checkbox"
+            className="recipe-ingredient-prep-checkbox"
+            checked={prepared}
+            onChange={onTogglePrepared}
+            aria-label={`Mark ${item.ingredients?.name ?? "ingredient"} as prepared`}
+          />
+        )}
       </td>
-      {dragHandleSlot != null ? (
-        <td className="recipe-ingredient-drag-cell">{dragHandleSlot}</td>
-      ) : null}
       <td className="recipe-ingredient-name-cell">
         {isEditing && naming ? (
           <IngredientSearchControl
@@ -791,68 +813,68 @@ function RecipeIngredientItemRow({
           </span>
         )}
       </td>
-      <td className="recipe-ingredient-amount-cell">
-        {isEditing && editingAmount ? (
-          <input
-            ref={amountInputRef}
-            type="text"
-            className="recipe-ingredient-amount-input"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            onBlur={commitAmount}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                if (addIngredientInputId) {
-                  document.getElementById(addIngredientInputId)?.focus();
-                } else {
-                  (e.target as HTMLInputElement).blur();
+      <td className="recipe-ingredient-value-cell">
+        <span className="recipe-ingredient-value-inner">
+          {isEditing && editingAmount ? (
+            <input
+              ref={amountInputRef}
+              type="text"
+              className="recipe-ingredient-amount-input"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onBlur={commitAmount}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (addIngredientInputId) {
+                    document.getElementById(addIngredientInputId)?.focus();
+                  } else {
+                    (e.target as HTMLInputElement).blur();
+                  }
                 }
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setAmount(item.amount ?? "");
-                setEditingAmount(false);
-              }
-            }}
-            disabled={disabled}
-            placeholder="—"
-            aria-label={`Amount for ${item.ingredients?.name ?? "ingredient"}`}
-          />
-        ) : isEditing ? (
-          <button
-            type="button"
-            className="recipe-ingredient-amount-display"
-            disabled={disabled}
-            onClick={() => setEditingAmount(true)}
-            aria-label={`Edit amount for ${item.ingredients?.name ?? "ingredient"}`}
-          >
-            {displayAmount(item.amount) || "—"}
-          </button>
-        ) : (
-          <span className="recipe-ingredient-amount-display recipe-ingredient-amount-display--static">
-            {displayAmount(item.amount) || "—"}
-          </span>
-        )}
-      </td>
-      <td className="recipe-ingredient-unit-cell">
-        {isEditing ? (
-          <SearchableSelect
-            className="inventory-unit-select recipe-ingredient-unit-select"
-            bareInline
-            options={UNIT_OPTIONS}
-            value={item.unit || DEFAULT_UNIT}
-            onChange={(unit) => onChangeUnit(item.id, unit || DEFAULT_UNIT)}
-            disabled={disabled}
-            aria-label={`Unit for ${item.ingredients?.name ?? "ingredient"}`}
-            placeholder={DEFAULT_UNIT}
-            triggerLabel={pluralizeUnit(item.unit || DEFAULT_UNIT, amount)}
-          />
-        ) : (
-          <span className="recipe-ingredient-unit-text">
-            {pluralizeUnit(item.unit || DEFAULT_UNIT, amount)}
-          </span>
-        )}
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setAmount(item.amount ?? "");
+                  setEditingAmount(false);
+                }
+              }}
+              disabled={disabled}
+              placeholder="—"
+              aria-label={`Amount for ${item.ingredients?.name ?? "ingredient"}`}
+            />
+          ) : isEditing ? (
+            <button
+              type="button"
+              className="recipe-ingredient-amount-display"
+              disabled={disabled}
+              onClick={() => setEditingAmount(true)}
+              aria-label={`Edit amount for ${item.ingredients?.name ?? "ingredient"}`}
+            >
+              {displayedAmountText}
+            </button>
+          ) : (
+            <span className="recipe-ingredient-amount-display recipe-ingredient-amount-display--static">
+              {displayedAmountText}
+            </span>
+          )}
+          {isEditing ? (
+            <SearchableSelect
+              className="inventory-unit-select recipe-ingredient-unit-select"
+              bareInline
+              options={UNIT_OPTIONS}
+              value={item.unit || DEFAULT_UNIT}
+              onChange={(unit) => onChangeUnit(item.id, unit || DEFAULT_UNIT)}
+              disabled={disabled}
+              aria-label={`Unit for ${item.ingredients?.name ?? "ingredient"}`}
+              placeholder={DEFAULT_UNIT}
+              triggerLabel={pluralizeUnit(item.unit || DEFAULT_UNIT, amount)}
+            />
+          ) : (
+            <span className="recipe-ingredient-unit-text">
+              {pluralizeUnit(item.unit || DEFAULT_UNIT, unitPluralAmount)}
+            </span>
+          )}
+        </span>
       </td>
       <td className="recipe-ingredient-actions-cell">
         {isEditing ? (
@@ -956,7 +978,7 @@ function SortableRecipeIngredientRow({
             disabled={dragDisabled}
             aria-label={`Reorder ${item.ingredients?.name ?? "ingredient"}`}
           >
-            <DotsSixVertical className="recipe-ingredient-drag-icon" size={12} weight="bold" aria-hidden />
+            <DotsSixVertical className="recipe-ingredient-drag-icon" size={16} weight="bold" aria-hidden />
           </button>
         ) : null
       }
@@ -1239,11 +1261,7 @@ function IngredientAddTableRow({
   return (
     <tr className="recipe-ingredients-add-row">
       <td
-        className="recipe-ingredient-prep-cell recipe-ingredients-add-placeholder-cell"
-        aria-hidden="true"
-      />
-      <td
-        className="recipe-ingredient-drag-cell recipe-ingredients-add-placeholder-cell"
+        className="recipe-ingredient-lead-cell recipe-ingredients-add-placeholder-cell"
         aria-hidden="true"
       />
       <td className="recipe-ingredient-name-cell recipe-ingredients-add-name-cell">
@@ -1259,10 +1277,7 @@ function IngredientAddTableRow({
           onPickSuggestion={pickSuggestion}
         />
       </td>
-      <td className="recipe-ingredient-amount-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
-        —
-      </td>
-      <td className="recipe-ingredient-unit-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
+      <td className="recipe-ingredient-value-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
         —
       </td>
       <td className="recipe-ingredient-actions-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">

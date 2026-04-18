@@ -1,12 +1,17 @@
 "use client";
 
-import { addMealPlanEntryAction } from "@/app/actions/meal-plan";
+import {
+  addMealPlanEntryAction,
+  moveMealPlanEntryAction,
+  swapMealPlanEntriesAction,
+} from "@/app/actions/meal-plan";
 import { PlanMealSlot } from "@/components/plan-meal-slot";
 import {
   classifyStoredMealEntry,
   planSlotOrder,
   type PlanSlotKey,
 } from "@/lib/meal-plan";
+import { hourOfDayInTZ } from "@/lib/dates";
 import { PLAN_SCROLL_TO_TODAY_EVENT } from "@/lib/plan-board-scroll";
 import { coerceNumericId } from "@/lib/recipes";
 import type { MealPlanEntryRow } from "@/types/database";
@@ -36,12 +41,15 @@ const SLOT_CUTOFF_HOUR: Record<PlanSlotKey, number> = {
   dessert: 22,
 };
 
-function isSlotInPast(dateStr: string, slotKey: PlanSlotKey, todayStr: string): boolean {
+function isSlotInPast(
+  dateStr: string,
+  slotKey: PlanSlotKey,
+  todayStr: string,
+  nowHour: number,
+): boolean {
   if (dateStr < todayStr) return true;
   if (dateStr > todayStr) return false;
-  const now = new Date();
-  const h = now.getHours() + now.getMinutes() / 60;
-  return h >= SLOT_CUTOFF_HOUR[slotKey];
+  return nowHour >= SLOT_CUTOFF_HOUR[slotKey];
 }
 
 type DayColumn = { date: string };
@@ -62,6 +70,7 @@ type IngredientOption = {
 
 type Props = {
   today: string;
+  timeZone: string;
   days: DayColumn[];
   entries: MealPlanEntryRow[];
   recipes: RecipeOption[];
@@ -115,13 +124,28 @@ function dayParts(dateStr: string) {
 }
 
 export const PlanWeekBoard = forwardRef<PlanWeekBoardHandle, Props>(
-  function PlanWeekBoard({ today, days, entries, recipes, ingredients }, ref) {
+  function PlanWeekBoard(
+    { today, timeZone, days, entries, recipes, ingredients },
+    ref,
+  ) {
     const router = useRouter();
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const planOpenCellRef = useRef<HTMLDivElement | null>(null);
     const [composer, setComposer] = useState<ComposerState>(null);
     const [feedback, setFeedback] = useState<string | null>(null);
     const [pending, startTransition] = useTransition();
+    const [draggingId, setDraggingId] = useState<number | null>(null);
+
+    const [nowHour, setNowHour] = useState<number>(() =>
+      hourOfDayInTZ(timeZone),
+    );
+    useEffect(() => {
+      const id = window.setInterval(
+        () => setNowHour(hourOfDayInTZ(timeZone)),
+        60_000,
+      );
+      return () => window.clearInterval(id);
+    }, [timeZone]);
 
     const todayIndex = useMemo(
       () => days.findIndex((d) => d.date === today),
@@ -321,6 +345,58 @@ export const PlanWeekBoard = forwardRef<PlanWeekBoardHandle, Props>(
       });
     };
 
+    const handleDragStartCard = useCallback((entryId: number) => {
+      setDraggingId(entryId);
+      setFeedback(null);
+    }, []);
+
+    const handleDragEndCard = useCallback(() => {
+      setDraggingId(null);
+    }, []);
+
+    const handleDropOnCell = useCallback(
+      (planDate: string, slotKey: PlanSlotKey) => {
+        const id = draggingId;
+        if (id == null) return;
+        setDraggingId(null);
+        setComposer(null);
+        startTransition(async () => {
+          const result = await moveMealPlanEntryAction({
+            entryId: id,
+            planDate,
+            slotKey,
+          });
+          if (!result.ok) {
+            setFeedback(result.error);
+            return;
+          }
+          router.refresh();
+        });
+      },
+      [draggingId, router],
+    );
+
+    const handleDropOnCard = useCallback(
+      (targetEntryId: number) => {
+        const id = draggingId;
+        if (id == null || id === targetEntryId) return;
+        setDraggingId(null);
+        setComposer(null);
+        startTransition(async () => {
+          const result = await swapMealPlanEntriesAction({
+            entryAId: id,
+            entryBId: targetEntryId,
+          });
+          if (!result.ok) {
+            setFeedback(result.error);
+            return;
+          }
+          router.refresh();
+        });
+      },
+      [draggingId, router],
+    );
+
     const handleCellKeyDown = (
       event: ReactKeyboardEvent<HTMLDivElement>,
       planDate: string,
@@ -398,7 +474,7 @@ export const PlanWeekBoard = forwardRef<PlanWeekBoardHandle, Props>(
                   const isOpen =
                     composer?.planDate === day.date &&
                     composer?.slotKey === slot.key;
-                  const past = isSlotInPast(day.date, slot.key, today);
+                  const past = isSlotInPast(day.date, slot.key, today, nowHour);
                   const parts = dayParts(day.date);
 
                   return (
@@ -426,6 +502,11 @@ export const PlanWeekBoard = forwardRef<PlanWeekBoardHandle, Props>(
                         handleCellKeyDown(event, day.date, slot.key)
                       }
                       commitPick={commitPick}
+                      draggingId={draggingId}
+                      onDragStartCard={handleDragStartCard}
+                      onDragEndCard={handleDragEndCard}
+                      onDropOnCell={() => handleDropOnCell(day.date, slot.key)}
+                      onDropOnCard={handleDropOnCard}
                     />
                   );
                 }),

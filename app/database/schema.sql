@@ -24,12 +24,18 @@ CREATE TABLE IF NOT EXISTS recipes (
   protein_grams INTEGER,
   fat_grams INTEGER,
   carbs_grams INTEGER,
-  is_published_to_community INTEGER NOT NULL DEFAULT 0,
-  published_at TEXT,
-  community_source_recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
+  deleted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (category_id) REFERENCES recipe_categories(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_recipe_library (
+  user_id TEXT NOT NULL,
+  recipe_id INTEGER NOT NULL,
+  added_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, recipe_id),
+  FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS recipe_tags (
@@ -78,6 +84,11 @@ CREATE TABLE IF NOT EXISTS ingredients (
   nutrition_notes TEXT,
   nutrition_serving_size_g REAL NOT NULL DEFAULT 100 CHECK (nutrition_serving_size_g > 0),
   nutrition_fetched_at TEXT,
+  -- Apparent density in grams per millilitre. Powers the "Grams" view on the
+  -- recipe ingredients table, which converts volume amounts (tsp/tbsp/cup/ml/etc.)
+  -- to grams using this density. Nullable so ingredients that haven't been
+  -- measured yet simply fall back to their original unit in that view.
+  density_g_per_ml REAL CHECK (density_g_per_ml IS NULL OR density_g_per_ml > 0),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

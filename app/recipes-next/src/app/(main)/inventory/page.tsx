@@ -5,7 +5,8 @@ import { ensureIngredientGroceryCategoriesInDb } from "@/lib/ensure-ingredient-g
 import { sortIngredientsForInventoryDisplay } from "@/lib/inventory-display";
 import { InventoryAddFab } from "@/components/inventory-add-fab";
 import { InventoryView } from "@/components/inventory-view";
-import { planDateKeyLocalAnchor } from "@/lib/dates";
+import { planDateKeyInTZ } from "@/lib/dates";
+import { getUserTimeZone } from "@/lib/timezone-server";
 
 export default async function InventoryPage() {
   if (!isSupabaseConfigured()) {
@@ -31,7 +32,7 @@ export default async function InventoryPage() {
     );
   }
 
-  const today = planDateKeyLocalAnchor();
+  const today = planDateKeyInTZ(await getUserTimeZone());
 
   const [
     { data: ingredients, error: ingErr },

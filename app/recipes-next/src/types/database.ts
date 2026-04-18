@@ -21,13 +21,17 @@ export type RecipeRow = {
   carbs_grams: number | null;
   /** When the recipe is a fit for these meal moments (see `RECIPE_MEAL_TYPES`). */
   meal_types?: string[] | null;
-  is_published_to_community?: boolean;
-  published_at?: string | null;
-  /** Points back to the original published recipe this was saved from. */
-  community_source_recipe_id?: number | null;
+  /** Set when the owner removes a recipe. Tombstone for anyone who has it in their library. */
+  deleted_at?: string | null;
   owner_id?: string | null;
   created_at?: string;
   updated_at?: string;
+};
+
+export type UserRecipeLibraryRow = {
+  user_id: string;
+  recipe_id: number;
+  added_at?: string;
 };
 
 export type FoodType = "generic" | "branded" | "custom";
@@ -69,6 +73,13 @@ export type IngredientRow = {
   nutrition_serving_size_g?: number;
   /** When nutrition data was last fetched from an external source. */
   nutrition_fetched_at?: string | null;
+  /**
+   * Apparent density in grams per millilitre. Used by the recipe ingredients
+   * table's "Grams" display toggle to convert volume amounts (tsp/tbsp/cup/ml/…)
+   * into grams. Nullable: ingredients without a measured density fall back to
+   * their original unit in that view.
+   */
+  density_g_per_ml?: number | null;
 };
 
 export type IngredientNutrientRow = {
@@ -114,7 +125,7 @@ export type RecipeIngredientRow = {
   /** When true, this ingredient line is optional (e.g. garnish). */
   is_optional: boolean;
   created_at?: string;
-  ingredients?: Pick<IngredientRow, "id" | "name"> | null;
+  ingredients?: Pick<IngredientRow, "id" | "name" | "density_g_per_ml"> | null;
 };
 
 export type RecipeInstructionStepRow = {

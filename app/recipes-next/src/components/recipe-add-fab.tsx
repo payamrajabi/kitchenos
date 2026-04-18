@@ -16,6 +16,7 @@ import {
   ClipboardText,
   X,
 } from "@phosphor-icons/react";
+import ReactMarkdown from "react-markdown";
 import {
   useCallback,
   useEffect,
@@ -28,6 +29,7 @@ import {
 export const DRAFT_STORAGE_KEY = "kitchenos-recipe-draft";
 
 type MenuView = "closed" | "menu" | "url" | "text";
+type TextTab = "write" | "preview";
 
 export function RecipeAddFab() {
   const { startImport } = useDraftImports();
@@ -37,10 +39,22 @@ export function RecipeAddFab() {
   const [view, setView] = useState<MenuView>("closed");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
+  const [textTab, setTextTab] = useState<TextTab>("write");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const showPopover = view === "menu" || view === "url";
+  const showTextModal = view === "text";
   const showPanel = view !== "closed";
+
+  useEffect(() => {
+    if (!showTextModal) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showTextModal]);
 
   useEffect(() => {
     if (!showPanel) return;
@@ -60,18 +74,24 @@ export function RecipeAddFab() {
     if (!showPanel) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setView("closed");
-        setError(null);
+        if (view === "text") {
+          setView("menu");
+          setError(null);
+        } else {
+          setView("closed");
+          setError(null);
+        }
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showPanel]);
+  }, [showPanel, view]);
 
   const reset = useCallback(() => {
     setView("closed");
     setUrl("");
     setText("");
+    setTextTab("write");
     setError(null);
   }, []);
 
@@ -140,7 +160,7 @@ export function RecipeAddFab() {
 
   return (
     <div className="inventory-add-fab-wrap" ref={wrapRef}>
-      {showPanel && (
+      {showPopover && (
         <div
           className="recipe-add-panel"
           role="dialog"
@@ -190,6 +210,7 @@ export function RecipeAddFab() {
                 type="button"
                 className="recipe-add-menu-item"
                 onClick={() => {
+                  setTextTab("write");
                   setView("text");
                   setError(null);
                 }}
@@ -236,9 +257,24 @@ export function RecipeAddFab() {
               </button>
             </div>
           )}
+        </div>
+      )}
 
-          {view === "text" && (
-            <div className="recipe-add-input-group recipe-add-input-group--text">
+      {showTextModal && (
+        <>
+          <button
+            type="button"
+            className="recipe-add-modal-backdrop"
+            aria-label="Close"
+            onClick={reset}
+          />
+          <div
+            className="recipe-add-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recipe-add-modal-title"
+          >
+            <header className="recipe-add-modal-header">
               <button
                 type="button"
                 className="recipe-add-back icon-ghost"
@@ -250,25 +286,81 @@ export function RecipeAddFab() {
               >
                 <X size={14} weight="bold" aria-hidden />
               </button>
-              <textarea
-                className="recipe-add-text-input"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Paste recipe name, ingredients, and instructions…"
-                rows={6}
-                autoFocus
-              />
+              <h2 id="recipe-add-modal-title" className="recipe-add-modal-title">
+                From text
+              </h2>
               <button
                 type="button"
-                className="recipe-add-submit"
-                onClick={handleTextSubmit}
-                disabled={!text.trim()}
+                className="recipe-add-modal-close icon-ghost"
+                onClick={reset}
+                aria-label="Close"
               >
-                Import
+                <X size={18} weight="bold" aria-hidden />
               </button>
+            </header>
+
+            <div className="recipe-add-modal-body">
+              <div className="recipe-add-text-modal">
+                <div
+                  className="recipe-add-md-tabs"
+                  role="tablist"
+                  aria-label="Markdown"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={textTab === "write"}
+                    className={`recipe-add-md-tab${textTab === "write" ? " is-active" : ""}`}
+                    onClick={() => setTextTab("write")}
+                  >
+                    Write
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={textTab === "preview"}
+                    className={`recipe-add-md-tab${textTab === "preview" ? " is-active" : ""}`}
+                    onClick={() => setTextTab("preview")}
+                  >
+                    Preview
+                  </button>
+                </div>
+                {textTab === "write" ? (
+                  <textarea
+                    className="recipe-add-text-input recipe-add-text-input--modal"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="Paste recipe name, ingredients, and instructions. Markdown is supported (headings, lists, **bold**, links…)"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="recipe-add-md-preview-wrap">
+                    {text.trim() ? (
+                      <div className="recipe-add-md-preview">
+                        <ReactMarkdown>{text}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="recipe-add-md-preview-empty">
+                        Nothing to preview yet — switch to Write and paste your
+                        recipe.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="recipe-add-text-modal-footer">
+                  <button
+                    type="button"
+                    className="recipe-add-submit"
+                    onClick={handleTextSubmit}
+                    disabled={!text.trim()}
+                  >
+                    Import
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        </>
       )}
 
       <input
@@ -285,7 +377,7 @@ export function RecipeAddFab() {
       <button
         type="button"
         className="inventory-add-fab"
-        aria-label={view === "closed" ? "Add recipe" : "Close menu"}
+        aria-label={view === "closed" ? "Add recipe" : "Close"}
         aria-expanded={view !== "closed"}
         onClick={view === "closed" ? toggleMenu : reset}
       >

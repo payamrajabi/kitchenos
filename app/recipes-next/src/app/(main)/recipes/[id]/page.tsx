@@ -5,11 +5,17 @@ import { recipeDescriptionPlainSnippet } from "@/lib/recipe-description-links";
 import { loadRecipeInstructionStepsWithLegacyMigration } from "@/lib/recipe-instruction-steps-migrate";
 import type { IngredientRow, RecipeIngredientSectionRow, RecipeRow } from "@/types/database";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 type Props = {
   params: Promise<{ id: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+type RawIngredientJoin = {
+  id: unknown;
+  name: unknown;
+  density_g_per_ml?: unknown;
 };
 
 type RawRecipeIngredientRow = {
@@ -22,16 +28,7 @@ type RawRecipeIngredientRow = {
   unit: unknown;
   is_optional?: unknown;
   created_at?: string;
-  ingredients:
-    | {
-        id: unknown;
-        name: unknown;
-      }
-    | {
-        id: unknown;
-        name: unknown;
-      }[]
-    | null;
+  ingredients: RawIngredientJoin | RawIngredientJoin[] | null;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -92,7 +89,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
       supabase
         .from("recipe_ingredients")
         .select(
-          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name)",
+          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name, density_g_per_ml)",
         )
         .eq("recipe_id", id),
       supabase
@@ -104,6 +101,13 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
 
   if (recipeResult.error || !recipeResult.data) {
     notFound();
+  }
+
+  const rForAccess = recipeResult.data as RecipeRow;
+  // Non-owners see the read-only community view. Owners who soft-deleted their
+  // own recipe also get pushed to that view (which handles the tombstone).
+  if (rForAccess.owner_id !== user.id || rForAccess.deleted_at) {
+    redirect(`/community/${id}`);
   }
 
   if (
@@ -122,7 +126,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     );
   }
 
-  const r = recipeResult.data as RecipeRow;
+  const r = rForAccess;
 
   const recipeInstructionSteps = await loadRecipeInstructionStepsWithLegacyMigration(
     supabase,
@@ -151,7 +155,11 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     unit: string | null;
     is_optional: boolean;
     created_at?: string;
-    ingredients: { id: number; name: string } | null;
+    ingredients: {
+      id: number;
+      name: string;
+      density_g_per_ml: number | null;
+    } | null;
   }[] = ((recipeIngredientsResult.data ?? []) as RawRecipeIngredientRow[]).map((row) => {
     const ingredient = Array.isArray(row.ingredients)
       ? row.ingredients[0] ?? null
@@ -160,6 +168,12 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     const opt = row.is_optional;
     const is_optional =
       opt === true || opt === 1 || opt === "true" || opt === "t";
+    const densityRaw = ingredient?.density_g_per_ml;
+    const densityNum = densityRaw == null ? null : Number(densityRaw);
+    const density_g_per_ml =
+      typeof densityNum === "number" && Number.isFinite(densityNum) && densityNum > 0
+        ? densityNum
+        : null;
     return {
       id: Number(row.id),
       recipe_id: Number(row.recipe_id),
@@ -177,6 +191,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
         ? {
             id: Number(ingredient.id),
             name: String(ingredient.name ?? ""),
+            density_g_per_ml,
           }
         : null,
     };

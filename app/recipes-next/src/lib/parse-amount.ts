@@ -85,12 +85,23 @@ const FRACTION_TOLERANCE = 0.015;
 /**
  * Pretty-print an amount string using Unicode fractions when possible.
  * "0.5" → "½", "1.5" → "1½", "0.25" → "¼", "3" → "3".
+ * Also renders a range like "2 to 3" or "2-3" as a compact "2–3" (en-dash)
+ * so it fits in the narrow amount column without wrapping.
  * Falls back to the original string if no clean fraction matches.
  */
 export function displayAmount(raw: string | null | undefined): string {
   if (raw == null) return "";
   const s = raw.trim();
   if (!s) return "";
+
+  const rangeMatch = s.match(
+    /^(\d+(?:\s+\d+\s*\/\s*\d+|\s*\/\s*\d+|\.\d+)?|[\u00BC-\u00BE\u2150-\u215E]|\d+[\u00BC-\u00BE\u2150-\u215E])\s*(?:to|-|–|—)\s*(\d+(?:\s+\d+\s*\/\s*\d+|\s*\/\s*\d+|\.\d+)?|[\u00BC-\u00BE\u2150-\u215E]|\d+[\u00BC-\u00BE\u2150-\u215E])$/i,
+  );
+  if (rangeMatch) {
+    const low = displayAmount(rangeMatch[1]);
+    const high = displayAmount(rangeMatch[2]);
+    return `${low}\u2013${high}`;
+  }
 
   const n = parseAmount(s);
   if (n == null) return s;
@@ -107,4 +118,28 @@ export function displayAmount(raw: string | null | undefined): string {
   }
 
   return formatAmount(n);
+}
+
+/**
+ * Scale a stored amount string by a numeric factor and return a pretty-printed
+ * display string. Used by the view-mode servings stepper: when the reader bumps
+ * a 4-serving recipe up to 6, every ingredient amount is rendered at 1.5×.
+ *
+ * Falls back to the original string if parsing fails, so free-form amounts
+ * (e.g. "a pinch") keep rendering unchanged.
+ */
+export function scaleAmountForDisplay(
+  raw: string | null | undefined,
+  scale: number,
+): string {
+  if (raw == null) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  if (!Number.isFinite(scale) || scale <= 0 || scale === 1) {
+    return displayAmount(s);
+  }
+  const n = parseAmount(s);
+  if (n == null) return s;
+  const scaled = n * scale;
+  return displayAmount(formatAmount(scaled));
 }

@@ -576,29 +576,26 @@ function SortableInstructionRow({
         .join(" ")}
     >
       <td
-        className="recipe-instruction-index-cell"
+        className="recipe-instruction-lead-cell"
         aria-label={`Step ${displayIndex}`}
         {...(isEditing ? attributes : {})}
         {...(isEditing ? listeners : {})}
       >
-        <span className="recipe-instruction-index-line">
-          <span className="recipe-instruction-index-number">{displayIndex}.</span>
-          {isEditing ? (
-            <DotsSixVertical
-              className="recipe-instruction-index-grip"
-              size={14}
-              weight="bold"
-              aria-hidden
-            />
-          ) : (
-            <span
-              className={`recipe-instruction-check${completed ? " recipe-instruction-check--checked" : ""}`}
-              aria-hidden
-            >
-              {completed ? <Check size={10} weight="bold" aria-hidden /> : null}
-            </span>
-          )}
-        </span>
+        {isEditing ? (
+          <DotsSixVertical
+            className="recipe-instruction-drag-icon"
+            size={16}
+            weight="bold"
+            aria-hidden
+          />
+        ) : (
+          <span
+            className={`recipe-instruction-check${completed ? " recipe-instruction-check--checked" : ""}`}
+            aria-hidden
+          >
+            {completed ? <Check size={10} weight="bold" aria-hidden /> : null}
+          </span>
+        )}
       </td>
       <td className="recipe-instruction-body-cell">
         <div className="recipe-instruction-body-stack">
@@ -667,37 +664,29 @@ function SortableInstructionRow({
         </div>
       </td>
       <td className="instruction-actions-cell">
-        {completed && isEditing ? null : !completed ? (
-          <div className="instruction-actions-row">
-            <StepTimerDisplay
-              item={item}
-              recipeName={recipeName}
-              disabled={disabled}
-              onTimerChange={onTimerChange}
-            />
-            {isEditing ? (
-              <InstructionActionsMenu
-                item={item}
-                displayIndex={displayIndex}
-                disabled={disabled}
-                onRemove={onRemove}
-                onTimerChange={onTimerChange}
-              />
-            ) : null}
-          </div>
-        ) : timerColumnWhenIncomplete ? (
-          <div
-            className="instruction-actions-row instruction-actions-row--completed-cloak"
-            aria-hidden
-          >
-            <StepTimerDisplay
-              item={item}
-              recipeName={recipeName}
-              disabled={disabled}
-              onTimerChange={onTimerChange}
-            />
-          </div>
-        ) : null}
+        {completed
+          ? null
+          : isEditing || timerColumnWhenIncomplete
+            ? (
+              <div className="instruction-actions-row">
+                <StepTimerDisplay
+                  item={item}
+                  recipeName={recipeName}
+                  disabled={disabled}
+                  onTimerChange={onTimerChange}
+                />
+                {isEditing ? (
+                  <InstructionActionsMenu
+                    item={item}
+                    displayIndex={displayIndex}
+                    disabled={disabled}
+                    onRemove={onRemove}
+                    onTimerChange={onTimerChange}
+                  />
+                ) : null}
+              </div>
+            )
+            : null}
       </td>
     </tr>
   );
@@ -974,7 +963,7 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
               <tbody>
                 <tr className="recipe-ingredients-add-row recipe-instruction-add-row">
                   <td
-                    className="recipe-instruction-index-cell recipe-ingredients-add-placeholder-cell"
+                    className="recipe-instruction-lead-cell recipe-ingredients-add-placeholder-cell"
                     aria-hidden
                   />
                   <td className="recipe-instruction-body-cell recipe-instruction-add-cell">

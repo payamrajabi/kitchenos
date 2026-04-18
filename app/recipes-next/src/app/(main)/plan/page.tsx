@@ -2,10 +2,15 @@ import { createClient } from "@/lib/supabase/server";
 import {
   addDaysToDateString,
   getWeekStartMonday,
-  planDateKeyLocalAnchor,
+  planDateKeyInTZ,
 } from "@/lib/dates";
+import { getUserTimeZone } from "@/lib/timezone-server";
 import { isSupabaseConfigured } from "@/lib/env";
 import { PlanWeekClient } from "@/components/plan-week-client";
+import {
+  loadLibraryRecipeIds,
+  ownedOrLibraryOrClause,
+} from "@/lib/recipe-visibility";
 import { Suspense } from "react";
 import type { MealPlanEntryRow, MealPlanRow, RecipeRow } from "@/types/database";
 
@@ -38,7 +43,8 @@ export default async function PlanPage() {
     );
   }
 
-  const today = planDateKeyLocalAnchor();
+  const timeZone = await getUserTimeZone();
+  const today = planDateKeyInTZ(timeZone);
   const rangeStart = addDaysToDateString(today, -DAYS_BACK);
   const rangeEnd = addDaysToDateString(today, DAYS_FORWARD);
   const startWeek = getWeekStartMonday(new Date(`${rangeStart}T12:00:00`));
@@ -49,6 +55,9 @@ export default async function PlanPage() {
     days.push({ date: addDaysToDateString(today, i) });
   }
 
+  const libraryIds = await loadLibraryRecipeIds(supabase, user.id);
+  const recipeOrClause = ownedOrLibraryOrClause(user.id, libraryIds);
+
   const [{ data: planRows }, { data: recipeRows }, { data: ingredientRows }] =
     await Promise.all([
       supabase
@@ -56,7 +65,12 @@ export default async function PlanPage() {
         .select("*, meal_plan_entries(*)")
         .gte("week_start", startWeek)
         .lte("week_start", endWeek),
-      supabase.from("recipes").select("*").order("name"),
+      supabase
+        .from("recipes")
+        .select("*")
+        .or(recipeOrClause)
+        .is("deleted_at", null)
+        .order("name"),
       supabase.from("ingredients").select("id,name").order("name"),
     ]);
 
@@ -97,6 +111,7 @@ export default async function PlanPage() {
         >
           <PlanWeekClient
             today={today}
+            timeZone={timeZone}
             days={days}
             entries={entries}
             recipes={recipes}

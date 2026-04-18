@@ -148,7 +148,7 @@ samp {
 }
 
 .topbar-secondary-tabs {
-  gap: var(--space-4);
+  gap: var(--space-8);
   flex-wrap: wrap;
 }
 
@@ -161,7 +161,7 @@ samp {
   background: transparent;
   padding: var(--space-6) var(--space-12);
   min-height: var(--space-28);
-  border-radius: var(--space-6);
+  border-radius: 0;
   font-size: 13px;
   line-height: 1;
   font-weight: 500;
@@ -194,7 +194,7 @@ samp {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-8);
   padding: 0;
   margin-bottom: var(--space-12);
 }
@@ -925,14 +925,16 @@ textarea {
   grid-column: 1 / -1;
 }
 
-/* Spotify-style meal filters: single row; clear control matches pill height. */
+/* Spotify-style meal filters: single row; clear control matches pill height.
+   Vertical space to the recipe cards comes from `.grid.recipes-page` gap only —
+   do not add margin here or it stacks with the grid gap (~24px). */
 .recipes-meal-filter-bar {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-8);
   padding: 0;
-  margin-bottom: var(--space-12);
+  margin-bottom: 0;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -940,9 +942,9 @@ textarea {
   scrollbar-width: thin;
 }
 
-/* Outer height of `.secondary-tab-button`: padding-block + min-height */
+/* Match `.secondary-tab-button` outer size: `min-height` is border-box (padding is inside it). */
 .recipes-meal-filter-clear {
-  --recipes-meal-filter-chip-size: calc(var(--space-28) + var(--space-6) * 2);
+  --recipes-meal-filter-chip-size: var(--space-28);
   flex-shrink: 0;
   box-sizing: border-box;
   width: var(--recipes-meal-filter-chip-size);
@@ -950,7 +952,7 @@ textarea {
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: var(--space-6);
+  border-radius: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -984,6 +986,58 @@ textarea {
 
 .grid.grid-recipes-empty {
   align-items: start;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mobile recipes grid (≤ 500px): full-bleed square image tiles.     */
+/*  Figma: node 184:2482 on the KitchenOS file — cards sit flush to   */
+/*  the viewport edges in a flex-wrap strip with a 2px gap and show   */
+/*  the image only (no title, no meta, no border). Strict 3 columns.  */
+/* ------------------------------------------------------------------ */
+@media (max-width: 500px) {
+  .grid.recipes-page {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 2px;
+    width: calc(100% + var(--page-pad-x) * 2);
+    margin-inline: calc(-1 * var(--page-pad-x));
+  }
+
+  /* Non-card rows (filters, hint text, empty message) stay indented
+     inside the normal page gutter — only the tiles bleed. */
+  .grid.recipes-page > .recipes-meal-filter-strip,
+  .grid.recipes-page > .grid-recipes-hint,
+  .grid.recipes-page > .recipes-meal-filter-empty {
+    width: 100%;
+    padding-inline: var(--page-pad-x);
+    box-sizing: border-box;
+  }
+
+  /* 12px vertical space between the meal-filter strip and the first
+     card row: 10px margin + the grid's 2px flex gap = 12px. */
+  .grid.recipes-page > .recipes-meal-filter-strip {
+    margin-bottom: 10px;
+  }
+
+  /* Force exactly 3 columns. Basis = (row width - 2 × 2px gap) ÷ 3. */
+  .grid.recipes-page > .card {
+    flex: 0 0 calc((100% - 4px) / 3);
+    max-width: calc((100% - 4px) / 3);
+    aspect-ratio: 1 / 1;
+    border: none;
+    background: transparent;
+  }
+
+  .grid.recipes-page > .card > .card-image {
+    height: 100%;
+    aspect-ratio: auto;
+    border-bottom: none;
+  }
+
+  .grid.recipes-page > .card > .card-content {
+    display: none;
+  }
 }
 
 .grid.is-empty {
@@ -1818,6 +1872,12 @@ textarea {
 
 .ingredients-table tbody tr:hover {
   background-image: var(--hover-fill-overlay);
+}
+
+/* Figma recipe rows have no row-level hover fill; keep the hover cue scoped to
+   the inline body mirror instead of the whole row. */
+.recipe-ingredients-table tbody tr:hover {
+  background-image: none;
 }
 
 .ingredients-table td {
@@ -3172,6 +3232,29 @@ main.container:has(> .shop-view) {
   border: none;
 }
 
+.plan-board-card--draggable {
+  cursor: grab;
+}
+
+.plan-board-card--draggable:active {
+  cursor: grabbing;
+}
+
+.plan-board-card.is-dragging {
+  opacity: 0.4;
+}
+
+.plan-board-card.is-drop-target {
+  outline: 2px solid var(--accent, #111);
+  outline-offset: 2px;
+}
+
+.plan-board-cell.is-drop-target {
+  background: rgb(10 10 10 / 0.06);
+  outline: 2px dashed rgb(10 10 10 / 0.35);
+  outline-offset: -4px;
+}
+
 .plan-board-card-image-footer {
   padding: var(--space-6) var(--space-8) var(--space-8);
   min-width: 0;
@@ -4152,31 +4235,24 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 
 .recipe-ingredients-table-wrap {
   overflow: visible;
+  max-width: 100%;
 }
 
 .recipe-ingredients-table {
   min-width: 0;
+  width: 100%;
+  table-layout: auto;
 }
 
 .recipe-ingredients-table.ingredients-table td {
   border-bottom: 1px solid #eee;
 }
 
-.recipe-ingredients-table tbody tr:not(.recipe-ingredients-add-row) {
-  min-height: 36px;
-}
-
+/* Row = 44px of white space; the 1px `border-bottom` on each cell acts as
+   the divider between rows. Only the alignment is enforced here — each
+   cell below sets its own padding so baselines line up. */
 .recipe-ingredients-table tbody tr:not(.recipe-ingredients-add-row) td {
-  padding-block: 0;
-  vertical-align: middle;
-}
-
-/* Instructions share `.recipe-ingredients-table`; align step number + actions with the first line’s baseline when text wraps. */
-.recipe-ingredients-table.recipe-instructions-table
-  tbody
-  tr:not(.recipe-ingredients-add-row)
-  td {
-  vertical-align: baseline;
+  vertical-align: top;
 }
 
 .recipe-ingredients-table th,
@@ -4189,21 +4265,33 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   padding: 0;
 }
 
-.recipe-ingredient-prep-cell {
-  width: 1.5rem;
-  max-width: 1.5rem;
+/* Single 24px left column used by both the edit-mode drag handle and the
+   read-mode "mark as prepared" checkbox. Figma uses one slot that swaps
+   content by state rather than stacking the two controls. Top padding
+   matches the name cell so, on a single-line row, the glyph optically
+   centers with the first line of text; on wrapped rows, it stays pinned
+   to the first line. Selector is scoped to the recipe-ingredients-table
+   so it beats the base `.ingredients-table td` horizontal padding. */
+.recipe-ingredients-table td.recipe-ingredient-lead-cell {
+  width: 32px;
+  max-width: 32px;
   box-sizing: border-box;
-  padding: 0;
-  vertical-align: middle;
-  text-align: center;
+  padding: 12px 8px 12px 0;
+  vertical-align: top;
+  text-align: left;
   line-height: 0;
 }
 
 .recipe-ingredient-prep-checkbox {
-  margin: 0;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  /* 3px margin turns the 14px box into a 20px optical tap target that
+     aligns with the 20px line of body text (centered on the first line). */
+  margin: 3px;
   cursor: pointer;
   accent-color: var(--ink);
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .recipe-ingredient-row--prepared .recipe-ingredient-name {
@@ -4222,24 +4310,14 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   text-decoration: line-through;
 }
 
-.recipe-ingredient-drag-cell {
-  width: 1.25rem;
-  max-width: 1.25rem;
-  box-sizing: border-box;
-  padding: 0;
-  vertical-align: middle;
-  text-align: center;
-}
-
 .recipe-ingredient-drag-handle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto;
-  padding: var(--space-4);
-  width: auto;
-  min-width: 20px;
-  min-height: 20px;
+  margin: 0;
+  padding: 0;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--muted);
@@ -4263,8 +4341,8 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 
 .recipe-ingredient-drag-icon {
   flex-shrink: 0;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
 }
 
 .recipe-ingredient-row .recipe-ingredient-drag-handle {
@@ -4295,27 +4373,23 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   padding: 0;
 }
 
-.recipe-ingredient-actions-cell {
-  width: 1.25rem;
-  max-width: 1.25rem;
-  vertical-align: middle;
-  text-align: center;
-  padding: 0;
+.recipe-ingredients-table td.recipe-ingredient-actions-cell {
+  width: auto;
+  vertical-align: top;
+  text-align: right;
+  padding: 12px 0 12px 12px;
   box-sizing: border-box;
   position: relative;
 }
 
-/* Last column: inset ⋯ from table row edge (overrides .ingredients-table td horizontal padding). */
+/* Preserve the same geometry when the cell is styled via the more-specific
+   `.recipe-ingredients-table.ingredients-table td` selector. */
 .recipe-ingredients-table.ingredients-table td.recipe-ingredient-actions-cell {
   width: auto;
-  min-width: calc(20px + var(--space-8));
   max-width: none;
-  padding-top: 0;
-  padding-bottom: 0;
-  padding-left: var(--space-4);
-  padding-right: var(--space-8);
+  padding: 12px 0 12px 12px;
   text-align: right;
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .recipe-ingredient-actions-menu {
@@ -4459,68 +4533,39 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   cursor: not-allowed;
 }
 
-.recipe-instruction-index-line {
-  position: relative;
-  display: inline-block;
-  vertical-align: baseline;
-  text-align: right;
+/* Lead cell — matches the ingredient lead cell geometry so both lists line
+   up visually. Read mode shows a checkbox; edit mode shows a drag handle. */
+.recipe-instructions-table td.recipe-instruction-lead-cell {
+  width: 32px;
+  max-width: 32px;
+  box-sizing: border-box;
+  padding: 12px 8px 12px 0;
+  vertical-align: top;
+  text-align: left;
+  line-height: 0;
 }
 
-.recipe-instruction-index-cell {
-  /* Match body step text (14px / 20px) so baselines line up with the first line. */
-  --recipe-instruction-index-lh: 20px;
-  width: 2rem;
-  text-align: right;
-  padding-right: 0;
-  padding-top: var(--space-12);
-  vertical-align: baseline;
-  color: #444;
-  font-size: 14px;
-  line-height: var(--recipe-instruction-index-lh);
-  font-variant-numeric: tabular-nums;
-  position: relative;
+.recipe-detail--edit .recipe-instruction-lead-cell {
   cursor: grab;
 }
 
-.recipe-instruction-index-cell:active {
+.recipe-detail--edit .recipe-instruction-lead-cell:active {
   cursor: grabbing;
 }
 
-.recipe-instruction-index-number,
-.recipe-instruction-index-grip {
-  transition: opacity 0.12s ease;
-}
-
-.recipe-instruction-index-grip {
-  display: none;
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 14px;
-  height: 14px;
-  color: var(--ink-faint, #999);
+.recipe-instruction-drag-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0;
+  color: var(--muted);
 }
 
 .recipe-instruction-row {
   cursor: pointer;
 }
 
-.recipe-instruction-row:hover .recipe-instruction-index-number,
-.recipe-instruction-row--dragging .recipe-instruction-index-number {
-  opacity: 0;
-}
-
-.recipe-instruction-row:hover .recipe-instruction-index-grip,
-.recipe-instruction-row--dragging .recipe-instruction-index-grip {
-  display: block;
-  opacity: 1;
-}
-
-.recipe-instruction-row:hover .recipe-instruction-index-grip:hover {
-  color: var(--ink, #222);
-}
-
-.recipe-instruction-row--completed .recipe-instruction-index-cell,
+.recipe-instruction-row--completed .recipe-instruction-lead-cell,
 .recipe-instruction-row--completed .recipe-instruction-body-cell {
   opacity: 0.45;
 }
@@ -4533,27 +4578,15 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   text-decoration: line-through;
 }
 
-.recipe-instruction-row--completed:hover .recipe-instruction-index-number {
-  opacity: 1;
+.recipe-instruction-row--completed .recipe-instruction-body-static {
+  text-decoration: line-through;
 }
 
-.recipe-instruction-row--completed:hover .recipe-instruction-index-grip {
-  display: none;
-}
-
-@media (hover: none) {
-  .recipe-instruction-index-grip {
-    display: block;
-    opacity: 0.55;
-  }
-  .recipe-instruction-index-number {
-    opacity: 0;
-  }
-}
-
-.recipe-instruction-body-cell {
-  vertical-align: baseline;
-  min-width: 12rem;
+.recipe-instructions-table td.recipe-instruction-body-cell {
+  width: 100%;
+  vertical-align: top;
+  min-width: 0;
+  padding: 0;
 }
 
 .recipe-instruction-intro {
@@ -4571,7 +4604,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
 
 .recipe-instruction-body-mirror {
   margin: 0;
-  padding: var(--space-12) var(--space-8);
+  padding: 12px 0;
   border: 1px solid transparent;
   border-radius: 0;
   font-size: 14px;
@@ -4580,7 +4613,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   word-wrap: break-word;
   pointer-events: none;
   z-index: 0;
-  color: var(--ink);
+  color: #0a0a0a;
 }
 
 .recipe-instruction-body-stack:hover .recipe-instruction-body-mirror {
@@ -4597,14 +4630,14 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   width: 100%;
   min-height: 0;
   margin: 0;
-  padding: var(--space-12) var(--space-8);
+  padding: 12px 0;
   resize: none;
   border: 1px solid transparent;
   border-radius: 0;
   font: inherit;
   font-size: 14px;
   line-height: 20px;
-  color: var(--ink);
+  color: #0a0a0a;
   background: transparent;
   overflow: hidden;
   field-sizing: content;
@@ -4652,7 +4685,7 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   background: transparent;
 }
 
-.recipe-instruction-add-row .recipe-instruction-index-cell {
+.recipe-instruction-add-row .recipe-instruction-lead-cell {
   padding-top: 0;
 }
 
@@ -4668,30 +4701,28 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
 
 /* ── Instruction actions (timer display + play + dots menu) ── */
 
+/* Actions cell shrinks to its content so the body can expand to the row's
+   right edge when there's no timer. When a timer/play-button is present,
+   the 16px left padding provides the gap between body text and button. */
 .recipe-instructions-table td.instruction-actions-cell {
   width: auto;
-  min-width: 7rem;
-  vertical-align: baseline;
-  padding: 0;
-  padding-right: var(--space-12);
+  vertical-align: top;
+  padding: 0 0 0 16px;
   text-align: right;
+  white-space: nowrap;
+}
+
+.recipe-instructions-table td.instruction-actions-cell:empty {
+  padding: 0;
 }
 
 .instruction-actions-row {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-12);
   padding-top: var(--space-12);
   padding-bottom: var(--space-12);
-}
-
-/* Completed step: keep timer markup in the tree so row height matches the
-   unchecked state (visibility preserves layout; display:none does not). */
-.instruction-actions-row--completed-cloak {
-  visibility: hidden;
-  pointer-events: none;
-  user-select: none;
 }
 
 /* One flex item: [duration column][gap][play ring] so idle rows match a running row’s play/stop position. */
@@ -4707,9 +4738,7 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
   justify-content: flex-end;
   align-items: center;
   box-sizing: border-box;
-  /* Fixed width so every row’s play/stop lines up (same as a running row’s time + gap + ring). */
-  width: 9ch;
-  min-width: 9ch;
+  gap: 8px;
   font-size: 14px;
   line-height: 20px;
   font-variant-numeric: tabular-nums;
@@ -4981,14 +5010,18 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
 }
 
 .recipe-ingredient-name-cell {
-  min-width: 15rem;
   width: auto;
 }
 
 .recipe-ingredients-table .recipe-ingredient-name-cell {
-  min-width: 15rem;
-  padding-left: var(--space-8);
-  padding-right: var(--space-4);
+  /* name takes all remaining space so the value cell shrinks to content
+     and the amount+unit pair floats hard right */
+  width: 100%;
+  min-width: 0;
+  padding: 12px 0;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .recipe-ingredient-name {
@@ -4998,6 +5031,9 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
 .recipe-ingredients-table .recipe-ingredient-name {
   font-weight: 600;
   font-size: 13px;
+  /* Line-height matches the amount/unit cells so all three share a baseline
+     when the row has a single line and stay consistent when text wraps. */
+  line-height: 20px;
   color: #444;
 }
 
@@ -5024,31 +5060,43 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
   cursor: not-allowed;
 }
 
-.recipe-ingredient-amount-cell {
-  width: 4rem;
+/* Amount + unit live in a SINGLE cell so they can float right together,
+   with a fixed gap between them that stays consistent across rows. Tables
+   can't size columns per-row; combining the two values into one cell and
+   letting the inline-flex wrapper shrink to its content achieves the
+   Figma behaviour where "1½ kg" and "25–30 tbsp" both sit flush-right. */
+.recipe-ingredients-table td.recipe-ingredient-value-cell {
+  width: auto;
+  box-sizing: border-box;
+  padding: 12px 0;
+  text-align: right;
+  vertical-align: top;
+  white-space: nowrap;
 }
 
-.recipe-ingredients-table .recipe-ingredient-amount-cell {
-  width: 4rem;
-  box-sizing: border-box;
-  padding-inline: var(--space-12);
+.recipe-ingredient-value-inner {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
 }
 
 .recipe-ingredient-amount-input {
-  width: 100%;
+  display: inline-block;
+  width: auto;
   box-sizing: border-box;
   border: none;
-  padding: var(--space-8) var(--space-12);
+  padding: 0;
   margin: 0;
   height: auto;
-  min-height: 36px;
+  min-height: 0;
   font: inherit;
   font-size: 14px;
-  font-weight: 400;
-  line-height: 1.25;
-  color: var(--ink);
+  font-weight: 500;
+  line-height: 20px;
+  color: #444;
   background: transparent;
   border-radius: 0;
+  text-align: right;
 }
 
 .recipe-ingredient-amount-input:focus {
@@ -5058,38 +5106,23 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
 
 .recipe-ingredient-amount-display {
   all: unset;
-  display: flex;
-  align-items: center;
-  width: 100%;
+  display: inline-block;
   box-sizing: border-box;
-  padding: var(--space-8) var(--space-12);
-  min-height: 36px;
+  padding: 0;
+  min-height: 0;
   font: inherit;
   font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--ink);
+  font-weight: 500;
+  line-height: 20px;
+  color: #444;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
-.recipe-ingredient-amount-display:hover {
-  background: var(--surface-hover, rgba(0, 0, 0, 0.04));
+  text-align: right;
+  border-radius: 0;
 }
 
 .recipe-ingredient-amount-display:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.recipe-ingredient-unit-cell {
-  width: 5.25rem;
-}
-
-.recipe-ingredients-table .recipe-ingredient-unit-cell {
-  width: 5.25rem;
-  box-sizing: border-box;
-  padding-inline: var(--space-12);
 }
 
 .recipe-ingredient-unit-select {
@@ -6080,6 +6113,31 @@ a.primary {
   box-sizing: border-box;
 }
 
+/* Inline (bare) selects put the search input INSIDE the popover so opening the
+   menu doesn't reflow the table row behind it. */
+.ss-popover-anchor--bare {
+  background: var(--paper);
+  border: var(--space-1) solid var(--ink);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  min-width: 12rem;
+  max-width: 18rem;
+}
+
+.ss-popover-anchor--bare .ss-input-wrap--popover {
+  width: 100%;
+}
+
+.ss-popover-anchor--bare .ss-input {
+  border: none;
+  border-bottom: var(--space-1) solid var(--ink);
+  background: transparent;
+}
+
+.ss-popover-anchor--bare .ss-list.ss-list-portal {
+  border: none;
+  box-shadow: none;
+}
+
 .ss-list.ss-list-portal {
   position: static;
   top: auto;
@@ -6301,7 +6359,7 @@ a.primary {
   }
 }
 
-/* Recipe add menu — panel above the FAB + button with import options */
+/* Recipe add — compact popover above FAB (menu + URL) */
 .recipe-add-panel {
   min-width: min(100vw - var(--space-48), 280px);
   padding: var(--space-8);
@@ -6311,6 +6369,92 @@ a.primary {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+/* Recipe add — text import only: full-viewport modal (minus 24px top/bottom), max 640px */
+.recipe-add-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}
+
+.recipe-add-modal {
+  position: fixed;
+  z-index: 1;
+  left: 50%;
+  top: 24px;
+  bottom: 24px;
+  width: min(640px, calc(100vw - 48px));
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border: var(--space-1) solid var(--hair);
+  box-shadow: 0 var(--space-4) var(--space-32) rgb(0 0 0 / 0.2);
+  overflow: hidden;
+  transform: translateX(-50%);
+}
+
+.recipe-add-modal-header {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+  gap: var(--space-8);
+  flex-shrink: 0;
+  padding: var(--space-12) var(--space-12) var(--space-8);
+  border-bottom: var(--space-1) solid var(--hair);
+}
+
+.recipe-add-modal-header .recipe-add-back {
+  justify-self: start;
+  width: 36px;
+  height: 36px;
+}
+
+.recipe-add-modal-header-spacer {
+  width: 36px;
+  height: 1px;
+}
+
+.recipe-add-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+}
+
+.recipe-add-modal-close {
+  justify-self: end;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recipe-add-modal-close:hover {
+  color: var(--ink);
+}
+
+.recipe-add-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-12);
+  gap: var(--space-8);
+  overflow: hidden;
 }
 
 .recipe-add-panel-error {
@@ -6438,9 +6582,159 @@ a.primary {
   resize: vertical;
 }
 
+.recipe-add-text-input--modal {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+}
+
 .recipe-add-text-input:focus {
   outline: none;
   border-color: var(--ink);
+}
+
+.recipe-add-text-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-8);
+}
+
+.recipe-add-md-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  border: var(--space-1) solid var(--hair);
+}
+
+.recipe-add-md-tab {
+  flex: 1;
+  padding: var(--space-8) var(--space-12);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  background: var(--paper);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.recipe-add-md-tab + .recipe-add-md-tab {
+  border-left: var(--space-1) solid var(--hair);
+}
+
+.recipe-add-md-tab.is-active {
+  background: var(--fog);
+  color: var(--ink);
+}
+
+.recipe-add-md-tab:focus-visible {
+  outline: var(--space-1) solid var(--ink);
+  outline-offset: -2px;
+}
+
+.recipe-add-md-preview-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-8) var(--control-padding-x);
+  border: var(--space-1) solid var(--control-border-rest);
+  background: var(--paper);
+}
+
+.recipe-add-md-preview-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.recipe-add-md-preview {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.recipe-add-md-preview :first-child {
+  margin-top: 0;
+}
+
+.recipe-add-md-preview :last-child {
+  margin-bottom: 0;
+}
+
+.recipe-add-md-preview h1,
+.recipe-add-md-preview h2,
+.recipe-add-md-preview h3 {
+  margin: 0.75em 0 0.35em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.recipe-add-md-preview h1 {
+  font-size: 1.25rem;
+}
+
+.recipe-add-md-preview h2 {
+  font-size: 1.1rem;
+}
+
+.recipe-add-md-preview h3 {
+  font-size: 1rem;
+}
+
+.recipe-add-md-preview p {
+  margin: 0 0 0.65em;
+}
+
+.recipe-add-md-preview ul,
+.recipe-add-md-preview ol {
+  margin: 0 0 0.65em;
+  padding-left: 1.35em;
+}
+
+.recipe-add-md-preview li {
+  margin: 0.2em 0;
+}
+
+.recipe-add-md-preview code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.92em;
+  padding: 0.1em 0.3em;
+  background: var(--fog);
+}
+
+.recipe-add-md-preview pre {
+  margin: 0 0 0.65em;
+  padding: var(--space-8);
+  overflow: auto;
+  font-size: 12px;
+  background: var(--fog);
+  border: var(--space-1) solid var(--hair);
+}
+
+.recipe-add-md-preview pre code {
+  padding: 0;
+  background: none;
+}
+
+.recipe-add-md-preview blockquote {
+  margin: 0 0 0.65em;
+  padding-left: var(--space-12);
+  border-left: 3px solid var(--hair);
+  color: var(--muted);
+}
+
+.recipe-add-md-preview a {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.recipe-add-text-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .recipe-add-submit {
@@ -6842,6 +7136,52 @@ a.primary {
   color: #666;
 }
 
+/* Interactive version of "Serves N" — a stepper that rescales ingredient
+   amounts in view mode. Nothing here persists; bumping the count just
+   multiplies each ingredient's displayed amount by current / base. */
+.recipe-detail-servings-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin: var(--space-16) 0 0;
+}
+
+.recipe-detail-servings-stepper-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #666;
+  min-width: 5.5em;
+  text-align: center;
+}
+
+.recipe-detail-servings-stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 999px;
+  background: transparent;
+  color: #444;
+  cursor: pointer;
+  line-height: 1;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.recipe-detail-servings-stepper-btn:hover:not(:disabled) {
+  background: #f3f3f3;
+  color: #111;
+}
+
+.recipe-detail-servings-stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Edit button in the right-hand column, sitting directly beneath the image. */
 .recipe-detail-aside-edit-wrap {
   display: flex;
@@ -6951,12 +7291,11 @@ a.primary {
    Ingredient table — static cell variants
    ============================================================ */
 
+/* Static (read-mode) variants inherit all sizing/padding from the cell and
+   the base `.recipe-ingredient-*` rules so baselines line up with the edit
+   mode and with the checkbox + unit in the same row. */
 .recipe-ingredient-name--static {
   display: inline-block;
-  padding: var(--space-8) 0;
-  font-weight: 600;
-  font-size: 13px;
-  color: #444;
 }
 
 .recipe-ingredient-optional-flag {
@@ -6965,17 +7304,6 @@ a.primary {
 }
 
 .recipe-ingredient-amount-display--static {
-  display: inline-flex;
-  align-items: center;
-  width: 100%;
-  box-sizing: border-box;
-  padding: var(--space-8) var(--space-12);
-  min-height: 36px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--ink);
   cursor: default;
 }
 
@@ -6984,11 +7312,10 @@ a.primary {
 }
 
 .recipe-ingredient-unit-text {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: var(--space-8) var(--space-12);
+  display: inline-block;
+  padding: 0;
   font-size: 14px;
+  line-height: 20px;
   color: #444;
 }
 
@@ -7011,14 +7338,8 @@ a.primary {
   white-space: pre-wrap;
 }
 
-/* Extra gutter so long lines don’t crowd the timer column */
-.recipe-instruction-row--has-timer-column .recipe-instruction-body-static {
-  padding-right: var(--space-20);
-}
-
-.recipe-instruction-row--has-timer-column .recipe-instruction-body-input {
-  padding-right: var(--space-20);
-}
+/* Spacing between body text and the timer/play button is handled via the
+   actions cell's own 16px left padding; no extra body padding needed. */
 
 .recipe-instruction-body-static--empty {
   color: var(--muted);
@@ -7028,48 +7349,18 @@ a.primary {
   cursor: pointer;
 }
 
-/* Read view: row rules like ingredients; middle-align cells so hover fill and
-   the timer column don’t read as top-heavy (baseline + uneven inner padding). */
-.recipe-detail--view .recipe-ingredients-table.recipe-instructions-table tbody tr:not(.recipe-ingredients-add-row) td {
-  vertical-align: middle;
-}
-
-.recipe-detail--view .recipe-instructions-table.ingredients-table td {
-  border-bottom: 1px solid #eee;
-}
-
-.recipe-detail--view .recipe-instructions-table tbody tr:not(.recipe-ingredients-add-row) td {
-  padding-top: var(--space-8);
-  padding-bottom: var(--space-8);
-}
-
-/* Index column: neutral cursor; no extra top inset (avoids uneven band in the row). */
-.recipe-detail--view .recipe-instruction-index-cell {
+/* Read view: keep top-aligned 44px row geometry; only tweak cursor state. */
+.recipe-detail--view .recipe-instruction-lead-cell {
   cursor: default;
-  padding-top: 0;
-  padding-bottom: 0;
 }
 
-.recipe-detail--view .instruction-actions-row {
-  padding-top: var(--space-8);
-  padding-bottom: var(--space-8);
-}
-
-.recipe-detail--view .recipe-instruction-body-static {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* View-mode "mark step done" checkbox — sits in the same spot as the edit-
-   mode drag grip, aligned with the first line of body text. Hidden by
-   default; appears on row hover, and stays visible once checked. */
+/* Read-mode checkbox — always visible, matches ingredient prep checkbox
+   geometry so both lists share an aligned left rail. */
 .recipe-instruction-check {
-  display: none;
-  position: absolute;
-  inset: 0;
-  margin: auto;
+  display: inline-flex;
   width: 14px;
   height: 14px;
+  margin: 3px;
   box-sizing: border-box;
   border: 1.5px solid #777;
   border-radius: 3px;
@@ -7078,18 +7369,7 @@ a.primary {
   justify-content: center;
   color: var(--ink, #222);
   transition: border-color 0.12s ease, background-color 0.12s ease;
-}
-
-.recipe-detail--view .recipe-instruction-row:hover .recipe-instruction-check,
-.recipe-detail--view .recipe-instruction-row--completed .recipe-instruction-check,
-.recipe-detail--view .recipe-instruction-row--completed:hover .recipe-instruction-check {
-  display: flex;
-}
-
-/* When the step is marked complete, hide the number so the check takes its slot. */
-.recipe-detail--view .recipe-instruction-row--completed .recipe-instruction-index-number,
-.recipe-detail--view .recipe-instruction-row--completed:hover .recipe-instruction-index-number {
-  opacity: 0;
+  vertical-align: top;
 }
 
 .recipe-instruction-check--checked {

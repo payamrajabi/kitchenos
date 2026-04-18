@@ -42,6 +42,7 @@ type Story = StoryObj<typeof meta>;
 export const WeekBoard: Story = {
   args: {
     today: "2026-04-15",
+    timeZone: "America/New_York",
     days,
     entries: [
       mockMealPlanEntry({

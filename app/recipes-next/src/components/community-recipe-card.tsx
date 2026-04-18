@@ -8,9 +8,11 @@ import { useTruncatedElement } from "@/lib/use-truncated-element";
 export function CommunityRecipeCard({
   recipe,
   isOwn,
+  inLibrary,
 }: {
   recipe: RecipeRow;
   isOwn: boolean;
+  inLibrary?: boolean;
 }) {
   const { ref: titleRef, isTruncated } = useTruncatedElement<HTMLHeadingElement>(
     recipe.name,
@@ -41,7 +43,11 @@ export function CommunityRecipeCard({
         <h4 ref={titleRef} className="card-title">
           {recipe.name}
         </h4>
-        {recipe.calories ? (
+        {isOwn ? (
+          <div className="card-meta">Your recipe</div>
+        ) : inLibrary ? (
+          <div className="card-meta">In your library</div>
+        ) : recipe.calories ? (
           <div className="card-meta">{`${recipe.calories} cal`}</div>
         ) : null}
       </div>

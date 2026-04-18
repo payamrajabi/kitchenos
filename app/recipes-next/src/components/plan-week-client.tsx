@@ -21,6 +21,7 @@ type IngredientOption = {
 
 type Props = {
   today: string;
+  timeZone: string;
   days: { date: string }[];
   entries: MealPlanEntryRow[];
   recipes: RecipeOption[];
@@ -29,6 +30,7 @@ type Props = {
 
 export function PlanWeekClient({
   today,
+  timeZone,
   days,
   entries,
   recipes,
@@ -51,6 +53,7 @@ export function PlanWeekClient({
         <PlanWeekBoard
           ref={boardRef}
           today={today}
+          timeZone={timeZone}
           days={days}
           entries={entries}
           recipes={recipes}

@@ -4,6 +4,7 @@ import "./globals.css";
 import { ConfigBanner } from "@/components/config-banner";
 import { AppToaster } from "@/components/app-toaster";
 import { StepTimerWatcher } from "@/components/step-timer-watcher";
+import { TimeZoneSync } from "@/components/timezone-sync";
 
 export const metadata: Metadata = {
   title: {
@@ -30,6 +31,7 @@ export default function RootLayout({
         <ConfigBanner />
         <AppToaster />
         <StepTimerWatcher />
+        <TimeZoneSync />
         {children}
       </body>
     </html>

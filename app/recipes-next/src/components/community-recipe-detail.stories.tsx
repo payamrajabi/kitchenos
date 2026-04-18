@@ -42,7 +42,7 @@ export const CommunityView: Story = {
     ],
     sections: [mockIngredientSection({ id: "main", title: "Main", sort_order: 0 })],
     instructionSteps: [{ body: "Cook quinoa until fluffy." }, { body: "Assemble and serve warm." }],
-    alreadySaved: false,
+    inLibrary: false,
     isOwn: false,
   },
 };

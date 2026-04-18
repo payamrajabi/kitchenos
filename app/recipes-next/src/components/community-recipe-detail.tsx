@@ -2,10 +2,15 @@
 
 import { InstructionStepFormattedBody } from "@/components/instruction-step-formatted-body";
 import { RecipeDescriptionRichText } from "@/components/recipe-description-rich-text";
-import { saveRecipeFromCommunityAction } from "@/app/actions/recipes";
+import {
+  addRecipeToLibraryAction,
+  duplicateRecipeAction,
+  removeRecipeFromLibraryAction,
+} from "@/app/actions/recipes";
 import { primaryImageUrl, recipeImageFocusYPercent } from "@/lib/recipes";
 import { pluralizeUnit } from "@/lib/unit-mapping";
 import type { RecipeRow, RecipeIngredientSectionRow } from "@/types/database";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 
 type IngredientLine = {
@@ -23,7 +28,7 @@ type Props = {
   recipeIngredients: IngredientLine[];
   sections: RecipeIngredientSectionRow[];
   instructionSteps: { body: string }[];
-  alreadySaved: boolean;
+  inLibrary: boolean;
   isOwn: boolean;
 };
 
@@ -39,26 +44,45 @@ export function CommunityRecipeDetail({
   recipeIngredients,
   sections,
   instructionSteps,
-  alreadySaved: initialSaved,
+  inLibrary: initialInLibrary,
   isOwn,
 }: Props) {
-  const [isPending, startTransition] = useTransition();
-  const [saved, setSaved] = useState(initialSaved);
+  const [isLibraryPending, startLibraryTransition] = useTransition();
+  const [isDuplicatePending, startDuplicateTransition] = useTransition();
+  const [inLibrary, setInLibrary] = useState(initialInLibrary);
   const [error, setError] = useState<string | null>(null);
 
   const img = primaryImageUrl(recipe);
   const focusY = recipeImageFocusYPercent(recipe);
 
-  const handleSave = () => {
+  const handleToggleLibrary = () => {
     setError(null);
-    startTransition(async () => {
-      const r = await saveRecipeFromCommunityAction(recipe.id);
-      if (r && "error" in r && r.error) {
-        if (r.error === "Already saved.") {
-          setSaved(true);
-        } else {
+    startLibraryTransition(async () => {
+      if (inLibrary) {
+        const r = await removeRecipeFromLibraryAction(recipe.id);
+        if (r && "error" in r && r.error) {
           setError(r.error);
+          return;
         }
+        setInLibrary(false);
+      } else {
+        const r = await addRecipeToLibraryAction(recipe.id);
+        if (r && "error" in r && r.error) {
+          setError(r.error);
+          return;
+        }
+        setInLibrary(true);
+      }
+    });
+  };
+
+  const handleDuplicate = () => {
+    setError(null);
+    startDuplicateTransition(async () => {
+      const r = await duplicateRecipeAction(recipe.id);
+      // duplicateRecipeAction redirects on success; only an error comes back.
+      if (r && "error" in r && r.error) {
+        setError(r.error);
       }
     });
   };
@@ -101,20 +125,38 @@ export function CommunityRecipeDetail({
 
           <div className="community-detail-actions">
             {isOwn ? (
-              <span className="community-saved-badge">Your Recipe</span>
-            ) : saved ? (
-              <button type="button" className="secondary community-save-btn" disabled>
-                Already Saved
-              </button>
-            ) : (
-              <button
-                type="button"
+              <Link
+                href={`/recipes/${recipe.id}`}
                 className="primary community-save-btn"
-                onClick={handleSave}
-                disabled={isPending}
               >
-                {isPending ? "Saving…" : "Save to My Recipes"}
-              </button>
+                Edit your recipe
+              </Link>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`${inLibrary ? "secondary" : "primary"} community-save-btn`}
+                  onClick={handleToggleLibrary}
+                  disabled={isLibraryPending}
+                >
+                  {isLibraryPending
+                    ? inLibrary
+                      ? "Removing…"
+                      : "Adding…"
+                    : inLibrary
+                      ? "In your library · Remove"
+                      : "Add to my library"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary community-save-btn"
+                  onClick={handleDuplicate}
+                  disabled={isDuplicatePending}
+                  title="Make an independent copy you can edit. Won't stay in sync with the original."
+                >
+                  {isDuplicatePending ? "Duplicating…" : "Duplicate to my recipes"}
+                </button>
+              </>
             )}
             {error ? <p className="community-detail-error">{error}</p> : null}
           </div>

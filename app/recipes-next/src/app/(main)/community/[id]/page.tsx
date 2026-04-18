@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
 import { CommunityRecipeDetail } from "@/components/community-recipe-detail";
+import { RecipeTombstone } from "@/components/recipe-tombstone";
 import type { RecipeRow, RecipeIngredientSectionRow } from "@/types/database";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -15,7 +16,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .from("recipes")
     .select("name")
     .eq("id", id)
-    .eq("is_published_to_community", true)
     .maybeSingle();
   const row = data as { name: string } | null;
   if (!row?.name) return { title: "Community Recipe" };
@@ -46,14 +46,38 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
     );
   }
 
-  const [recipeResult, ingredientsResult, sectionsResult, instructionStepsResult] =
+  const recipeResult = await supabase
+    .from("recipes")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (recipeResult.error || !recipeResult.data) {
+    notFound();
+  }
+
+  const recipe = recipeResult.data as RecipeRow;
+  const isOwn = recipe.owner_id === user.id;
+
+  const libraryLookup = await supabase
+    .from("user_recipe_library")
+    .select("recipe_id")
+    .eq("user_id", user.id)
+    .eq("recipe_id", recipe.id)
+    .maybeSingle();
+  const inLibrary = !!libraryLookup.data;
+
+  // Soft-deleted: only show the tombstone to someone who has it in their
+  // library; anyone else should not see a "removed" recipe at all.
+  if (recipe.deleted_at) {
+    if (!inLibrary || isOwn) {
+      notFound();
+    }
+    return <RecipeTombstone recipe={recipe} />;
+  }
+
+  const [ingredientsResult, sectionsResult, instructionStepsResult] =
     await Promise.all([
-      supabase
-        .from("recipes")
-        .select("*")
-        .eq("id", id)
-        .eq("is_published_to_community", true)
-        .maybeSingle(),
       supabase
         .from("recipe_ingredients")
         .select(
@@ -71,21 +95,6 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
         .eq("recipe_id", id)
         .order("sort_order", { ascending: true }),
     ]);
-
-  if (recipeResult.error || !recipeResult.data) {
-    notFound();
-  }
-
-  const recipe = recipeResult.data as RecipeRow;
-  const isOwn = recipe.owner_id === user.id;
-
-  const { data: alreadySaved } = await supabase
-    .from("recipes")
-    .select("id")
-    .eq("owner_id", user.id)
-    .eq("community_source_recipe_id", recipe.id)
-    .limit(1)
-    .maybeSingle();
 
   type RawIngLine = {
     id: unknown;
@@ -155,7 +164,7 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
       recipeIngredients={recipeIngredients}
       sections={sections}
       instructionSteps={instructionSteps}
-      alreadySaved={!!alreadySaved}
+      inLibrary={inLibrary}
       isOwn={isOwn}
     />
   );

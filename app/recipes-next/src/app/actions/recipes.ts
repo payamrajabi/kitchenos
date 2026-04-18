@@ -48,8 +48,8 @@ const UPDATABLE_KEYS = new Set([
 
 const DEFAULT_RECIPE_INGREDIENT_UNIT = "g";
 
-/** Columns to copy when saving a community recipe into the user's account. */
-const RECIPE_COMMUNITY_COPY_KEYS = [
+/** Columns copied when a user duplicates any recipe into their own account. */
+const RECIPE_COPY_KEYS = [
   "name",
   "description",
   "image_url",
@@ -70,12 +70,9 @@ const RECIPE_COMMUNITY_COPY_KEYS = [
   "meal_types",
 ] as const;
 
-function buildRecipeCopyInsert(
-  source: Record<string, unknown>,
-  sourceRecipeId: number,
-): Record<string, unknown> {
+function buildRecipeCopyInsert(source: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const key of RECIPE_COMMUNITY_COPY_KEYS) {
+  for (const key of RECIPE_COPY_KEYS) {
     if (Object.prototype.hasOwnProperty.call(source, key)) {
       out[key] = source[key];
     }
@@ -98,9 +95,6 @@ function buildRecipeCopyInsert(
     }
   }
 
-  out.community_source_recipe_id = sourceRecipeId;
-  out.is_published_to_community = false;
-  out.published_at = null;
   out.updated_at = new Date().toISOString();
   return out;
 }
@@ -128,20 +122,19 @@ function parseIntOrNull(raw: unknown): number | null {
 
 function normalizeRecipeIngredientJoin(raw: unknown): RecipeIngredientRow["ingredients"] {
   if (!raw) return null;
-  if (Array.isArray(raw)) {
-    const first = raw[0];
-    if (!first || typeof first !== "object") return null;
-    const row = first as Record<string, unknown>;
-    return {
-      id: Number(row.id),
-      name: String(row.name ?? ""),
-    };
-  }
-  if (typeof raw !== "object") return null;
-  const row = raw as Record<string, unknown>;
+  const source = Array.isArray(raw) ? raw[0] : raw;
+  if (!source || typeof source !== "object") return null;
+  const row = source as Record<string, unknown>;
+  const densityRaw = row.density_g_per_ml;
+  const densityNum =
+    densityRaw == null ? null : Number(densityRaw);
   return {
     id: Number(row.id),
     name: String(row.name ?? ""),
+    density_g_per_ml:
+      typeof densityNum === "number" && Number.isFinite(densityNum) && densityNum > 0
+        ? densityNum
+        : null,
   };
 }
 
@@ -230,7 +223,7 @@ async function syncRecipeInstructionsTextFromSteps(
 }
 
 const RECIPE_INGREDIENT_SELECT =
-  "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name)";
+  "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name, density_g_per_ml)";
 
 async function loadRecipeIngredientRowByLineId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -1039,27 +1032,64 @@ export async function deleteRecipeIngredientSectionAction(recipeId: number, sect
   return { ok: true as const };
 }
 
-export async function publishRecipeToCommunityAction(
-  recipeId: number,
-  publish: boolean,
-) {
+/**
+ * Add a recipe owned by someone else to the current user's library. Library
+ * entries are pointers — they always show the live recipe row.
+ */
+export async function addRecipeToLibraryAction(recipeId: number) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Sign in first." };
 
-  const patch: Record<string, unknown> = {
-    is_published_to_community: publish,
-    published_at: publish ? new Date().toISOString() : null,
-    updated_at: new Date().toISOString(),
-  };
+  const { data: recipe, error: recErr } = await supabase
+    .from("recipes")
+    .select("id, owner_id, deleted_at")
+    .eq("id", recipeId)
+    .maybeSingle();
+
+  if (recErr || !recipe) {
+    return { ok: false as const, error: "Recipe not found." };
+  }
+  if ((recipe as { deleted_at?: string | null }).deleted_at) {
+    return { ok: false as const, error: "Recipe has been removed." };
+  }
+  if ((recipe as { owner_id?: string | null }).owner_id === user.id) {
+    return { ok: false as const, error: "You already own this recipe." };
+  }
 
   const { error } = await supabase
-    .from("recipes")
-    .update(patch)
-    .eq("id", recipeId)
-    .eq("owner_id", user.id);
+    .from("user_recipe_library")
+    .insert({ user_id: user.id, recipe_id: recipeId });
+
+  // Swallow duplicate-key errors — already in the library is a success.
+  if (error && !error.message.toLowerCase().includes("duplicate")) {
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/recipes");
+  revalidatePath(`/recipes/${recipeId}`);
+  revalidatePath("/community");
+  return { ok: true as const };
+}
+
+/**
+ * Remove a recipe from the current user's library. This does not affect the
+ * underlying recipe.
+ */
+export async function removeRecipeFromLibraryAction(recipeId: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const { error } = await supabase
+    .from("user_recipe_library")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("recipe_id", recipeId);
 
   if (error) return { ok: false as const, error: error.message };
 
@@ -1069,7 +1099,12 @@ export async function publishRecipeToCommunityAction(
   return { ok: true as const };
 }
 
-export async function saveRecipeFromCommunityAction(sourceRecipeId: number) {
+/**
+ * Make an independent copy of any recipe into the current user's account.
+ * Unlike the library pointer, the copy does not stay in sync with the original —
+ * edits by the original author no longer reach the copy.
+ */
+export async function duplicateRecipeAction(sourceRecipeId: number) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -1080,31 +1115,18 @@ export async function saveRecipeFromCommunityAction(sourceRecipeId: number) {
     .from("recipes")
     .select("*")
     .eq("id", sourceRecipeId)
-    .eq("is_published_to_community", true)
     .maybeSingle();
 
   if (srcErr || !source) {
-    return { ok: false as const, error: "Recipe not found or not published." };
+    return { ok: false as const, error: "Recipe not found." };
   }
 
-  if (source.owner_id === user.id) {
-    return { ok: false as const, error: "You already own this recipe." };
-  }
-
-  const { data: alreadySaved } = await supabase
-    .from("recipes")
-    .select("id")
-    .eq("owner_id", user.id)
-    .eq("community_source_recipe_id", sourceRecipeId)
-    .limit(1)
-    .maybeSingle();
-
-  if (alreadySaved) {
-    return { ok: false as const, error: "Already saved.", alreadySavedId: Number(alreadySaved.id) };
+  if ((source as { deleted_at?: string | null }).deleted_at) {
+    return { ok: false as const, error: "Recipe has been removed." };
   }
 
   const sourceRow = source as Record<string, unknown>;
-  const recipeInsert = buildRecipeCopyInsert(sourceRow, sourceRecipeId);
+  const recipeInsert = buildRecipeCopyInsert(sourceRow);
 
   const { data: newRecipe, error: insertErr } = await supabase
     .from("recipes")
@@ -1597,9 +1619,12 @@ export async function deleteRecipeAction(recipeId: number) {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Sign in first." };
 
+  // Soft delete: flip `deleted_at` instead of removing the row, so anyone who
+  // has this recipe in their library sees a tombstone until they remove it.
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("recipes")
-    .delete()
+    .update({ deleted_at: now, updated_at: now })
     .eq("id", recipeId)
     .eq("owner_id", user.id)
     .select("id")

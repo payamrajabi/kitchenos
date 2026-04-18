@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
 import { CommunityRecipeCard } from "@/components/community-recipe-card";
+import { loadLibraryRecipeIds } from "@/lib/recipe-visibility";
 import type { RecipeRow } from "@/types/database";
 import type { Metadata } from "next";
 
@@ -35,21 +36,25 @@ export default async function CommunityPage() {
     );
   }
 
-  const { data: recipes, error } = await supabase
-    .from("recipes")
-    .select("*, owner_id")
-    .eq("is_published_to_community", true)
-    .order("published_at", { ascending: false });
+  const [recipesResult, libraryIds] = await Promise.all([
+    supabase
+      .from("recipes")
+      .select("*, owner_id")
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false }),
+    loadLibraryRecipeIds(supabase, user.id),
+  ]);
 
-  if (error) {
+  if (recipesResult.error) {
     return (
       <section className="grid is-empty">
-        <p>Could not load community recipes: {error.message}</p>
+        <p>Could not load community recipes: {recipesResult.error.message}</p>
       </section>
     );
   }
 
-  const list = (recipes ?? []) as RecipeRow[];
+  const list = (recipesResult.data ?? []) as RecipeRow[];
+  const libraryIdSet = new Set(libraryIds);
 
   return (
     <section className={`grid${list.length ? "" : " is-empty"}`}>
@@ -59,12 +64,13 @@ export default async function CommunityPage() {
             key={recipe.id}
             recipe={recipe}
             isOwn={recipe.owner_id === user.id}
+            inLibrary={libraryIdSet.has(recipe.id)}
           />
         ))
       ) : (
         <div className="empty-state">
           <p className="empty-state-message">
-            No community recipes yet. Be the first to publish one of yours!
+            No recipes in the community yet — add one and it shows up here automatically.
           </p>
         </div>
       )}

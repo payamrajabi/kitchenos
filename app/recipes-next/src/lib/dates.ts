@@ -39,6 +39,48 @@ export function planDateKeyLocalAnchor(d = new Date()): string {
 }
 
 /**
+ * Calendar day (`YYYY-MM-DD`) for a moment **as seen from a given IANA timezone**.
+ * Uses en-CA because that locale prints ISO-style `YYYY-MM-DD`. Falls back to
+ * the process local if `timeZone` is empty/invalid.
+ */
+export function planDateKeyInTZ(timeZone: string, d = new Date()): string {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timeZone || undefined,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    return fmt.format(d);
+  } catch {
+    return planDateKeyLocalAnchor(d);
+  }
+}
+
+/**
+ * Hour-of-day (0–23 + minute fraction) for a moment as seen from a given IANA
+ * timezone. Used to decide whether a meal slot is "in the past" for the user.
+ */
+export function hourOfDayInTZ(timeZone: string, d = new Date()): number {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timeZone || undefined,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(d);
+    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    const h = (Number.isFinite(hh) ? hh : 0) % 24;
+    const m = Number.isFinite(mm) ? mm : 0;
+    return h + m / 60;
+  } catch {
+    return d.getHours() + d.getMinutes() / 60;
+  }
+}
+
+/**
  * Human-friendly label vs an anchor day (usually "today"): Today, Tomorrow,
  * Yesterday, weekday name — no month/day.
  */

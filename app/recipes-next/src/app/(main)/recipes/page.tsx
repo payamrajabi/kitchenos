@@ -4,6 +4,10 @@ import { DraftImportsProvider } from "@/components/draft-imports-provider";
 import { DraftRecipeCards } from "@/components/draft-recipe-cards";
 import { RecipeAddFab } from "@/components/recipe-add-fab";
 import { RecipesMealFilterSection } from "@/components/recipes-meal-filter-section";
+import {
+  loadLibraryRecipeIds,
+  ownedOrLibraryOrClause,
+} from "@/lib/recipe-visibility";
 import type { RecipeRow } from "@/types/database";
 
 export default async function RecipesPage() {
@@ -32,9 +36,14 @@ export default async function RecipesPage() {
     );
   }
 
+  const libraryIds = await loadLibraryRecipeIds(supabase, user.id);
+  const orClause = ownedOrLibraryOrClause(user.id, libraryIds);
+
   const { data: recipes, error } = await supabase
     .from("recipes")
     .select("*")
+    .or(orClause)
+    .is("deleted_at", null)
     .order("name");
 
   if (error) {

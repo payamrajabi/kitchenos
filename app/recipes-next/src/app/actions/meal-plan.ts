@@ -90,8 +90,26 @@ export async function suggestMealPlanWithAiAction(model: string) {
     return { ok: false as const, error: "Supabase is not configured." };
   }
 
+  // AI meal planning should only see the user's own + saved recipes, not
+  // every recipe in the community.
+  const { data: libraryRows } = await supabase
+    .from("user_recipe_library")
+    .select("recipe_id")
+    .eq("user_id", user.id);
+  const libraryIds = (libraryRows ?? [])
+    .map((r) => Number((r as { recipe_id: unknown }).recipe_id))
+    .filter((n) => Number.isFinite(n));
+  const recipeOrClause = libraryIds.length
+    ? `owner_id.eq.${user.id},id.in.(${libraryIds.join(",")})`
+    : `owner_id.eq.${user.id}`;
+
   const [recipesRes, ingredientsRes, peopleRes] = await Promise.all([
-    supabase.from("recipes").select("id,name").order("name"),
+    supabase
+      .from("recipes")
+      .select("id,name")
+      .or(recipeOrClause)
+      .is("deleted_at", null)
+      .order("name"),
     supabase.from("ingredients").select("name,current_stock").limit(120),
     supabase
       .from("people")
@@ -318,6 +336,137 @@ export async function addMealPlanEntryAction(input: {
 
   if (insertResult.error) {
     return { ok: false as const, error: insertResult.error.message };
+  }
+
+  revalidatePath("/plan");
+  return { ok: true as const };
+}
+
+export async function moveMealPlanEntryAction(input: {
+  entryId: number;
+  planDate: string;
+  slotKey: PlanSlotKey;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false as const, error: "Sign in to edit your meal plan." };
+  }
+
+  const entryId = Number(input.entryId);
+  if (!Number.isFinite(entryId)) {
+    return { ok: false as const, error: "Invalid plan entry." };
+  }
+
+  const planDate = String(input.planDate ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(planDate)) {
+    return { ok: false as const, error: "Pick a valid day before moving this meal." };
+  }
+
+  const slot = getPlanSlot(input.slotKey);
+  const weekStart = getWeekStartForDate(planDate);
+  const planResult = await getOrCreatePlanId(supabase, weekStart);
+  if (!planResult.ok) {
+    return planResult;
+  }
+
+  const existingQuery = await supabase
+    .from("meal_plan_entries")
+    .select("id,meal_slot,sort_order")
+    .eq("meal_plan_id", planResult.planId)
+    .eq("plan_date", planDate);
+
+  if (existingQuery.error) {
+    return { ok: false as const, error: existingQuery.error.message };
+  }
+
+  const matchingRow = (existingQuery.data ?? []).filter(
+    (entry) =>
+      entry.id !== entryId &&
+      classifyStoredMealEntry(entry.meal_slot, entry.sort_order) === input.slotKey,
+  );
+  const nextSortOrder = slot.sortBase + matchingRow.length;
+
+  const updateResult = await supabase
+    .from("meal_plan_entries")
+    .update({
+      meal_plan_id: planResult.planId,
+      plan_date: planDate,
+      meal_slot: slot.dbMealSlot,
+      sort_order: nextSortOrder,
+    })
+    .eq("id", entryId);
+
+  if (updateResult.error) {
+    return { ok: false as const, error: updateResult.error.message };
+  }
+
+  revalidatePath("/plan");
+  return { ok: true as const };
+}
+
+export async function swapMealPlanEntriesAction(input: {
+  entryAId: number;
+  entryBId: number;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false as const, error: "Sign in to edit your meal plan." };
+  }
+
+  const aId = Number(input.entryAId);
+  const bId = Number(input.entryBId);
+  if (!Number.isFinite(aId) || !Number.isFinite(bId) || aId === bId) {
+    return { ok: false as const, error: "Invalid plan entries to swap." };
+  }
+
+  const existing = await supabase
+    .from("meal_plan_entries")
+    .select("id,meal_plan_id,plan_date,meal_slot,sort_order")
+    .in("id", [aId, bId]);
+
+  if (existing.error) {
+    return { ok: false as const, error: existing.error.message };
+  }
+
+  const rows = existing.data ?? [];
+  const a = rows.find((r) => r.id === aId);
+  const b = rows.find((r) => r.id === bId);
+  if (!a || !b) {
+    return { ok: false as const, error: "One of the plan entries could not be found." };
+  }
+
+  const updateA = await supabase
+    .from("meal_plan_entries")
+    .update({
+      meal_plan_id: b.meal_plan_id,
+      plan_date: b.plan_date,
+      meal_slot: b.meal_slot,
+      sort_order: b.sort_order,
+    })
+    .eq("id", aId);
+  if (updateA.error) {
+    return { ok: false as const, error: updateA.error.message };
+  }
+
+  const updateB = await supabase
+    .from("meal_plan_entries")
+    .update({
+      meal_plan_id: a.meal_plan_id,
+      plan_date: a.plan_date,
+      meal_slot: a.meal_slot,
+      sort_order: a.sort_order,
+    })
+    .eq("id", bId);
+  if (updateB.error) {
+    return { ok: false as const, error: updateB.error.message };
   }
 
   revalidatePath("/plan");
