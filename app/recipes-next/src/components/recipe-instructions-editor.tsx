@@ -570,7 +570,6 @@ function SortableInstructionRow({
         isDragging ? "recipe-instruction-row--dragging" : "",
         completed ? "recipe-instruction-row--completed" : "",
         !isEditing ? "recipe-instruction-row--static" : "",
-        timerColumnWhenIncomplete ? "recipe-instruction-row--has-timer-column" : "",
       ]
         .filter(Boolean)
         .join(" ")}

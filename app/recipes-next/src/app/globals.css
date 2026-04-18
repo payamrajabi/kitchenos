@@ -4159,6 +4159,52 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   position: relative;
 }
 
+/* Meta row above the ingredients heading — holds the Original/Grams display
+   toggle, right-aligned. Matches the Figma ghost-toggle treatment. */
+.recipe-ingredients-meta-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 0 0 var(--space-8);
+}
+
+.recipe-ingredients-unit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.recipe-ingredients-unit-toggle-option {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #666;
+  opacity: 0.33;
+  transition: opacity 120ms ease;
+}
+
+.recipe-ingredients-unit-toggle-option:hover {
+  opacity: 0.6;
+}
+
+.recipe-ingredients-unit-toggle-option--active,
+.recipe-ingredients-unit-toggle-option--active:hover {
+  opacity: 1;
+}
+
+.recipe-ingredients-unit-toggle-option:focus-visible {
+  outline: 2px solid var(--focus, #5b8def);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .recipe-ingredients-add-cell-inner {
   position: relative;
 }

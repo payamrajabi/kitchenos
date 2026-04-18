@@ -16,6 +16,15 @@ import { SearchableSelect, type SelectOption } from "@/components/searchable-sel
 import { useIsRecipeEditing } from "@/components/recipe-edit-mode";
 import { useRecipeServingsScale } from "@/components/recipe-servings-scale";
 import {
+  IngredientUnitDisplayToggle,
+  RecipeIngredientUnitDisplayProvider,
+  useIngredientUnitDisplay,
+} from "@/components/recipe-ingredient-unit-display";
+import {
+  displayAmountForUnit,
+  displayAmountInGrams,
+} from "@/lib/ingredient-gram-conversion";
+import {
   DndContext,
   type DragEndEvent,
   KeyboardSensor,
@@ -29,7 +38,6 @@ import {
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DotsSixVertical, DotsThree, Trash } from "@phosphor-icons/react";
-import { displayAmount, scaleAmountForDisplay } from "@/lib/parse-amount";
 import { pluralizeUnit, RECIPE_UNITS } from "@/lib/unit-mapping";
 import type { RecipeIngredientRow, RecipeIngredientSectionRow } from "@/types/database";
 import { useRouter } from "next/navigation";
@@ -656,20 +664,36 @@ function RecipeIngredientItemRow({
 }) {
   const isEditing = useIsRecipeEditing();
   const servingsScale = useRecipeServingsScale();
+  const { mode: unitDisplayMode } = useIngredientUnitDisplay();
   const [amount, setAmount] = useState(item.amount ?? "");
+  const authoredUnit = item.unit || DEFAULT_UNIT;
   // Only rescale in view mode — in edit mode the author is editing the stored
   // amount, so it must render exactly as persisted.
   const effectiveScale = isEditing ? 1 : servingsScale;
+  // In view mode + Grams, try to convert. Edit mode always renders the
+  // authored amount/unit so the SearchableSelect stays in sync with storage.
+  const gramsDisplay =
+    !isEditing && unitDisplayMode === "grams"
+      ? displayAmountInGrams(
+          item.amount,
+          item.unit,
+          item.ingredients?.density_g_per_ml,
+          effectiveScale,
+        )
+      : null;
   const displayedAmountText =
-    effectiveScale === 1
-      ? displayAmount(item.amount) || "—"
-      : scaleAmountForDisplay(item.amount, effectiveScale) || "—";
+    gramsDisplay != null
+      ? gramsDisplay.amount
+      : displayAmountForUnit(item.amount, item.unit, effectiveScale) || "—";
   // Pluralization (cup/cups, tsp/tsps) should follow the *displayed* number,
   // so scaling 1 cup → 1.5 cups picks up the plural form.
   const unitPluralAmount =
-    effectiveScale === 1
-      ? amount
-      : scaleAmountForDisplay(item.amount, effectiveScale);
+    gramsDisplay != null
+      ? gramsDisplay.amount
+      : displayAmountForUnit(item.amount, item.unit, effectiveScale);
+  // When we converted to grams, the unit label follows the conversion (g/kg).
+  // Otherwise use the authored unit.
+  const displayedUnit = gramsDisplay != null ? gramsDisplay.unit : authoredUnit;
   const [editingAmount, setEditingAmount] = useState(false);
   const [naming, setNaming] = useState(false);
   const amountInputRef = useRef<HTMLInputElement>(null);
@@ -871,7 +895,7 @@ function RecipeIngredientItemRow({
             />
           ) : (
             <span className="recipe-ingredient-unit-text">
-              {pluralizeUnit(item.unit || DEFAULT_UNIT, unitPluralAmount)}
+              {pluralizeUnit(displayedUnit, unitPluralAmount)}
             </span>
           )}
         </span>
@@ -1612,9 +1636,17 @@ export function RecipeIngredientsEditor({
     [items, sectionIdSet, useGroupedLayout],
   );
 
+  const showUnitToggle = !isEditing && items.length > 0;
+
   return (
     <>
+    <RecipeIngredientUnitDisplayProvider>
     <section className="section">
+      {showUnitToggle ? (
+        <div className="recipe-ingredients-meta-row">
+          <IngredientUnitDisplayToggle className="recipe-ingredients-meta-toggle" />
+        </div>
+      ) : null}
       <h3>Ingredients</h3>
       <div className="recipe-ingredients-editor">
         {error ? (
@@ -1807,6 +1839,7 @@ export function RecipeIngredientsEditor({
       </div>
     </section>
     {sectionDeleteModal ? createPortal(sectionDeleteModal, document.body) : null}
+    </RecipeIngredientUnitDisplayProvider>
     </>
   );
 }
