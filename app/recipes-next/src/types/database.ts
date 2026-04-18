@@ -1,6 +1,21 @@
+export type RecipeNoteType =
+  | "note"
+  | "variation"
+  | "storage"
+  | "substitution";
+
+export type RecipeYieldLabel = "serves" | "makes";
+
 export type RecipeRow = {
   id: number;
+  /** Flat display title (kept in sync with title_primary + title_qualifier). */
   name: string;
+  /** Structured title — base recipe name without qualifier. */
+  title_primary?: string | null;
+  /** Structured title — optional continuation (with/and/in/over…). */
+  title_qualifier?: string | null;
+  /** Editorial intro/headnote before the recipe metadata (60–180 words). */
+  headnote?: string | null;
   /** Short summary under the title; UI caps at 250 characters. */
   description?: string | null;
   image_url: string | null;
@@ -8,10 +23,23 @@ export type RecipeRow = {
   /** 0–100: vertical focal point for square cover crops (default 50). */
   image_focus_y?: number | null;
   notes: string | null;
+  /** Typed note block: note | variation | storage | substitution. */
+  notes_type?: RecipeNoteType | null;
+  /** Optional label/title for the note block (e.g. "Variation"). */
+  notes_title?: string | null;
   ingredients: string | null;
   instructions: string | null;
   source_url: string | null;
+  /** Machine-usable integer servings — source of truth for scaling math. */
   servings: number | null;
+  /** Yield verb — "serves" or "makes". */
+  yield_label?: RecipeYieldLabel | null;
+  /** Yield quantity text (supports "6 to 8", "about 1/2"). */
+  yield_quantity?: string | null;
+  /** Yield unit when needed ("cups", "loaf", "cookies"). */
+  yield_unit?: string | null;
+  /** Human-readable display line ("Serves 6 to 8", "Makes 12 cups"). */
+  yield_display?: string | null;
   prep_time_minutes: number | null;
   cook_time_minutes: number | null;
   total_time_minutes: number | null;
@@ -80,6 +108,61 @@ export type IngredientRow = {
    * their original unit in that view.
    */
   density_g_per_ml?: number | null;
+  /**
+   * Form/state of the ingredient (e.g. "yellow", "canned diced", "dried").
+   * Pairs with `name` to produce the human display label.
+   */
+  variant?: string | null;
+  /**
+   * Culinary subcategory tier (e.g. "Alliums", "Leafy Greens", "Whole Grains").
+   * Sits between `grocery_category` and the ingredient itself.
+   */
+  taxonomy_subcategory?: string | null;
+  /** Sensible default units for this ingredient (e.g. ["g","oz","lb","each"]). */
+  default_units?: string[] | null;
+  /** Any subset of "counter" | "pantry" | "fridge" | "freezer". */
+  storage_hints?: IngredientStorageHint[] | null;
+  /** Rough shelf life on the counter, in days. Informational only. */
+  shelf_life_counter_days?: number | null;
+  /** Rough shelf life in the fridge, in days. Informational only. */
+  shelf_life_fridge_days?: number | null;
+  /** Rough shelf life in the freezer, in days. Informational only. */
+  shelf_life_freezer_days?: number | null;
+  /** True when this ingredient is commonly sold in barcode-bearing packaged form. */
+  packaged_common?: boolean;
+  /** True for prepared inputs (stock, tofu, salsa, mayo, nut butter). */
+  is_composite?: boolean;
+  /** Stable machine slug mapping to the North America ingredient backbone taxonomy. */
+  backbone_id?: string | null;
+};
+
+/** Allowed values for `IngredientRow.storage_hints`. */
+export const INGREDIENT_STORAGE_HINTS = [
+  "counter",
+  "pantry",
+  "fridge",
+  "freezer",
+] as const;
+export type IngredientStorageHint = (typeof INGREDIENT_STORAGE_HINTS)[number];
+
+/** Source identifier for where an alias came from. */
+export type IngredientAliasSource =
+  | "user"
+  | "import"
+  | "backbone"
+  | "openfoodfacts"
+  | "legacy";
+
+/**
+ * Synonym mapping to a canonical ingredient. Used by import/resolve pipelines
+ * for fuzzy matching (e.g. "coriander leaves" → "Cilantro").
+ */
+export type IngredientAliasRow = {
+  id: number;
+  ingredient_id: number;
+  alias: string;
+  source?: IngredientAliasSource | string | null;
+  created_at?: string;
 };
 
 export type IngredientNutrientRow = {
@@ -109,7 +192,8 @@ export type IngredientPortionRow = {
 export type RecipeIngredientSectionRow = {
   id: string;
   recipe_id: number;
-  title: string;
+  /** Heading for this ingredient group (e.g. "For the Dressing"). */
+  heading: string;
   sort_order: number;
   created_at?: string;
 };
@@ -122,6 +206,10 @@ export type RecipeIngredientRow = {
   line_sort_order: number;
   amount: string | null;
   unit: string | null;
+  /** Preparation / state note (e.g. "finely chopped", "divided", "to serve"). */
+  preparation?: string | null;
+  /** Optional verbatim source line preserved for typographic fidelity. */
+  display?: string | null;
   /** When true, this ingredient line is optional (e.g. garnish). */
   is_optional: boolean;
   created_at?: string;
@@ -131,8 +219,10 @@ export type RecipeIngredientRow = {
 export type RecipeInstructionStepRow = {
   id: number;
   recipe_id: number;
-  sort_order: number;
-  body: string;
+  /** Sequence number for the step, 1-based. */
+  step_number: number;
+  /** Single actionable instruction step. */
+  text: string;
   /** Low end of the timer range in seconds (or the single value when no range). */
   timer_seconds_low?: number | null;
   /** High end of the timer range in seconds. Null when there is no range. */

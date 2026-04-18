@@ -27,15 +27,24 @@ import { redirect } from "next/navigation";
 
 const UPDATABLE_KEYS = new Set([
   "name",
+  "title_primary",
+  "title_qualifier",
+  "headnote",
   "description",
   "ingredients",
   "instructions",
   "notes",
+  "notes_type",
+  "notes_title",
   "source_url",
   "image_url",
   "image_urls",
   "image_focus_y",
   "servings",
+  "yield_label",
+  "yield_quantity",
+  "yield_unit",
+  "yield_display",
   "calories",
   "protein_grams",
   "fat_grams",
@@ -48,18 +57,35 @@ const UPDATABLE_KEYS = new Set([
 
 const DEFAULT_RECIPE_INGREDIENT_UNIT = "g";
 
+const VALID_YIELD_LABELS = new Set(["serves", "makes"]);
+const VALID_NOTE_TYPES = new Set([
+  "note",
+  "variation",
+  "storage",
+  "substitution",
+]);
+
 /** Columns copied when a user duplicates any recipe into their own account. */
 const RECIPE_COPY_KEYS = [
   "name",
+  "title_primary",
+  "title_qualifier",
+  "headnote",
   "description",
   "image_url",
   "image_urls",
   "image_focus_y",
   "notes",
+  "notes_type",
+  "notes_title",
   "ingredients",
   "instructions",
   "source_url",
   "servings",
+  "yield_label",
+  "yield_quantity",
+  "yield_unit",
+  "yield_display",
   "prep_time_minutes",
   "cook_time_minutes",
   "total_time_minutes",
@@ -97,6 +123,17 @@ function buildRecipeCopyInsert(source: Record<string, unknown>): Record<string, 
 
   out.updated_at = new Date().toISOString();
   return out;
+}
+
+/** Join structured title parts into the flat display name we keep in recipes.name. */
+function joinTitleParts(
+  primary: string | null | undefined,
+  qualifier: string | null | undefined,
+): string | null {
+  const p = (primary ?? "").trim();
+  const q = (qualifier ?? "").trim();
+  if (!p && !q) return null;
+  return q ? `${p} ${q}`.replace(/\s+/g, " ").trim() : p;
 }
 
 function normalizeUnitForRecipeIngredientInsert(raw: unknown): string {
@@ -165,6 +202,8 @@ function normalizeRecipeIngredientRow(raw: unknown): RecipeIngredientRow | null 
     line_sort_order: Number.isFinite(line_sort_order) ? line_sort_order : 0,
     amount: row.amount == null ? null : String(row.amount),
     unit: row.unit == null ? null : String(row.unit),
+    preparation: row.preparation == null ? null : String(row.preparation),
+    display: row.display == null ? null : String(row.display),
     is_optional,
     created_at: row.created_at == null ? undefined : String(row.created_at),
     ingredients: normalizeRecipeIngredientJoin(row.ingredients),
@@ -184,18 +223,21 @@ function safeInt(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+const INSTRUCTION_STEP_SELECT =
+  "id, recipe_id, step_number, text, timer_seconds_low, timer_seconds_high, created_at";
+
 function normalizeInstructionStepRow(raw: unknown): RecipeInstructionStepRow | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
   const id = Number(row.id);
   const recipe_id = Number(row.recipe_id);
-  const sort_order = Number(row.sort_order ?? 0);
+  const step_number = Number(row.step_number ?? 1);
   if (!Number.isFinite(id) || !Number.isFinite(recipe_id)) return null;
   return {
     id,
     recipe_id,
-    sort_order: Number.isFinite(sort_order) ? sort_order : 0,
-    body: row.body == null ? "" : String(row.body),
+    step_number: Number.isFinite(step_number) ? step_number : 1,
+    text: row.text == null ? "" : String(row.text),
     timer_seconds_low: safeInt(row.timer_seconds_low),
     timer_seconds_high: safeInt(row.timer_seconds_high),
     created_at: row.created_at == null ? undefined : String(row.created_at),
@@ -208,10 +250,10 @@ async function syncRecipeInstructionsTextFromSteps(
 ) {
   const { data } = await supabase
     .from("recipe_instruction_steps")
-    .select("body")
+    .select("text")
     .eq("recipe_id", recipeId)
-    .order("sort_order", { ascending: true });
-  const bodies = (data ?? []).map((r) => String((r as { body: unknown }).body ?? ""));
+    .order("step_number", { ascending: true });
+  const bodies = (data ?? []).map((r) => String((r as { text: unknown }).text ?? ""));
   const text = formatInstructionStepsToRecipeText(bodies);
   await supabase
     .from("recipes")
@@ -223,7 +265,7 @@ async function syncRecipeInstructionsTextFromSteps(
 }
 
 const RECIPE_INGREDIENT_SELECT =
-  "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name, density_g_per_ml)";
+  "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml)";
 
 async function loadRecipeIngredientRowByLineId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -490,6 +532,31 @@ export async function updateRecipeAction(
       const s = String(raw ?? "").trim();
       if (!s) return { ok: false as const, error: "Name is required." };
       updates[key] = s;
+    } else if (key === "title_primary") {
+      const s = String(raw ?? "").trim();
+      if (!s) return { ok: false as const, error: "Title is required." };
+      updates[key] = s;
+    } else if (key === "title_qualifier") {
+      const s = String(raw ?? "").trim();
+      updates[key] = s === "" ? null : s;
+    } else if (key === "yield_label") {
+      const s = String(raw ?? "").trim().toLowerCase();
+      if (s === "") {
+        updates[key] = null;
+      } else if (!VALID_YIELD_LABELS.has(s)) {
+        return { ok: false as const, error: "Invalid yield label." };
+      } else {
+        updates[key] = s;
+      }
+    } else if (key === "notes_type") {
+      const s = String(raw ?? "").trim().toLowerCase();
+      if (s === "") {
+        updates[key] = null;
+      } else if (!VALID_NOTE_TYPES.has(s)) {
+        return { ok: false as const, error: "Invalid note type." };
+      } else {
+        updates[key] = s;
+      }
     } else if (key === "image_url") {
       const s = String(raw ?? "").trim();
       updates[key] = s === "" ? null : s;
@@ -523,6 +590,41 @@ export async function updateRecipeAction(
       const s = String(raw ?? "").trim();
       updates[key] = s === "" ? null : s;
     }
+  }
+
+  // Keep the flat `name` in sync with the structured title whenever either
+  // structured part changes without an explicit `name` patch, and vice versa.
+  const patchedPrimary = Object.prototype.hasOwnProperty.call(
+    updates,
+    "title_primary",
+  );
+  const patchedQualifier = Object.prototype.hasOwnProperty.call(
+    updates,
+    "title_qualifier",
+  );
+  const patchedName = Object.prototype.hasOwnProperty.call(updates, "name");
+
+  if ((patchedPrimary || patchedQualifier) && !patchedName) {
+    const { data: current } = await supabase
+      .from("recipes")
+      .select("title_primary, title_qualifier")
+      .eq("id", recipeId)
+      .maybeSingle();
+
+    const primary =
+      (patchedPrimary ? (updates.title_primary as string | null) : undefined) ??
+      (current?.title_primary as string | null | undefined) ??
+      null;
+    const qualifier = patchedQualifier
+      ? (updates.title_qualifier as string | null)
+      : ((current?.title_qualifier as string | null | undefined) ?? null);
+    const joined = joinTitleParts(primary, qualifier);
+    if (joined) updates.name = joined;
+  }
+
+  if (patchedName && !patchedPrimary) {
+    updates.title_primary = String(updates.name);
+    if (!patchedQualifier) updates.title_qualifier = null;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -664,6 +766,8 @@ export async function updateRecipeIngredientAction(
   patch: {
     amount?: string | null;
     unit?: string | null;
+    preparation?: string | null;
+    display?: string | null;
     ingredient_id?: number;
     is_optional?: boolean;
   },
@@ -677,6 +781,8 @@ export async function updateRecipeIngredientAction(
   const updates: {
     amount?: string | null;
     unit?: string | null;
+    preparation?: string | null;
+    display?: string | null;
     ingredient_id?: number;
     is_optional?: boolean;
   } = {};
@@ -696,6 +802,16 @@ export async function updateRecipeIngredientAction(
     } else {
       updates.unit = normalized;
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, "preparation")) {
+    const prep = String(patch.preparation ?? "").trim();
+    updates.preparation = prep === "" ? null : prep;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, "display")) {
+    const disp = String(patch.display ?? "").trim();
+    updates.display = disp === "" ? null : disp;
   }
 
   let newIngredientIdForDefaultUnit: number | null = null;
@@ -930,15 +1046,15 @@ export async function addRecipeIngredientSectionAction(recipeId: number) {
   if (!existingSecs?.length) {
     const { data: s1, error: e1 } = await supabase
       .from("recipe_ingredient_sections")
-      .insert({ recipe_id: recipeId, title: "Ingredients", sort_order: 0 })
-      .select("id, recipe_id, title, sort_order, created_at")
+      .insert({ recipe_id: recipeId, heading: "Ingredients", sort_order: 0 })
+      .select("id, recipe_id, heading, sort_order, created_at")
       .single();
     if (e1 || !s1) return { ok: false as const, error: e1?.message ?? "Could not create section." };
 
     const { data: s2, error: e2 } = await supabase
       .from("recipe_ingredient_sections")
-      .insert({ recipe_id: recipeId, title: "New component", sort_order: 1 })
-      .select("id, recipe_id, title, sort_order, created_at")
+      .insert({ recipe_id: recipeId, heading: "New component", sort_order: 1 })
+      .select("id, recipe_id, heading, sort_order, created_at")
       .single();
     if (e2 || !s2) return { ok: false as const, error: e2?.message ?? "Could not create section." };
 
@@ -964,7 +1080,7 @@ export async function addRecipeIngredientSectionAction(recipeId: number) {
     const maxSort = existingSecs.reduce((m, s) => Math.max(m, Number(s.sort_order ?? 0)), -1);
     const { error: en } = await supabase.from("recipe_ingredient_sections").insert({
       recipe_id: recipeId,
-      title: "New component",
+      heading: "New component",
       sort_order: maxSort + 1,
     });
     if (en) return { ok: false as const, error: en.message };
@@ -974,7 +1090,10 @@ export async function addRecipeIngredientSectionAction(recipeId: number) {
   return { ok: true as const };
 }
 
-export async function updateRecipeIngredientSectionAction(sectionId: string, rawTitle: string) {
+export async function updateRecipeIngredientSectionAction(
+  sectionId: string,
+  rawHeading: string,
+) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -991,11 +1110,11 @@ export async function updateRecipeIngredientSectionAction(sectionId: string, raw
   if (!sec?.recipe_id) return { ok: false as const, error: "Section not found." };
 
   const recipeId = Number(sec.recipe_id);
-  const title = rawTitle.trim();
+  const heading = rawHeading.trim();
 
   const { error } = await supabase
     .from("recipe_ingredient_sections")
-    .update({ title })
+    .update({ heading })
     .eq("id", sectionId);
 
   if (error) return { ok: false as const, error: error.message };
@@ -1146,7 +1265,7 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
 
   const { data: sourceSections, error: secErr } = await supabase
     .from("recipe_ingredient_sections")
-    .select("id, title, sort_order")
+    .select("id, heading, sort_order")
     .eq("recipe_id", sourceRecipeId)
     .order("sort_order", { ascending: true });
 
@@ -1163,7 +1282,7 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
         .from("recipe_ingredient_sections")
         .insert({
           recipe_id: newRecipeId,
-          title: sec.title,
+          heading: sec.heading,
           sort_order: sec.sort_order,
         })
         .select("id")
@@ -1178,7 +1297,9 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
 
   const { data: sourceLines, error: linesErr } = await supabase
     .from("recipe_ingredients")
-    .select("ingredient_id, section_id, line_sort_order, amount, unit, is_optional")
+    .select(
+      "ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional",
+    )
     .eq("recipe_id", sourceRecipeId);
 
   if (linesErr) {
@@ -1261,6 +1382,8 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
         line_sort_order: line.line_sort_order,
         amount: line.amount,
         unit,
+        preparation: (line as { preparation?: string | null }).preparation ?? null,
+        display: (line as { display?: string | null }).display ?? null,
         is_optional: line.is_optional ?? false,
       });
 
@@ -1273,9 +1396,9 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
 
   const { data: sourceInstructionSteps, error: srcInstErr } = await supabase
     .from("recipe_instruction_steps")
-    .select("sort_order, body, timer_seconds_low, timer_seconds_high")
+    .select("step_number, text, timer_seconds_low, timer_seconds_high")
     .eq("recipe_id", sourceRecipeId)
-    .order("sort_order", { ascending: true });
+    .order("step_number", { ascending: true });
 
   if (srcInstErr) {
     await rollbackRecipe();
@@ -1284,12 +1407,12 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
 
   if (sourceInstructionSteps?.length) {
     const { error: instInsErr } = await supabase.from("recipe_instruction_steps").insert(
-      sourceInstructionSteps.map((s) => {
+      sourceInstructionSteps.map((s, idx) => {
         const raw = s as Record<string, unknown>;
         return {
           recipe_id: newRecipeId,
-          sort_order: Number(s.sort_order ?? 0),
-          body: String(s.body ?? ""),
+          step_number: idx + 1,
+          text: String((s as { text?: unknown }).text ?? ""),
           timer_seconds_low: safeInt(raw.timer_seconds_low),
           timer_seconds_high: safeInt(raw.timer_seconds_high),
         };
@@ -1314,26 +1437,26 @@ export async function addRecipeInstructionStepAction(recipeId: number, rawBody?:
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Sign in first." };
 
-  const body = rawBody === undefined || rawBody === null ? "" : String(rawBody);
+  const text = rawBody === undefined || rawBody === null ? "" : String(rawBody);
 
   const { data: top } = await supabase
     .from("recipe_instruction_steps")
-    .select("sort_order")
+    .select("step_number")
     .eq("recipe_id", recipeId)
-    .order("sort_order", { ascending: false })
+    .order("step_number", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  let nextSort = 0;
-  if (top != null && top.sort_order != null) {
-    const n = Number(top.sort_order);
-    nextSort = Number.isFinite(n) ? n + 1 : 0;
+  let nextStep = 1;
+  if (top != null && (top as { step_number?: unknown }).step_number != null) {
+    const n = Number((top as { step_number: unknown }).step_number);
+    nextStep = Number.isFinite(n) ? n + 1 : 1;
   }
 
   const { data, error } = await supabase
     .from("recipe_instruction_steps")
-    .insert({ recipe_id: recipeId, sort_order: nextSort, body })
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .insert({ recipe_id: recipeId, step_number: nextStep, text })
+    .select(INSTRUCTION_STEP_SELECT)
     .single();
 
   if (error || !data) {
@@ -1370,9 +1493,9 @@ export async function splitRecipeInstructionStepAction(
 
   const { data: steps, error: listErr } = await supabase
     .from("recipe_instruction_steps")
-    .select("id, sort_order, body")
+    .select("id, step_number, text")
     .eq("recipe_id", recipeId)
-    .order("sort_order", { ascending: true });
+    .order("step_number", { ascending: true });
 
   if (listErr) return { ok: false as const, error: listErr.message };
 
@@ -1380,39 +1503,39 @@ export async function splitRecipeInstructionStepAction(
   const idx = list.findIndex((s) => Number((s as { id: unknown }).id) === stepId);
   if (idx < 0) return { ok: false as const, error: "Step not found." };
 
-  const body = String((list[idx] as { body: unknown }).body ?? "");
-  if (splitAt > body.length) {
+  const text = String((list[idx] as { text: unknown }).text ?? "");
+  if (splitAt > text.length) {
     return { ok: false as const, error: "Invalid split position." };
   }
 
-  const before = body.slice(0, splitAt);
-  const after = body.slice(splitAt);
-  if (splitAt === body.length || after.trim() === "") {
+  const before = text.slice(0, splitAt);
+  const after = text.slice(splitAt);
+  if (splitAt === text.length || after.trim() === "") {
     return { ok: false as const, error: "Nothing to move into a new step." };
   }
 
   const { data: top } = await supabase
     .from("recipe_instruction_steps")
-    .select("sort_order")
+    .select("step_number")
     .eq("recipe_id", recipeId)
-    .order("sort_order", { ascending: false })
+    .order("step_number", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  let nextSort = 0;
-  if (top != null && top.sort_order != null) {
-    const n = Number(top.sort_order);
-    nextSort = Number.isFinite(n) ? n + 1 : 0;
+  let nextStep = 1;
+  if (top != null && (top as { step_number?: unknown }).step_number != null) {
+    const n = Number((top as { step_number: unknown }).step_number);
+    nextStep = Number.isFinite(n) ? n + 1 : 1;
   }
 
   const { data: inserted, error: insErr } = await supabase
     .from("recipe_instruction_steps")
     .insert({
       recipe_id: recipeId,
-      sort_order: nextSort,
-      body: after,
+      step_number: nextStep,
+      text: after,
     })
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .select(INSTRUCTION_STEP_SELECT)
     .single();
 
   if (insErr || !inserted) {
@@ -1426,7 +1549,7 @@ export async function splitRecipeInstructionStepAction(
 
   const { error: uErr } = await supabase
     .from("recipe_instruction_steps")
-    .update({ body: before })
+    .update({ text: before })
     .eq("id", stepId)
     .eq("recipe_id", recipeId);
 
@@ -1444,7 +1567,7 @@ export async function splitRecipeInstructionStepAction(
   for (let i = 0; i < orderedIds.length; i++) {
     const { error: ordErr } = await supabase
       .from("recipe_instruction_steps")
-      .update({ sort_order: i })
+      .update({ step_number: i + 1 })
       .eq("id", orderedIds[i])
       .eq("recipe_id", recipeId);
     if (ordErr) return { ok: false as const, error: ordErr.message };
@@ -1452,14 +1575,14 @@ export async function splitRecipeInstructionStepAction(
 
   const { data: firstData } = await supabase
     .from("recipe_instruction_steps")
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .select(INSTRUCTION_STEP_SELECT)
     .eq("id", stepId)
     .eq("recipe_id", recipeId)
     .single();
 
   const { data: secondData } = await supabase
     .from("recipe_instruction_steps")
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .select(INSTRUCTION_STEP_SELECT)
     .eq("id", newId)
     .eq("recipe_id", recipeId)
     .single();
@@ -1490,7 +1613,7 @@ export async function updateRecipeInstructionStepAction(
 
   const updates: Record<string, unknown> = {};
   if (patch.body !== undefined) {
-    updates.body = patch.body === null ? "" : String(patch.body);
+    updates.text = patch.body === null ? "" : String(patch.body);
   }
   if ("timer_seconds_low" in patch) {
     updates.timer_seconds_low = safeInt(patch.timer_seconds_low);
@@ -1505,16 +1628,16 @@ export async function updateRecipeInstructionStepAction(
 
   const { data: prior } = await supabase
     .from("recipe_instruction_steps")
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .select(INSTRUCTION_STEP_SELECT)
     .eq("id", stepId)
     .eq("recipe_id", recipeId)
     .maybeSingle();
 
   if (
     prior &&
-    updates.body !== undefined &&
+    updates.text !== undefined &&
     Object.keys(updates).length === 1 &&
-    String((prior as { body: unknown }).body ?? "") === updates.body
+    String((prior as { text: unknown }).text ?? "") === updates.text
   ) {
     const row = normalizeInstructionStepRow(prior);
     if (row) return { ok: true as const, row };
@@ -1525,7 +1648,7 @@ export async function updateRecipeInstructionStepAction(
     .update(updates)
     .eq("id", stepId)
     .eq("recipe_id", recipeId)
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .select(INSTRUCTION_STEP_SELECT)
     .single();
 
   if (error || !data) {
@@ -1559,7 +1682,7 @@ export async function deleteRecipeInstructionStepAction(recipeId: number, stepId
     .from("recipe_instruction_steps")
     .select("id")
     .eq("recipe_id", recipeId)
-    .order("sort_order", { ascending: true });
+    .order("step_number", { ascending: true });
 
   if (listErr) return { ok: false as const, error: listErr.message };
 
@@ -1567,7 +1690,7 @@ export async function deleteRecipeInstructionStepAction(recipeId: number, stepId
     const id = Number((remaining![i] as { id: unknown }).id);
     const { error: uErr } = await supabase
       .from("recipe_instruction_steps")
-      .update({ sort_order: i })
+      .update({ step_number: i + 1 })
       .eq("id", id)
       .eq("recipe_id", recipeId);
     if (uErr) return { ok: false as const, error: uErr.message };
@@ -1601,7 +1724,7 @@ export async function reorderRecipeInstructionStepsAction(recipeId: number, orde
   for (let i = 0; i < orderedIds.length; i++) {
     const { error: uErr } = await supabase
       .from("recipe_instruction_steps")
-      .update({ sort_order: i })
+      .update({ step_number: i + 1 })
       .eq("id", orderedIds[i])
       .eq("recipe_id", recipeId);
     if (uErr) return { ok: false as const, error: uErr.message };

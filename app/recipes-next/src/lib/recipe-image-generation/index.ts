@@ -25,7 +25,6 @@ export type GenerateAttachResult =
       ok: true;
       imageUrl: string;
       provider: string;
-      sceneConcept: string;
       qcNote?: string;
     }
   | { ok: false; error: string; stage: string };
@@ -44,6 +43,7 @@ function normalizeImageUrls(raw: unknown): string[] {
 
 type LoadedContext = {
   recipeName: string;
+  headnote: string | null;
   description: string | null;
   mealTypes: string[] | null;
   ingredientNames: string[];
@@ -58,7 +58,7 @@ async function loadRecipeContext(
 ): Promise<{ ok: true; ctx: LoadedContext } | { ok: false; error: string }> {
   const { data: recipe, error: recipeErr } = await admin
     .from("recipes")
-    .select("id, name, description, meal_types, servings, image_urls")
+    .select("id, name, headnote, description, meal_types, servings, image_urls")
     .eq("id", recipeId)
     .maybeSingle();
 
@@ -85,18 +85,19 @@ async function loadRecipeContext(
 
   const { data: steps } = await admin
     .from("recipe_instruction_steps")
-    .select("body, sort_order")
+    .select("text, step_number")
     .eq("recipe_id", recipeId)
-    .order("sort_order", { ascending: true });
+    .order("step_number", { ascending: true });
 
   const instructionStepBodies = (steps ?? [])
-    .map((s) => String((s as { body: unknown }).body ?? "").trim())
+    .map((s) => String((s as { text: unknown }).text ?? "").trim())
     .filter(Boolean);
 
   return {
     ok: true,
     ctx: {
       recipeName: String(recipe.name ?? "").trim(),
+      headnote: (recipe.headnote as string | null) ?? null,
       description: (recipe.description as string | null) ?? null,
       mealTypes: (recipe.meal_types as string[] | null) ?? null,
       ingredientNames,
@@ -141,6 +142,7 @@ export async function generateAndAttachRecipeImage(
 
   const promptInput: PromptInput = {
     name: ctx.recipeName,
+    headnote: ctx.headnote,
     description: ctx.description,
     mealTypes: ctx.mealTypes,
     ingredientNames: ctx.ingredientNames,
@@ -148,9 +150,8 @@ export async function generateAndAttachRecipeImage(
     servings: ctx.servings,
   };
 
-  const { generationPrompt, sceneConcept } =
-    await buildRecipeImagePrompt(promptInput);
-  log("sceneConcept:", sceneConcept);
+  const { generationPrompt } = await buildRecipeImagePrompt(promptInput);
+  log("generationPrompt chars:", generationPrompt.length);
 
   const headlineIngredients = headline(ctx.ingredientNames);
 
@@ -246,7 +247,6 @@ export async function generateAndAttachRecipeImage(
     ok: true,
     imageUrl: upload.publicUrl,
     provider: finalProvider,
-    sceneConcept,
     qcNote: finalQcNote,
   };
 }

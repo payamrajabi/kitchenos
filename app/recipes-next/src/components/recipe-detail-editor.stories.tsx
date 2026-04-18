@@ -48,13 +48,13 @@ export const Default: Story = {
     recipeInstructionSteps: [
       mockInstructionStep({
         id: 50,
-        sort_order: 0,
-        body: "Brown the beef with spices.",
+        step_number: 1,
+        text: "Brown the beef with spices.",
       }),
       mockInstructionStep({
         id: 51,
-        sort_order: 1,
-        body: "Warm tortillas and serve.",
+        step_number: 2,
+        text: "Warm tortillas and serve.",
       }),
     ],
     availableIngredients: [

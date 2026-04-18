@@ -26,6 +26,8 @@ type RawRecipeIngredientRow = {
   line_sort_order: unknown;
   amount: unknown;
   unit: unknown;
+  preparation?: unknown;
+  display?: unknown;
   is_optional?: unknown;
   created_at?: string;
   ingredients: RawIngredientJoin | RawIngredientJoin[] | null;
@@ -89,12 +91,12 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
       supabase
         .from("recipe_ingredients")
         .select(
-          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, created_at, ingredients(id, name, density_g_per_ml)",
+          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml)",
         )
         .eq("recipe_id", id),
       supabase
         .from("recipe_ingredient_sections")
-        .select("id, recipe_id, title, sort_order, created_at")
+        .select("id, recipe_id, heading, sort_order, created_at")
         .eq("recipe_id", id)
         .order("sort_order", { ascending: true }),
     ]);
@@ -153,6 +155,8 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     line_sort_order: number;
     amount: string | null;
     unit: string | null;
+    preparation: string | null;
+    display: string | null;
     is_optional: boolean;
     created_at?: string;
     ingredients: {
@@ -185,6 +189,8 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
       line_sort_order: Number(row.line_sort_order ?? 0),
       amount: row.amount == null ? null : String(row.amount),
       unit: row.unit == null ? null : String(row.unit),
+      preparation: row.preparation == null ? null : String(row.preparation),
+      display: row.display == null ? null : String(row.display),
       is_optional,
       created_at: row.created_at,
       ingredients: ingredient
@@ -201,14 +207,14 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     (sectionsResult.data ?? []) as {
       id: unknown;
       recipe_id: unknown;
-      title: unknown;
+      heading: unknown;
       sort_order: unknown;
       created_at?: string;
     }[]
   ).map((row) => ({
     id: String(row.id),
     recipe_id: Number(row.recipe_id),
-    title: row.title == null ? "" : String(row.title),
+    heading: row.heading == null ? "" : String(row.heading),
     sort_order: Number(row.sort_order ?? 0),
     created_at: row.created_at,
   }));

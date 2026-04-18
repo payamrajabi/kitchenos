@@ -11,22 +11,30 @@ function safeInt(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+const INSTRUCTION_STEP_SELECT =
+  "id, recipe_id, step_number, text, timer_seconds_low, timer_seconds_high, created_at";
+
 function normalizeStepRow(raw: Record<string, unknown>): RecipeInstructionStepRow | null {
   const id = Number(raw.id);
   const recipe_id = Number(raw.recipe_id);
-  const sort_order = Number(raw.sort_order ?? 0);
+  const step_number = Number(raw.step_number ?? 1);
   if (!Number.isFinite(id) || !Number.isFinite(recipe_id)) return null;
   return {
     id,
     recipe_id,
-    sort_order: Number.isFinite(sort_order) ? sort_order : 0,
-    body: raw.body == null ? "" : String(raw.body),
+    step_number: Number.isFinite(step_number) ? step_number : 1,
+    text: raw.text == null ? "" : String(raw.text),
     timer_seconds_low: safeInt(raw.timer_seconds_low),
     timer_seconds_high: safeInt(raw.timer_seconds_high),
     created_at: raw.created_at == null ? undefined : String(raw.created_at),
   };
 }
 
+/**
+ * Load all instruction steps for a recipe, back-filling the relational table
+ * from the legacy flat `recipes.instructions` text blob on first read. Steps
+ * are 1-based and stored under `step_number` / `text`.
+ */
 export async function loadRecipeInstructionStepsWithLegacyMigration(
   supabase: SupabaseClient,
   recipeId: number,
@@ -34,9 +42,9 @@ export async function loadRecipeInstructionStepsWithLegacyMigration(
 ): Promise<RecipeInstructionStepRow[]> {
   const { data: existing, error: selErr } = await supabase
     .from("recipe_instruction_steps")
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at")
+    .select(INSTRUCTION_STEP_SELECT)
     .eq("recipe_id", recipeId)
-    .order("sort_order", { ascending: true });
+    .order("step_number", { ascending: true });
 
   if (selErr) {
     return [];
@@ -56,16 +64,16 @@ export async function loadRecipeInstructionStepsWithLegacyMigration(
   }
 
   const stamp = new Date().toISOString();
-  const inserts = parsed.map((body, sort_order) => ({
+  const inserts = parsed.map((text, idx) => ({
     recipe_id: recipeId,
-    sort_order,
-    body,
+    step_number: idx + 1,
+    text,
   }));
 
   const { data: inserted, error: insErr } = await supabase
     .from("recipe_instruction_steps")
     .insert(inserts)
-    .select("id, recipe_id, sort_order, body, timer_seconds_low, timer_seconds_high, created_at");
+    .select(INSTRUCTION_STEP_SELECT);
 
   if (insErr || !inserted?.length) {
     return [];

@@ -3,8 +3,7 @@
 import { createRecipeAndRedirectAction } from "@/app/actions/recipes";
 import {
   importRecipeFromUrlAction,
-  importRecipeFromImagesAction,
-  importRecipeFromTextAction,
+  importRecipeFromIntakeAction,
 } from "@/app/actions/recipe-import";
 import { useDraftImports } from "@/components/draft-imports-provider";
 import { prepareImagesForRecipeImport } from "@/lib/recipe-import/prepare-image-for-import";
@@ -12,11 +11,11 @@ import {
   Plus,
   NotePencil,
   Link,
-  Camera,
-  ClipboardText,
+  Sparkle,
+  Paperclip,
+  ArrowUp,
   X,
 } from "@phosphor-icons/react";
-import ReactMarkdown from "react-markdown";
 import {
   useCallback,
   useEffect,
@@ -24,37 +23,78 @@ import {
   useState,
   useTransition,
   type ChangeEvent,
+  type ClipboardEvent as ReactClipboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
 export const DRAFT_STORAGE_KEY = "kitchenos-recipe-draft";
 
-type MenuView = "closed" | "menu" | "url" | "text";
-type TextTab = "write" | "preview";
+type MenuView = "closed" | "menu" | "url" | "intake";
+
+type AttachedImage = {
+  id: string;
+  previewUrl: string;
+  file: File;
+};
+
+function makeAttachedImage(file: File): AttachedImage {
+  return {
+    id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+    previewUrl: URL.createObjectURL(file),
+    file,
+  };
+}
 
 export function RecipeAddFab() {
   const { startImport } = useDraftImports();
   const wrapRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const intakeFileRef = useRef<HTMLInputElement>(null);
+  const intakeTextareaRef = useRef<HTMLTextAreaElement>(null);
   const ignoreOutsideCloseUntilRef = useRef(0);
   const [view, setView] = useState<MenuView>("closed");
   const [url, setUrl] = useState("");
-  const [text, setText] = useState("");
-  const [textTab, setTextTab] = useState<TextTab>("write");
+  const [intakeText, setIntakeText] = useState("");
+  const [intakeImages, setIntakeImages] = useState<AttachedImage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const showPopover = view === "menu" || view === "url";
-  const showTextModal = view === "text";
+  const showIntakeModal = view === "intake";
   const showPanel = view !== "closed";
 
   useEffect(() => {
-    if (!showTextModal) return;
+    if (!showIntakeModal) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [showTextModal]);
+  }, [showIntakeModal]);
+
+  const autoResizeIntake = useCallback(() => {
+    const el = intakeTextareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    if (!showIntakeModal) return;
+    autoResizeIntake();
+  }, [showIntakeModal, intakeText, intakeImages.length, autoResizeIntake]);
+
+  const intakeImagesRef = useRef<AttachedImage[]>([]);
+  useEffect(() => {
+    intakeImagesRef.current = intakeImages;
+  }, [intakeImages]);
+
+  useEffect(() => {
+    return () => {
+      for (const img of intakeImagesRef.current) {
+        URL.revokeObjectURL(img.previewUrl);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!showPanel) return;
@@ -74,7 +114,7 @@ export function RecipeAddFab() {
     if (!showPanel) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (view === "text") {
+        if (view === "intake") {
           setView("menu");
           setError(null);
         } else {
@@ -90,8 +130,11 @@ export function RecipeAddFab() {
   const reset = useCallback(() => {
     setView("closed");
     setUrl("");
-    setText("");
-    setTextTab("write");
+    setIntakeText("");
+    setIntakeImages((prev) => {
+      for (const img of prev) URL.revokeObjectURL(img.previewUrl);
+      return [];
+    });
     setError(null);
   }, []);
 
@@ -111,12 +154,11 @@ export function RecipeAddFab() {
     reset();
   }, [url, startImport, reset]);
 
-  const handleImageFiles = useCallback(
+  const handleIntakeFiles = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       e.target.value = "";
       if (!files?.length) return;
-
       const imageFiles = Array.from(files).filter((f) =>
         f.type.startsWith("image/"),
       );
@@ -124,39 +166,98 @@ export function RecipeAddFab() {
         setError("Please select image files.");
         return;
       }
-
-      startImport("Importing from image…", async () => {
-        try {
-          const dataUrls = await prepareImagesForRecipeImport(imageFiles);
-          return importRecipeFromImagesAction(dataUrls);
-        } catch (err) {
-          return {
-            ok: false as const,
-            error:
-              err instanceof Error
-                ? err.message
-                : "Could not process images.",
-          };
-        }
-      });
-      reset();
+      setError(null);
+      setIntakeImages((prev) => [
+        ...prev,
+        ...imageFiles.map(makeAttachedImage),
+      ]);
     },
-    [startImport, reset],
+    [],
   );
 
-  const handleTextSubmit = useCallback(() => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    startImport("Importing from text…", () =>
-      importRecipeFromTextAction(trimmed),
-    );
+  const removeIntakeImage = useCallback((id: string) => {
+    setIntakeImages((prev) => {
+      const next: AttachedImage[] = [];
+      for (const img of prev) {
+        if (img.id === id) {
+          URL.revokeObjectURL(img.previewUrl);
+        } else {
+          next.push(img);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const handleIntakeSubmit = useCallback(() => {
+    const trimmedText = intakeText.trim();
+    const images = intakeImages;
+    if (!trimmedText && !images.length) return;
+
+    const label = images.length
+      ? trimmedText
+        ? "Importing from image and text…"
+        : "Importing from image…"
+      : "Importing from text…";
+
+    const files = images.map((img) => img.file);
+
+    startImport(label, async () => {
+      try {
+        const dataUrls = files.length
+          ? await prepareImagesForRecipeImport(files)
+          : [];
+        return importRecipeFromIntakeAction(trimmedText, dataUrls);
+      } catch (err) {
+        return {
+          ok: false as const,
+          error:
+            err instanceof Error ? err.message : "Could not process images.",
+        };
+      }
+    });
     reset();
-  }, [text, startImport, reset]);
+  }, [intakeText, intakeImages, startImport, reset]);
 
   const toggleMenu = useCallback(() => {
     setView((v) => (v === "closed" ? "menu" : "closed"));
     setError(null);
   }, []);
+
+  const onIntakePaste = useCallback(
+    (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+      const imageFiles: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      if (!imageFiles.length) return;
+      e.preventDefault();
+      setError(null);
+      setIntakeImages((prev) => [
+        ...prev,
+        ...imageFiles.map(makeAttachedImage),
+      ]);
+    },
+    [],
+  );
+
+  const onIntakeKey = useCallback(
+    (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleIntakeSubmit();
+      }
+    },
+    [handleIntakeSubmit],
+  );
+
+  const intakeCanSend =
+    intakeText.trim().length > 0 || intakeImages.length > 0;
 
   return (
     <div className="inventory-add-fab-wrap" ref={wrapRef}>
@@ -198,25 +299,12 @@ export function RecipeAddFab() {
                 type="button"
                 className="recipe-add-menu-item"
                 onClick={() => {
-                  ignoreOutsideCloseUntilRef.current = Date.now() + 3000;
-                  fileRef.current?.click();
+                  setView("intake");
                   setError(null);
                 }}
               >
-                <Camera size={18} weight="bold" aria-hidden />
-                From image
-              </button>
-              <button
-                type="button"
-                className="recipe-add-menu-item"
-                onClick={() => {
-                  setTextTab("write");
-                  setView("text");
-                  setError(null);
-                }}
-              >
-                <ClipboardText size={18} weight="bold" aria-hidden />
-                From text
+                <Sparkle size={18} weight="bold" aria-hidden />
+                Image and text
               </button>
             </div>
           )}
@@ -260,7 +348,7 @@ export function RecipeAddFab() {
         </div>
       )}
 
-      {showTextModal && (
+      {showIntakeModal && (
         <>
           <button
             type="button"
@@ -272,7 +360,7 @@ export function RecipeAddFab() {
             className="recipe-add-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="recipe-add-modal-title"
+            aria-labelledby="recipe-add-intake-title"
           >
             <header className="recipe-add-modal-header">
               <button
@@ -286,8 +374,11 @@ export function RecipeAddFab() {
               >
                 <X size={14} weight="bold" aria-hidden />
               </button>
-              <h2 id="recipe-add-modal-title" className="recipe-add-modal-title">
-                From text
+              <h2
+                id="recipe-add-intake-title"
+                className="recipe-add-modal-title"
+              >
+                New recipe
               </h2>
               <button
                 type="button"
@@ -300,61 +391,63 @@ export function RecipeAddFab() {
             </header>
 
             <div className="recipe-add-modal-body">
-              <div className="recipe-add-text-modal">
-                <div
-                  className="recipe-add-md-tabs"
-                  role="tablist"
-                  aria-label="Markdown"
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={textTab === "write"}
-                    className={`recipe-add-md-tab${textTab === "write" ? " is-active" : ""}`}
-                    onClick={() => setTextTab("write")}
-                  >
-                    Write
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={textTab === "preview"}
-                    className={`recipe-add-md-tab${textTab === "preview" ? " is-active" : ""}`}
-                    onClick={() => setTextTab("preview")}
-                  >
-                    Preview
-                  </button>
-                </div>
-                {textTab === "write" ? (
-                  <textarea
-                    className="recipe-add-text-input recipe-add-text-input--modal"
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="Paste recipe name, ingredients, and instructions. Markdown is supported (headings, lists, **bold**, links…)"
-                    autoFocus
-                  />
-                ) : (
-                  <div className="recipe-add-md-preview-wrap">
-                    {text.trim() ? (
-                      <div className="recipe-add-md-preview">
-                        <ReactMarkdown>{text}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <p className="recipe-add-md-preview-empty">
-                        Nothing to preview yet — switch to Write and paste your
-                        recipe.
-                      </p>
-                    )}
-                  </div>
+              {error && (
+                <p className="recipe-add-panel-error" role="alert">
+                  {error}
+                </p>
+              )}
+
+              <div className="recipe-intake-composer">
+                {intakeImages.length > 0 && (
+                  <ul className="recipe-intake-thumbs" aria-label="Attached images">
+                    {intakeImages.map((img) => (
+                      <li key={img.id} className="recipe-intake-thumb">
+                        <img
+                          src={img.previewUrl}
+                          alt=""
+                          className="recipe-intake-thumb-img"
+                        />
+                        <button
+                          type="button"
+                          className="recipe-intake-thumb-remove"
+                          onClick={() => removeIntakeImage(img.id)}
+                          aria-label="Remove image"
+                        >
+                          <X size={12} weight="bold" aria-hidden />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-                <div className="recipe-add-text-modal-footer">
+
+                <textarea
+                  ref={intakeTextareaRef}
+                  className="recipe-intake-textarea"
+                  value={intakeText}
+                  onChange={(e) => setIntakeText(e.target.value)}
+                  onKeyDown={onIntakeKey}
+                  onPaste={onIntakePaste}
+                  placeholder="Describe the recipe, paste notes or ingredients, or attach photos — anything you give is used to draft the recipe."
+                  autoFocus
+                />
+
+                <div className="recipe-intake-toolbar">
                   <button
                     type="button"
-                    className="recipe-add-submit"
-                    onClick={handleTextSubmit}
-                    disabled={!text.trim()}
+                    className="recipe-intake-attach icon-ghost"
+                    onClick={() => intakeFileRef.current?.click()}
+                    aria-label="Attach images"
                   >
-                    Import
+                    <Paperclip size={16} weight="bold" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    className="recipe-intake-send"
+                    onClick={handleIntakeSubmit}
+                    disabled={!intakeCanSend}
+                    aria-label="Send"
+                  >
+                    <ArrowUp size={16} weight="bold" aria-hidden />
                   </button>
                 </div>
               </div>
@@ -364,14 +457,14 @@ export function RecipeAddFab() {
       )}
 
       <input
-        ref={fileRef}
+        ref={intakeFileRef}
         type="file"
         accept="image/*"
         multiple
         className="visually-hidden"
         aria-hidden
         tabIndex={-1}
-        onChange={handleImageFiles}
+        onChange={handleIntakeFiles}
       />
 
       <button

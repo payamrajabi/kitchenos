@@ -81,19 +81,19 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
       supabase
         .from("recipe_ingredients")
         .select(
-          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, is_optional, ingredients(id, name)",
+          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, ingredients(id, name)",
         )
         .eq("recipe_id", id),
       supabase
         .from("recipe_ingredient_sections")
-        .select("id, recipe_id, title, sort_order, created_at")
+        .select("id, recipe_id, heading, sort_order, created_at")
         .eq("recipe_id", id)
         .order("sort_order", { ascending: true }),
       supabase
         .from("recipe_instruction_steps")
-        .select("body, sort_order")
+        .select("text, step_number")
         .eq("recipe_id", id)
-        .order("sort_order", { ascending: true }),
+        .order("step_number", { ascending: true }),
     ]);
 
   type RawIngLine = {
@@ -104,6 +104,8 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
     line_sort_order: unknown;
     amount: unknown;
     unit: unknown;
+    preparation?: unknown;
+    display?: unknown;
     is_optional?: unknown;
     ingredients:
       | { id: unknown; name: unknown }
@@ -123,6 +125,8 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
       name: ing ? String(ing.name ?? "") : "",
       amount: row.amount == null ? null : String(row.amount),
       unit: row.unit == null ? null : String(row.unit),
+      preparation: row.preparation == null ? null : String(row.preparation),
+      display: row.display == null ? null : String(row.display),
       is_optional:
         opt === true || opt === 1 || opt === "true" || opt === "t",
       section_id:
@@ -135,14 +139,14 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
     (sectionsResult.data ?? []) as {
       id: unknown;
       recipe_id: unknown;
-      title: unknown;
+      heading: unknown;
       sort_order: unknown;
       created_at?: string;
     }[]
   ).map((row) => ({
     id: String(row.id),
     recipe_id: Number(row.recipe_id),
-    title: row.title == null ? "" : String(row.title),
+    heading: row.heading == null ? "" : String(row.heading),
     sort_order: Number(row.sort_order ?? 0),
     created_at: row.created_at,
   }));
@@ -150,13 +154,13 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
   const instructionSteps = instructionStepsResult.error
     ? []
     : (
-        (instructionStepsResult.data ?? []) as { body: unknown; sort_order: unknown }[]
+        (instructionStepsResult.data ?? []) as { text: unknown; step_number: unknown }[]
       )
         .map((row) => ({
-          body: String(row.body ?? ""),
-          sort_order: Number(row.sort_order ?? 0),
+          text: String(row.text ?? ""),
+          step_number: Number(row.step_number ?? 0),
         }))
-        .sort((a, b) => a.sort_order - b.sort_order);
+        .sort((a, b) => a.step_number - b.step_number);
 
   return (
     <CommunityRecipeDetail

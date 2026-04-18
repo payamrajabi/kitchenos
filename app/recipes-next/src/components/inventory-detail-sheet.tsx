@@ -1,14 +1,36 @@
 "use client";
 
-import { useEffect, useState, useTransition, useCallback } from "react";
+import { useEffect, useMemo, useState, useTransition, useCallback } from "react";
 import type { IngredientRow, InventoryItemRow, IngredientNutrientRow, IngredientPortionRow } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { nutritionPer100gForDisplay } from "@/lib/inventory-nutrition-display";
 import { NUTRITION_SOURCE_LLM_ESTIMATE } from "@/lib/nutrition/types";
 import { autofillIngredientNutritionAction } from "@/app/actions/ingredient-nutrition";
+import {
+  updateInventoryQuantityFieldAction,
+  updateInventoryStockUnitAction,
+  updateInventoryStorageLocationAction,
+  updateRecipeUnitAction,
+} from "@/app/actions/inventory";
+import { normalizeInventoryId } from "@/lib/inventory-display";
+import {
+  canonicalIngredientUnit,
+  defaultRecipeUnitForStockUnit,
+  INGREDIENT_UNIT_VALUES,
+  RECIPE_UNITS,
+} from "@/lib/unit-mapping";
+import { STOCK_UNIT_OPTIONS, STOCK_UNIT_VALUES } from "@/lib/stock-units";
+import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import { ArrowsClockwise, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+
+const STORAGE_LOCATION_OPTIONS: SelectOption[] = [
+  { value: "Fridge", label: "Fridge" },
+  { value: "Freezer", label: "Freezer" },
+  { value: "Shallow Pantry", label: "Shallow Pantry" },
+  { value: "Deep Pantry", label: "Deep Pantry" },
+];
 
 function fmt(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -21,6 +43,235 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
       <dt className="detail-sheet-label">{label}</dt>
       <dd className="detail-sheet-value">{value ?? "—"}</dd>
     </div>
+  );
+}
+
+function EditableRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="detail-sheet-row">
+      <dt className="detail-sheet-label">{label}</dt>
+      <dd className="detail-sheet-value detail-sheet-value--editable">{children}</dd>
+    </div>
+  );
+}
+
+function EditableQty({
+  ingredientId,
+  inventoryId,
+  field,
+  initialValue,
+  ariaLabel,
+  suffix,
+  minBound,
+  maxBound,
+}: {
+  ingredientId: number;
+  inventoryId: number | "";
+  field: "quantity" | "min_quantity" | "max_quantity";
+  initialValue: number | null;
+  ariaLabel: string;
+  suffix?: string | null;
+  minBound?: number | null;
+  maxBound?: number | null;
+}) {
+  const resolvedInventoryId = useMemo(
+    () => normalizeInventoryId(inventoryId),
+    [inventoryId],
+  );
+  const toText = (n: number | null) =>
+    n === null || n === undefined || Number.isNaN(Number(n))
+      ? ""
+      : String(Math.trunc(Number(n)));
+  const [text, setText] = useState(() => toText(initialValue));
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resync local input buffer when the server-derived initialValue changes (e.g. router refresh or switching ingredient)
+    setText(toText(initialValue));
+  }, [initialValue]);
+
+  const persist = useCallback(
+    (raw: string) => {
+      const trimmed = raw.trim();
+      const parsed = trimmed === "" ? 0 : Math.trunc(Number(trimmed));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        setText(toText(initialValue));
+        return;
+      }
+      if (field === "min_quantity" && maxBound != null && parsed > maxBound) {
+        toast.error("Minimum cannot be greater than maximum.");
+        setText(toText(initialValue));
+        return;
+      }
+      if (field === "max_quantity" && minBound != null && parsed < minBound) {
+        toast.error("Maximum cannot be less than minimum.");
+        setText(toText(initialValue));
+        return;
+      }
+      const prev = initialValue == null ? null : Math.trunc(Number(initialValue));
+      if (prev !== null && parsed === prev) return;
+      startTransition(async () => {
+        const r = await updateInventoryQuantityFieldAction(
+          ingredientId,
+          resolvedInventoryId,
+          field,
+          parsed,
+        );
+        if (!r.ok) {
+          toast.error(r.error);
+          setText(toText(initialValue));
+        }
+      });
+    },
+    [ingredientId, resolvedInventoryId, field, initialValue, minBound, maxBound],
+  );
+
+  return (
+    <span className="detail-sheet-editable-number">
+      <input
+        type="text"
+        inputMode="numeric"
+        className="detail-sheet-input"
+        value={text}
+        aria-label={ariaLabel}
+        disabled={isPending}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => persist(text)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            setText(toText(initialValue));
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+      {suffix ? <span className="detail-sheet-input-suffix">{suffix}</span> : null}
+    </span>
+  );
+}
+
+function EditableStockUnit({
+  ingredientId,
+  inventoryId,
+  value,
+}: {
+  ingredientId: number;
+  inventoryId: number | "";
+  value: string;
+}) {
+  const resolvedInventoryId = normalizeInventoryId(inventoryId);
+  const [isPending, startTransition] = useTransition();
+  const normalized = canonicalIngredientUnit(value);
+  const options: SelectOption[] = useMemo(() => {
+    const v = normalized.trim();
+    if (v && !STOCK_UNIT_VALUES.has(v)) {
+      return [{ value: v, label: v }, ...STOCK_UNIT_OPTIONS];
+    }
+    return STOCK_UNIT_OPTIONS;
+  }, [normalized]);
+  return (
+    <SearchableSelect
+      className="detail-sheet-select"
+      options={options}
+      value={normalized}
+      onChange={(next) => {
+        startTransition(async () => {
+          const r = await updateInventoryStockUnitAction(
+            ingredientId,
+            resolvedInventoryId,
+            next,
+          );
+          if (!r.ok) toast.error(r.error);
+        });
+      }}
+      disabled={isPending}
+      aria-label="Stock unit"
+      bareInline
+      placeholder="—"
+    />
+  );
+}
+
+function EditableRecipeUnit({
+  ingredientId,
+  inventoryId,
+  stockUnit,
+  savedRecipeUnit,
+}: {
+  ingredientId: number;
+  inventoryId: number | "";
+  stockUnit: string;
+  savedRecipeUnit: string;
+}) {
+  const resolvedInventoryId = normalizeInventoryId(inventoryId);
+  const [isPending, startTransition] = useTransition();
+  const effective = useMemo(() => {
+    const savedNorm = canonicalIngredientUnit(savedRecipeUnit);
+    if (savedNorm) return savedNorm;
+    return defaultRecipeUnitForStockUnit(stockUnit);
+  }, [savedRecipeUnit, stockUnit]);
+  const options: SelectOption[] = useMemo(() => {
+    const v = effective.trim();
+    const base = RECIPE_UNITS.map((u) => ({ value: u, label: u }));
+    if (v && !INGREDIENT_UNIT_VALUES.has(v)) {
+      return [{ value: v, label: v }, ...base];
+    }
+    return base;
+  }, [effective]);
+  return (
+    <SearchableSelect
+      className="detail-sheet-select"
+      options={options}
+      value={effective}
+      onChange={(next) => {
+        startTransition(async () => {
+          const r = await updateRecipeUnitAction(
+            next,
+            resolvedInventoryId,
+            ingredientId,
+          );
+          if (!r.ok) toast.error(r.error);
+        });
+      }}
+      disabled={isPending}
+      aria-label="Recipe unit"
+      bareInline
+      placeholder="—"
+    />
+  );
+}
+
+function EditableStorageLocation({
+  ingredientId,
+  inventoryId,
+  value,
+}: {
+  ingredientId: number;
+  inventoryId: number | "";
+  value: string;
+}) {
+  const resolvedInventoryId = normalizeInventoryId(inventoryId);
+  const [isPending, startTransition] = useTransition();
+  return (
+    <SearchableSelect
+      className="detail-sheet-select"
+      options={STORAGE_LOCATION_OPTIONS}
+      value={value || ""}
+      onChange={(next) => {
+        startTransition(async () => {
+          const r = await updateInventoryStorageLocationAction(
+            ingredientId,
+            resolvedInventoryId,
+            next,
+          );
+          if (!r.ok) toast.error(r.error);
+        });
+      }}
+      disabled={isPending}
+      aria-label="Storage location"
+      bareInline
+      placeholder="—"
+    />
   );
 }
 
@@ -121,12 +372,14 @@ export function InventoryDetailSheet({
   const n = nutritionPer100gForDisplay(ingredient);
   const isLlmEstimate = ingredient.nutrition_source_name === NUTRITION_SOURCE_LLM_ESTIMATE;
 
-  const qty = inventoryItem?.quantity;
-  const unit = inventoryItem?.unit;
-  const stockDisplay =
-    qty != null
-      ? `${Number.isInteger(qty) ? qty : Math.round(Number(qty) * 100) / 100}${unit ? ` ${unit}` : ""}`
-      : "—";
+  const inventoryId = inventoryItem?.id ?? "";
+  const unit = inventoryItem?.unit ?? "";
+  const currentQty =
+    inventoryItem?.quantity != null ? Number(inventoryItem.quantity) : null;
+  const currentMin =
+    inventoryItem?.min_quantity != null ? Number(inventoryItem.min_quantity) : null;
+  const currentMax =
+    inventoryItem?.max_quantity != null ? Number(inventoryItem.max_quantity) : null;
 
   return (
     <div className="detail-sheet-backdrop" onClick={onClose}>
@@ -152,12 +405,58 @@ export function InventoryDetailSheet({
           <section className="detail-sheet-section">
             <h3 className="detail-sheet-section-title">Inventory</h3>
             <dl className="detail-sheet-dl">
-              <DetailRow label="Current Stock" value={stockDisplay} />
-              <DetailRow label="Stock Unit" value={inventoryItem?.unit || "—"} />
-              <DetailRow label="Min Quantity" value={fmt(inventoryItem?.min_quantity)} />
-              <DetailRow label="Max Quantity" value={fmt(inventoryItem?.max_quantity)} />
-              <DetailRow label="Recipe Unit" value={inventoryItem?.recipe_unit || "—"} />
-              <DetailRow label="Storage Location" value={inventoryItem?.storage_location || "—"} />
+              <EditableRow label="Current Stock">
+                <EditableQty
+                  ingredientId={ingredient.id}
+                  inventoryId={inventoryId}
+                  field="quantity"
+                  initialValue={currentQty}
+                  ariaLabel="Current stock"
+                  suffix={unit || null}
+                />
+              </EditableRow>
+              <EditableRow label="Stock Unit">
+                <EditableStockUnit
+                  ingredientId={ingredient.id}
+                  inventoryId={inventoryId}
+                  value={unit}
+                />
+              </EditableRow>
+              <EditableRow label="Min Quantity">
+                <EditableQty
+                  ingredientId={ingredient.id}
+                  inventoryId={inventoryId}
+                  field="min_quantity"
+                  initialValue={currentMin}
+                  ariaLabel="Minimum quantity"
+                  maxBound={currentMax}
+                />
+              </EditableRow>
+              <EditableRow label="Max Quantity">
+                <EditableQty
+                  ingredientId={ingredient.id}
+                  inventoryId={inventoryId}
+                  field="max_quantity"
+                  initialValue={currentMax}
+                  ariaLabel="Maximum quantity"
+                  minBound={currentMin}
+                />
+              </EditableRow>
+              <EditableRow label="Recipe Unit">
+                <EditableRecipeUnit
+                  ingredientId={ingredient.id}
+                  inventoryId={inventoryId}
+                  stockUnit={unit}
+                  savedRecipeUnit={inventoryItem?.recipe_unit ?? ""}
+                />
+              </EditableRow>
+              <EditableRow label="Storage Location">
+                <EditableStorageLocation
+                  ingredientId={ingredient.id}
+                  inventoryId={inventoryId}
+                  value={inventoryItem?.storage_location ?? ""}
+                />
+              </EditableRow>
             </dl>
           </section>
 

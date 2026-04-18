@@ -8,15 +8,24 @@ CREATE TABLE IF NOT EXISTS recipe_categories (
 CREATE TABLE IF NOT EXISTS recipes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  title_primary TEXT,
+  title_qualifier TEXT,
+  headnote TEXT,
   description TEXT,
   category_id INTEGER,
   image_url TEXT,
   image_focus_y INTEGER,
   notes TEXT,
+  notes_type TEXT CHECK (notes_type IS NULL OR notes_type IN ('note','variation','storage','substitution')),
+  notes_title TEXT,
   ingredients TEXT,
   instructions TEXT,
   source_url TEXT,
   servings INTEGER,
+  yield_label TEXT CHECK (yield_label IS NULL OR yield_label IN ('serves','makes')),
+  yield_quantity TEXT,
+  yield_unit TEXT,
+  yield_display TEXT,
   prep_time_minutes INTEGER,
   cook_time_minutes INTEGER,
   total_time_minutes INTEGER,
@@ -89,9 +98,43 @@ CREATE TABLE IF NOT EXISTS ingredients (
   -- to grams using this density. Nullable so ingredients that haven't been
   -- measured yet simply fall back to their original unit in that view.
   density_g_per_ml REAL CHECK (density_g_per_ml IS NULL OR density_g_per_ml > 0),
+  -- Stage 1 of the ingredient backbone alignment: new fields for canonical
+  -- name + variant, culinary subcategory tier, and operational metadata.
+  -- All nullable/defaulted so existing rows keep working unchanged.
+  variant TEXT,
+  taxonomy_subcategory TEXT,
+  -- JSON arrays of strings in SQLite (Postgres side uses real text[] arrays).
+  default_units TEXT,
+  storage_hints TEXT,
+  shelf_life_counter_days INTEGER CHECK (shelf_life_counter_days IS NULL OR shelf_life_counter_days >= 0),
+  shelf_life_fridge_days INTEGER CHECK (shelf_life_fridge_days IS NULL OR shelf_life_fridge_days >= 0),
+  shelf_life_freezer_days INTEGER CHECK (shelf_life_freezer_days IS NULL OR shelf_life_freezer_days >= 0),
+  packaged_common INTEGER NOT NULL DEFAULT 0,
+  is_composite INTEGER NOT NULL DEFAULT 0,
+  backbone_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_ingredients_taxonomy_subcategory
+  ON ingredients (taxonomy_subcategory);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ingredients_backbone_id
+  ON ingredients (backbone_id);
+
+CREATE TABLE IF NOT EXISTS ingredient_aliases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+  alias TEXT NOT NULL,
+  source TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ingredient_aliases_lower
+  ON ingredient_aliases (ingredient_id, lower(alias));
+
+CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_lookup
+  ON ingredient_aliases (lower(alias));
 
 CREATE TABLE IF NOT EXISTS ingredient_nutrients (
   ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
@@ -168,6 +211,8 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
   ingredient_id INTEGER NOT NULL,
   amount TEXT,
   unit TEXT,
+  preparation TEXT,
+  display TEXT,
   PRIMARY KEY (recipe_id, ingredient_id),
   FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
   FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
@@ -176,15 +221,15 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
 CREATE TABLE IF NOT EXISTS recipe_instruction_steps (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  body TEXT NOT NULL,
+  step_number INTEGER NOT NULL DEFAULT 1,
+  text TEXT NOT NULL,
   timer_seconds_low INTEGER,
   timer_seconds_high INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS recipe_instruction_steps_recipe_sort
-  ON recipe_instruction_steps (recipe_id, sort_order);
+CREATE INDEX IF NOT EXISTS recipe_instruction_steps_recipe_step
+  ON recipe_instruction_steps (recipe_id, step_number);
 
 CREATE TABLE IF NOT EXISTS inventory_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

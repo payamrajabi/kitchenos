@@ -9,6 +9,7 @@ import { RecipeIngredientsEditor } from "@/components/recipe-ingredients-editor"
 import { RecipeInstructionsEditor } from "@/components/recipe-instructions-editor";
 import { RecipeEditModeProvider } from "@/components/recipe-edit-mode";
 import { RecipeServingsScaleProvider } from "@/components/recipe-servings-scale";
+import { RecipeIngredientUnitDisplayProvider } from "@/components/recipe-ingredient-unit-display";
 import { Minus, Plus } from "@phosphor-icons/react";
 import { RecipeDescriptionRichText } from "@/components/recipe-description-rich-text";
 import { isSupabaseConfigured, recipeImagesBucket } from "@/lib/env";
@@ -100,6 +101,7 @@ export function RecipeDetailEditor({
   const [focusY, setFocusY] = useState(() => recipeImageFocusYPercent(initial));
   const [cropMode, setCropMode] = useState(false);
   const [name, setName] = useState(() => str(initial.name));
+  const [headnote, setHeadnote] = useState(() => str(initial.headnote));
   const [description, setDescription] = useState(() => str(initial.description));
   const [notes, setNotes] = useState(() => str(initial.notes));
   const [sourceUrl, setSourceUrl] = useState(() => str(initial.source_url));
@@ -232,7 +234,11 @@ export function RecipeDetailEditor({
   }, [name, initial.name, save]);
 
   const blurText = useCallback(
-    (field: "notes" | "description", value: string, initialVal: string) => {
+    (
+      field: "notes" | "description" | "headnote",
+      value: string,
+      initialVal: string,
+    ) => {
       const next = value;
       if (next === initialVal) return;
       save({ [field]: next });
@@ -757,6 +763,24 @@ export function RecipeDetailEditor({
           )}
           {isEditing ? (
             <textarea
+              className="recipe-pre recipe-detail-textarea recipe-detail-headnote-input"
+              value={headnote}
+              onChange={(e) => setHeadnote(e.target.value)}
+              onBlur={() =>
+                blurText("headnote", headnote, str(initial.headnote))
+              }
+              disabled={isPending}
+              rows={3}
+              aria-label="Recipe headnote"
+              placeholder="Editorial intro / headnote (optional)…"
+            />
+          ) : str(initial.headnote).trim() ? (
+            <p className="recipe-pre recipe-detail-headnote-static">
+              {str(initial.headnote)}
+            </p>
+          ) : null}
+          {isEditing ? (
+            <textarea
               className="recipe-pre recipe-detail-textarea recipe-detail-description-input"
               value={description}
               onChange={(e) =>
@@ -781,36 +805,47 @@ export function RecipeDetailEditor({
               text={str(initial.description)}
             />
           ) : null}
-      {!isEditing && baseServings ? (
-        <div
-          className="recipe-detail-servings-stepper"
-          role="group"
-          aria-label="Adjust servings to scale ingredient amounts"
-        >
-          <button
-            type="button"
-            className="recipe-detail-servings-stepper-btn"
-            onClick={decrementViewServings}
-            disabled={(viewServings ?? baseServings) <= VIEW_SERVINGS_MIN}
-            aria-label="Decrease servings"
-          >
-            <Minus size={12} weight="bold" aria-hidden />
-          </button>
-          <span className="recipe-detail-servings-stepper-label">
-            {viewServings ?? baseServings} servings
-          </span>
-          <button
-            type="button"
-            className="recipe-detail-servings-stepper-btn"
-            onClick={incrementViewServings}
-            disabled={(viewServings ?? baseServings) >= VIEW_SERVINGS_MAX}
-            aria-label="Increase servings"
-          >
-            <Plus size={12} weight="bold" aria-hidden />
-          </button>
+      <RecipeIngredientUnitDisplayProvider>
+      {!isEditing && (baseServings || servingsLabel || recipeIngredients.length > 0) ? (
+        <div className="recipe-detail-ingredients-meta-row">
+          {baseServings ? (
+            <div
+              className="recipe-detail-servings-stepper"
+              role="group"
+              aria-label="Adjust servings to scale ingredient amounts"
+            >
+              <button
+                type="button"
+                className="recipe-detail-servings-stepper-btn"
+                onClick={decrementViewServings}
+                disabled={(viewServings ?? baseServings) <= VIEW_SERVINGS_MIN}
+                aria-label="Decrease servings"
+              >
+                <Minus size={12} weight="bold" aria-hidden />
+              </button>
+              <span className="recipe-detail-servings-stepper-label">
+                {viewServings ?? baseServings} servings
+              </span>
+              <button
+                type="button"
+                className="recipe-detail-servings-stepper-btn"
+                onClick={incrementViewServings}
+                disabled={(viewServings ?? baseServings) >= VIEW_SERVINGS_MAX}
+                aria-label="Increase servings"
+              >
+                <Plus size={12} weight="bold" aria-hidden />
+              </button>
+            </div>
+          ) : str(initial.yield_display).trim() ? (
+            <p className="recipe-detail-servings-static">
+              {str(initial.yield_display)}
+            </p>
+          ) : servingsLabel ? (
+            <p className="recipe-detail-servings-static">{servingsLabel}</p>
+          ) : (
+            <span aria-hidden="true" />
+          )}
         </div>
-      ) : !isEditing && servingsLabel ? (
-        <p className="recipe-detail-servings-static">{servingsLabel}</p>
       ) : null}
       <RecipeIngredientsEditor
         recipeId={initial.id}
@@ -818,33 +853,51 @@ export function RecipeDetailEditor({
         initialSections={recipeIngredientSections}
         ingredientOptions={availableIngredients}
       />
+      </RecipeIngredientUnitDisplayProvider>
       <section className="section">
         <h3>Instructions</h3>
         <RecipeInstructionsEditor recipeId={initial.id} recipeName={initial.name} initialSteps={recipeInstructionSteps} />
       </section>
-      {isEditing ? (
-        <section className="section">
-          <h3>Notes</h3>
-          <textarea
-            className="recipe-pre recipe-detail-textarea"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onPaste={onNotesPaste}
-            onBlur={() => blurText("notes", notes, str(initial.notes))}
-            disabled={isPending}
-            rows={4}
-            aria-label="Notes"
-            placeholder="Optional notes…"
-          />
-        </section>
-      ) : str(initial.notes).trim() ? (
-        <section className="section">
-          <h3>Notes</h3>
-          <p className="recipe-pre recipe-detail-notes-static">
-            {str(initial.notes)}
-          </p>
-        </section>
-      ) : null}
+      {(() => {
+        const noteTypeLabels: Record<string, string> = {
+          note: "Note",
+          variation: "Variation",
+          storage: "Storage",
+          substitution: "Substitution",
+        };
+        const noteHeading =
+          str(initial.notes_title).trim() ||
+          (initial.notes_type ? noteTypeLabels[initial.notes_type] : null) ||
+          "Notes";
+
+        if (isEditing) {
+          return (
+            <section className="section">
+              <h3>{noteHeading}</h3>
+              <textarea
+                className="recipe-pre recipe-detail-textarea"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onPaste={onNotesPaste}
+                onBlur={() => blurText("notes", notes, str(initial.notes))}
+                disabled={isPending}
+                rows={4}
+                aria-label="Notes"
+                placeholder="Optional notes…"
+              />
+            </section>
+          );
+        }
+
+        return str(initial.notes).trim() ? (
+          <section className="section">
+            <h3>{noteHeading}</h3>
+            <p className="recipe-pre recipe-detail-notes-static">
+              {str(initial.notes)}
+            </p>
+          </section>
+        ) : null;
+      })()}
       {isEditing ? (
       <div className="meta recipe-detail-meta-editable">
         <label className="recipe-meta-field recipe-meta-field--nutrition recipe-meta-field--nutrition-servings">

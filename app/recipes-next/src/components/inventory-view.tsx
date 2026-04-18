@@ -9,6 +9,11 @@ import {
   type InventoryFilterState,
 } from "@/components/inventory-filter-bar";
 import { InventoryDetailSheet } from "@/components/inventory-detail-sheet";
+import {
+  InventoryViewModeToggle,
+  type InventoryViewMode,
+} from "@/components/inventory-view-mode-toggle";
+import { InventoryCategoryView } from "@/components/inventory-category-view";
 
 type Props = {
   ingredients: IngredientRow[];
@@ -25,6 +30,7 @@ export function InventoryView({
 }: Props) {
   const [filters, setFilters] =
     useState<InventoryFilterState>(DEFAULT_INVENTORY_FILTERS);
+  const [viewMode, setViewMode] = useState<InventoryViewMode>("list");
   const [selectedIngredientId, setSelectedIngredientId] = useState<number | null>(null);
 
   const recipeSet = useMemo(
@@ -149,22 +155,33 @@ export function InventoryView({
 
   return (
     <>
-      <InventoryFilterBar value={filters} onChange={setFilters} />
-      <div className="table-container inventory-table">
-        <table className="ingredients-table inventory-table--compact">
-          <InventoryTableBody
-            ingredients={filteredIngredients}
-            inventory={inventory}
-            selectedIngredientId={selectedIngredientId}
-            onSelectIngredient={setSelectedIngredientId}
-          />
-        </table>
-        {!hasRows && (
-          <p className="inventory-filter-empty" role="status">
-            No ingredients match your filters.
-          </p>
-        )}
+      <div className="inventory-view-controls">
+        <InventoryFilterBar value={filters} onChange={setFilters} />
+        <InventoryViewModeToggle value={viewMode} onChange={setViewMode} />
       </div>
+      {viewMode === "list" ? (
+        <div className="table-container inventory-table">
+          <table className="ingredients-table inventory-table--compact">
+            <InventoryTableBody
+              ingredients={filteredIngredients}
+              inventory={inventory}
+              selectedIngredientId={selectedIngredientId}
+              onSelectIngredient={setSelectedIngredientId}
+            />
+          </table>
+          {!hasRows && (
+            <p className="inventory-filter-empty" role="status">
+              No ingredients match your filters.
+            </p>
+          )}
+        </div>
+      ) : (
+        <InventoryCategoryView
+          ingredients={filteredIngredients}
+          inventory={inventory}
+          onSelectIngredient={setSelectedIngredientId}
+        />
+      )}
       {selectedIngredient && (
         <InventoryDetailSheet
           ingredient={selectedIngredient}

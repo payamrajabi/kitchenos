@@ -199,6 +199,31 @@ samp {
   margin-bottom: var(--space-12);
 }
 
+/* Filter chips on the left + view-mode toggle on the right, one row. */
+.inventory-view-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
+  flex-wrap: wrap;
+}
+
+.inventory-view-controls .inventory-filter-bar {
+  margin-bottom: 0;
+}
+
+.inventory-view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.inventory-view-mode-toggle-btn {
+  gap: var(--space-6);
+}
+
 .inventory-filter-empty {
   margin: var(--space-16) 0 0;
   padding: var(--space-16) 0;
@@ -764,7 +789,7 @@ label {
 
 /* Exclude inventory table fields — global `input` + :not([type]) chain is more specific than
    `.ingredients-table …` overrides; those rows manage borders via .inventory-* classes. */
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]):not(.inventory-name-input):not(.inventory-qty-input):not(.recipe-ingredient-amount-input):not(.recipe-ingredients-add-input):not(.recipe-instruction-add-input),
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]):not(.inventory-name-input):not(.inventory-qty-input):not(.recipe-ingredient-amount-input):not(.recipe-ingredients-add-input):not(.recipe-instruction-add-input):not(.detail-sheet-input),
 select {
   height: var(--control-height);
   min-height: var(--control-height);
@@ -3508,7 +3533,7 @@ button:focus-visible,
   outline-offset: var(--space-2);
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]):not(.inventory-name-input):not(.inventory-qty-input):not(.recipe-ingredient-amount-input):not(.recipe-ingredients-add-input):not(.recipe-instruction-add-input):focus,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="hidden"]):not(.inventory-name-input):not(.inventory-qty-input):not(.recipe-ingredient-amount-input):not(.recipe-ingredients-add-input):not(.recipe-instruction-add-input):not(.detail-sheet-input):focus,
 textarea:focus,
 select:focus {
   border-color: var(--ink);
@@ -4159,15 +4184,9 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   position: relative;
 }
 
-/* Meta row above the ingredients heading — holds the Original/Grams display
-   toggle, right-aligned. Matches the Figma ghost-toggle treatment. */
-.recipe-ingredients-meta-row {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin: 0 0 var(--space-8);
-}
-
+/* Original/Grams ghost toggle that sits next to the servings stepper in view
+   mode. Matches the Figma: two uppercase semibold labels side by side, the
+   active one full-opacity, the other dimmed. */
 .recipe-ingredients-unit-toggle {
   display: inline-flex;
   align-items: center;
@@ -5177,7 +5196,23 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
 
 .recipe-ingredients-empty {
   color: var(--muted);
-  font-style: italic;
+}
+
+/* Ingredients section heading row: title on the left, Original/Grams toggle
+   on the right, baseline-aligned with the "Ingredients" headline. */
+.recipe-ingredients-heading-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-12);
+}
+
+.recipe-ingredients-heading {
+  margin: 0;
+}
+
+.recipe-ingredients-heading-toggle {
+  flex: 0 0 auto;
 }
 
 .recipe-ingredient-sections {
@@ -6377,6 +6412,11 @@ a.primary {
   font-size: 12px;
 }
 
+.community-ingredient-prep {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .community-ingredient-amount {
   color: var(--muted);
   white-space: nowrap;
@@ -6434,9 +6474,11 @@ a.primary {
   z-index: 1;
   left: 50%;
   top: 24px;
-  bottom: 24px;
+  bottom: auto;
   width: min(640px, calc(100vw - 48px));
   max-width: 640px;
+  height: auto;
+  max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   background: var(--paper);
@@ -6806,6 +6848,145 @@ a.primary {
   align-self: flex-end;
 }
 
+/* Recipe add — combined image + text intake composer (ChatGPT-style) */
+.recipe-intake-composer {
+  display: flex;
+  flex-direction: column;
+  border: var(--space-1) solid var(--control-border-rest);
+  background: var(--paper);
+  transition: border-color 0.15s ease;
+}
+
+.recipe-intake-composer:focus-within {
+  border-color: var(--ink);
+}
+
+.recipe-intake-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: 0;
+  padding: var(--space-8);
+  list-style: none;
+  border-bottom: var(--space-1) solid var(--hair);
+}
+
+.recipe-intake-thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  background: var(--fog);
+  border: var(--space-1) solid var(--hair);
+}
+
+.recipe-intake-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.recipe-intake-thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recipe-intake-thumb-remove:hover {
+  background: rgb(0 0 0 / 0.85);
+}
+
+.recipe-intake-textarea {
+  width: 100%;
+  min-height: 280px;
+  max-height: calc(100vh - 170px);
+  padding: var(--space-12);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  resize: none;
+  overflow-y: auto;
+}
+
+.recipe-intake-composer:has(.recipe-intake-thumbs) .recipe-intake-textarea {
+  max-height: calc(100vh - 240px);
+}
+
+.recipe-intake-textarea::placeholder {
+  color: var(--muted);
+}
+
+.recipe-intake-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: var(--space-6) var(--space-8);
+  border-top: var(--space-1) solid var(--hair);
+  background: var(--paper);
+}
+
+.recipe-intake-attach {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.recipe-intake-attach:hover {
+  color: var(--ink);
+  background: var(--fog);
+}
+
+.recipe-intake-send {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: var(--space-1) solid var(--ink);
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 0.15s ease,
+    transform 0.05s ease;
+}
+
+.recipe-intake-send:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.recipe-intake-send:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Draft review page                                                 */
 /* ------------------------------------------------------------------ */
@@ -6938,6 +7119,22 @@ a.primary {
   width: 100%;
   flex-basis: 100%;
   margin-top: var(--space-4);
+}
+
+/* "Add ingredient" row at the bottom of each draft section */
+
+.draft-ingredient-add-row td {
+  padding: var(--space-6) var(--space-8);
+  border-bottom: none;
+  vertical-align: top;
+}
+
+.draft-ingredient-add-placeholder {
+  color: transparent;
+}
+
+.draft-ingredient-add-cell {
+  position: relative;
 }
 
 /* Instructions list (draft) */
@@ -7182,6 +7379,23 @@ a.primary {
   color: #666;
 }
 
+/* Meta row above the ingredients heading: servings stepper on the left,
+   Original/Grams display toggle on the right. Both children are typographic
+   chips that share the same type treatment, so the text baselines line up
+   visually on the same row. */
+.recipe-detail-ingredients-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-16);
+  margin: var(--space-16) 0 0;
+}
+
+.recipe-detail-ingredients-meta-row .recipe-detail-servings-stepper,
+.recipe-detail-ingredients-meta-row .recipe-detail-servings-static {
+  margin: 0;
+}
+
 /* Interactive version of "Serves N" — a stepper that rescales ingredient
    amounts in view mode. Nothing here persists; bumping the count just
    multiplies each ingredient's displayed amount by current / base. */
@@ -7347,6 +7561,42 @@ a.primary {
 .recipe-ingredient-optional-flag {
   color: #888;
   font-weight: 400;
+}
+
+.recipe-ingredient-preparation {
+  color: #888;
+  font-weight: 400;
+}
+
+.recipe-detail-headnote-static {
+  margin: 0 0 16px 0;
+  color: #444;
+  line-height: 1.55;
+}
+
+.recipe-detail-headnote-input {
+  margin-bottom: 12px;
+}
+
+.draft-ingredient-preparation {
+  color: #888;
+  font-size: 0.9em;
+  font-style: italic;
+  margin-left: 2px;
+}
+
+.draft-review-title-qualifier {
+  display: block;
+  font-size: 0.7em;
+  font-weight: 400;
+  color: #666;
+  margin-top: 4px;
+}
+
+.draft-review-headnote {
+  color: #444;
+  font-style: italic;
+  margin-bottom: 12px;
 }
 
 .recipe-ingredient-amount-display--static {
@@ -7578,6 +7828,170 @@ a.primary {
 }
 
 /* ===================================================================
+   Inventory Category View (dense multi-column, taxonomy_subcategory)
+   ===================================================================
+   Uses native CSS multi-column layout so sections stay atomic
+   (`break-inside: avoid`) — any section that doesn't fit in the current
+   column is pushed whole to the next one. The browser auto-balances
+   column heights so the page is filled evenly. */
+
+.inventory-category-view {
+  /* Base (narrow viewports): keep compact but allow whole short names to fit. */
+  column-width: 148px;
+  column-gap: var(--space-14, 14px);
+  column-fill: balance;
+  width: 100%;
+}
+
+/* Wider viewports: let columns grow so long names like "Garlic Powder"
+   and "Avocado Oil" render in full, while keeping a healthy column count. */
+@media (min-width: 1200px) {
+  .inventory-category-view {
+    column-width: 168px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .inventory-category-view {
+    column-width: 184px;
+  }
+}
+
+.inv-cat-section {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  display: block;
+  width: 100%;
+  margin: 0 0 var(--space-28, 28px);
+}
+
+.inv-cat-section-heading {
+  margin: 0 0 var(--space-6, 6px);
+  padding-bottom: 0;
+  border-bottom: none;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.inv-cat-section-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-cat-section-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.inv-cat-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6, 6px);
+  padding: 3px 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.inv-cat-row::before {
+  content: "";
+  position: absolute;
+  inset: -4px -8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.inv-cat-row:hover::before,
+.inv-cat-row:focus-within::before {
+  opacity: 1;
+}
+
+.inv-cat-row > * {
+  position: relative;
+  z-index: 1;
+}
+
+.inv-cat-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-cat-row-name:hover,
+.inv-cat-row-name:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+/* Quantity on the right: number always visible; -/+ buttons fade in
+   only on row hover so resting state reads as a dense read-only count. */
+.inventory-category-view .inventory-qty-control {
+  padding: 0;
+  gap: var(--space-6, 6px);
+  flex-shrink: 0;
+}
+
+.inventory-category-view .inventory-qty-control-label {
+  width: auto;
+  min-width: 16px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.inventory-category-view .inventory-qty-control-btn {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease, color 120ms ease;
+}
+
+.inv-cat-row:hover .inventory-qty-control-btn:not(:disabled),
+.inv-cat-row:focus-within .inventory-qty-control-btn:not(:disabled) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.inv-cat-row:hover .inventory-qty-control-label {
+  color: var(--ink);
+}
+
+/* Hide the "0" at rest on empty rows; reveal on hover alongside -/+ so the
+   user can still increment from zero. */
+.inv-cat-row--empty .inventory-qty-control-label {
+  opacity: 0;
+  transition: opacity 80ms ease;
+}
+
+.inv-cat-row--empty:hover .inventory-qty-control-label,
+.inv-cat-row--empty:focus-within .inventory-qty-control-label {
+  opacity: 1;
+}
+
+/* ===================================================================
    Inventory Detail Sheet
    =================================================================== */
 
@@ -7748,6 +8162,131 @@ a.primary {
 
 .detail-sheet-macros .detail-sheet-value {
   font-variant-numeric: tabular-nums;
+}
+
+.detail-sheet-value--editable {
+  padding: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.detail-sheet-editable-number {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--space-4, 4px);
+  width: 100%;
+  padding: var(--space-6, 6px) 0;
+}
+
+.detail-sheet-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink, #222);
+  background: transparent;
+  text-align: right;
+  outline: none;
+  cursor: text;
+  box-sizing: border-box;
+}
+
+.detail-sheet-input:hover {
+  background-image: var(--hover-fill-overlay);
+}
+
+.detail-sheet-input:focus {
+  outline: none;
+  background-image: var(--hover-fill-overlay);
+}
+
+.detail-sheet-input-suffix {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink, #222);
+  flex-shrink: 0;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select {
+  width: 100%;
+  max-width: 100%;
+  padding: var(--space-6, 6px) 0;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-trigger {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink, #222);
+  font-size: 13px;
+  font-weight: 500;
+  justify-content: flex-end;
+  cursor: pointer;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-trigger:hover:not(:disabled) {
+  background-image: var(--hover-fill-overlay);
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-trigger:focus {
+  outline: none;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-trigger-label {
+  flex: 0 1 auto;
+  text-align: right;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-caret,
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-caret-phosphor {
+  flex-shrink: 0;
+  opacity: 0.6;
+  fill: currentColor;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select.ss-open .ss-input-wrap {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  text-align: right;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-input:focus {
+  outline: none;
+}
+
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-input-wrap .ss-caret,
+.detail-sheet .ss-root.ss-bare-inline.detail-sheet-select .ss-input-wrap .ss-caret-phosphor {
+  position: static;
+  right: auto;
 }
 
 .detail-sheet-estimate-badge {

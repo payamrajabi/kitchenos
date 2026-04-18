@@ -45,8 +45,8 @@ export const WithSections: Story = {
   args: {
     recipeId: 1,
     initialSections: [
-      mockIngredientSection({ id: "a", title: "Marinade", sort_order: 0 }),
-      mockIngredientSection({ id: "b", title: "Skewers", sort_order: 1 }),
+      mockIngredientSection({ id: "a", heading: "Marinade", sort_order: 0 }),
+      mockIngredientSection({ id: "b", heading: "Skewers", sort_order: 1 }),
     ],
     initialItems: [
       mockRecipeIngredientRow({

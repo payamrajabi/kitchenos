@@ -175,7 +175,7 @@ export function mockIngredientSection(
   return {
     id: "sec-1",
     recipe_id: 1,
-    title: "Sauce",
+    heading: "Sauce",
     sort_order: 0,
     ...overrides,
   };
@@ -187,8 +187,8 @@ export function mockInstructionStep(
   return {
     id: 200,
     recipe_id: 1,
-    sort_order: 0,
-    body: "Melt butter in a pan over medium heat.",
+    step_number: 1,
+    text: "Melt butter in a pan over medium heat.",
     timer_seconds_low: null,
     timer_seconds_high: null,
     ...overrides,

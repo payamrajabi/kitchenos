@@ -1,13 +1,11 @@
 /**
  * Generate a final recipe image using OpenAI `gpt-image-1`.
  *
- * The Creative Director (build-prompt.ts) has already produced a rich,
- * self-contained prompt. We append the hard constraints + negative list as
- * a belt-and-braces tail and send it to OpenAI's highest-quality image
- * endpoint at square 1024x1024, `quality: "high"`.
+ * The Creative Director (build-prompt.ts) has already produced a full,
+ * self-contained prose prompt. We send it to OpenAI's highest-quality image
+ * endpoint at square 1024x1024, `quality: "high"`, verbatim — no house
+ * constraints are appended here.
  */
-
-import { hardConstraintsBlock, HOUSE_NEGATIVE_PROMPT } from "./art-direction";
 
 const OPENAI_IMAGE_MODEL = "gpt-image-1";
 const OPENAI_IMAGE_TIMEOUT_MS = 180_000;
@@ -38,19 +36,6 @@ async function downloadBytes(
   return { bytes: new Uint8Array(buf), contentType };
 }
 
-function buildFinalPrompt(directorPrompt: string): string {
-  // Staple the hard constraints and the negative list onto whatever the
-  // director wrote — the director already encodes them, but re-stating is
-  // cheap insurance against the image model ignoring a line.
-  return [
-    directorPrompt.trim(),
-    "",
-    hardConstraintsBlock(),
-    "",
-    `Explicitly avoid: ${HOUSE_NEGATIVE_PROMPT.join(", ")}.`,
-  ].join("\n");
-}
-
 type OpenAIImageResponse = {
   data?: { b64_json?: string; url?: string }[];
   error?: { message?: string };
@@ -62,7 +47,7 @@ export async function generateRecipeImage(
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) throw new Error("OPENAI_API_KEY is not set.");
 
-  const prompt = buildFinalPrompt(input.prompt);
+  const prompt = input.prompt.trim();
 
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",

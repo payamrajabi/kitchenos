@@ -2,16 +2,13 @@
  * Creative Director step.
  *
  * We hand the full recipe context to a reasoning-capable chat model and ask
- * it to act as a world-class food photography art director: pick a scene,
- * vessel, lighting mood, framing, and props that suit the dish, then write a
- * rich cinematic generation prompt that the image model will render verbatim.
+ * it to act as a cookbook art director: choose the vessel, angle, setting,
+ * and visible ingredients, then write one polished prose prompt that the
+ * image model will render verbatim.
  *
- * The hard constraints from art-direction.ts are communicated in the system
- * prompt AND stapled onto the final prompt by the orchestrator — belt and
- * braces so the model can't quietly drift off-brief.
+ * The director owns all photographic rules — there is no separate house
+ * constraints block stapled on elsewhere in the pipeline.
  */
-
-import { hardConstraintsBlock, HOUSE_NEGATIVE_PROMPT } from "./art-direction";
 
 /**
  * Reasoning-capable chat model used to direct each shot. Tune here.
@@ -25,6 +22,8 @@ const CREATIVE_DIRECTOR_TIMEOUT_MS = 60_000;
 
 export type PromptInput = {
   name: string;
+  /** Editorial intro paragraph before the recipe — strong style cue when present. */
+  headnote?: string | null;
   description?: string | null;
   mealTypes?: string[] | null;
   ingredientNames: string[];
@@ -35,8 +34,6 @@ export type PromptInput = {
 export type PromptResult = {
   /** The full text prompt handed to the image generator. */
   generationPrompt: string;
-  /** Short model-provided summary of the creative choice (for logs). */
-  sceneConcept: string;
 };
 
 /**
@@ -57,31 +54,80 @@ function headlineIngredients(names: string[]): string[] {
     .slice(0, 12);
 }
 
-const SYSTEM_PROMPT = `You are a world-class food photography art director for an editorial cookbook publisher. Given a recipe, you make a single thoughtful creative decision about how the dish should be photographed, then write a rich, cinematic image-generation prompt that another model will render verbatim.
+const SYSTEM_PROMPT = `You are an expert cookbook art director and food photographer. Read all provided recipe context carefully, then write one final image-generation prompt for a realistic food photograph.
 
-Think carefully about what the dish IS in real life and what SCENE would make it look most appetising to a reader. Make specific, evocative choices. Avoid generic "bowl on a table" staging — pick the scene a great editorial photographer would pick.
+Your job is to create an image that feels like it belongs in a beautifully photographed modern cookbook: natural, restrained, quiet, editorial, and believable.
 
-You have full creative freedom over these:
-- Serving vessel. Be specific and appropriate (e.g. enamel Le Creuset dutch oven for chili, Waterford crystal coupe for a classic cocktail, a scuffed PlanetBox metal lunch tin for school lunches, a worn wooden board for bread, a wide rimmed ceramic pasta plate, a clay tagine, a small ramekin, a cast-iron skillet straight from the oven).
-- Lighting mood. Match the dish and occasion: bright morning window light for breakfast; warm golden late-afternoon for comfort food; dim moody low-lit bar for cocktails; soft overcast daylight for a picnic; candlelit dusk for a date-night plate; cool open shade outdoors.
-- Setting and surface. Linen, pine farm table, marble counter, bar top with a brass rail, a kid's school table, a picnic blanket on grass, a tiled kitchen counter, a rustic cutting board — pick what fits.
-- Composition and framing. Tight cross-section, three-quarter overhead, straight overhead flat lay, 45-degree hero angle, close subject with breathing room, cropped in tight. Whatever best sells the dish.
-- Props. One or two subtle, unstyled props that reinforce the scene (a folded napkin, a spoon mid-dip, a small bowl of salt flakes, a glass of wine slightly out of focus, a crumpled bill at the bar, a lunchbox thermos). Never crowd the hero.
+Use all available context, which may include: recipe name, description, background story, meal type, season, occasion, cuisine, ingredients, instructions, serving notes, and optional garnishes. Infer what matters most visually.
 
-Hard constraints you must build into the prompt (these are non-negotiable):
-${hardConstraintsBlock()}
+Make decisions like a real cookbook art director:
+- choose the most appropriate vessel
+- choose the angle that best explains the dish
+- choose a setting that fits the food naturally
+- decide which ingredients should actually be visible
+- keep styling restrained and realistic
 
-Also explicitly avoid: ${HOUSE_NEGATIVE_PROMPT.join(", ")}.
+Important art-direction rules:
+- Do not stylize every dish the same way.
+- Do not treat all ingredients as equally important.
+- Only show garnishes or toppings that would realistically appear in the finished dish, or that the recipe explicitly calls for.
+- Avoid decorative clutter and avoid adding ingredients just because they appear in the ingredient list.
+- No gratuitous honey drips, scattered seeds, herb confetti, dramatic splashes, floating crumbs, or fake action moments.
+- No hands, no people, no utensils in motion.
 
-OUTPUT FORMAT — return STRICT JSON with exactly these two keys and nothing else. No markdown fences, no commentary:
-{
-  "scene_concept": "<one sentence summary of your creative choice, e.g. 'Scuffed enamel dutch oven of chili on a pine farm table in warm late-afternoon light'>",
-  "prompt": "<the full image-generation prompt, 2-4 paragraphs of rich cinematic description, written the way a photographer would brief an AI image model. Must encode every hard constraint. Name the specific vessel, the lens, the aperture, the light, the surface, the props, the framing, the mood.>"
-}`;
+One subject, one story:
+- Default to a single primary subject in the frame — either the whole dish in its serving vessel, or a single plated portion. Not both.
+- Never show a whole, untouched vessel alongside an already-served portion. That is visually illogical: if a slice has been lifted out, the source must show where it came from (a missing slice, a cut edge, a used spoon resting in the dish). If you cannot honestly show that evidence, choose one or the other and drop the second.
+- Keep the scene simple. A second prop or dish is only welcome when it genuinely supports the story (e.g. a small side of bread with a stew). When in doubt, remove it.
+
+Realistic imperfection:
+- Real food is not tidy. Embrace honest, slightly messy detail instead of catalogue-perfect presentation.
+- Cut or sliced items should look cut — soft, slumped cross-sections; cheese that has pooled or torn; layers that are uneven; sauce that has seeped; crumbs and smears near the cut; a filling that is sliding, not sculpted.
+- Baked or roasted surfaces should have uneven browning, real bubbling, and the small burnt spots or scorched edges that come with actual heat.
+- Edges of the vessel may have drips, rim stains, or baked-on residue where appropriate.
+- The surface around the food may have a crumb, a small smear, or a lightly stained napkin — the evidence of a real meal.
+- The food should look like it was actually cooked and served, not assembled for a product shot.
+
+Photographic style:
+- square 1:1 composition
+- soft, diffuse natural daylight
+- matte, restrained tonality
+- realistic color, slightly muted rather than highly saturated
+- gentle contrast, soft shadows, minimal processing
+- believable lens rendering, usually equivalent to 50mm to 85mm on full frame, but use whatever perspective best matches the dish and reference style
+- moderate depth of field, enough softness to feel photographic but not so shallow that important food detail disappears
+- not glossy, not hyper-detailed, not HDR, not studio-commercial
+
+Composition style:
+- calm, editorial framing with one clear subject
+- crop in close enough that the food fills most of the frame and its texture reads clearly — prefer an intimate crop over a wide staged tableau
+- the vessel may be fully visible, partially cropped, or tightly framed — pick whatever serves the dish; do not feel obligated to show the whole vessel
+- allow breathing room only when it strengthens the composition; when in doubt, crop tighter
+- simple backgrounds such as pale stone, lightly worn tabletop, quiet neutral surfaces
+- minimal props only when they support the recipe naturally, and never a second full serving of the same dish
+
+Angle guidance:
+- soups, porridges, grain bowls, and similar dishes often work best from a high three-quarter or near-overhead angle so the surface is legible
+- pasta in a pan or skillet may be shown from above or a high angle that emphasizes the vessel and overall texture
+- drinks may be side-on or slightly elevated depending on glassware and layering
+- sandwiches, wraps, burgers, and sliced items may benefit from a side or three-quarter view that reveals the cross-section
+- always choose the angle that best communicates the essence of the dish
+
+Overall goal:
+Create a realistic, understated, cookbook-style food photograph that feels intimate, natural, and thoughtfully composed, with restrained styling and no unnecessary garnish.
+
+When you respond, output only one polished image-generation prompt in prose. Do not output analysis or explanation. Do not wrap it in JSON or markdown fences.
+
+Style anchor:
+understated cookbook editorial photography, soft natural daylight, matte tonal range, minimal prop styling, neutral ceramic or glass vessels, pale stone or lightly worn table surfaces, calm composition, realistic imperfection, no commercial gloss, no unnecessary garnish, no dramatic food styling tricks`;
 
 function buildUserMessage(input: PromptInput): string {
   const lines: string[] = [];
+  lines.push("Recipe input:");
   lines.push(`Recipe name: ${input.name.trim()}`);
+  if (input.headnote?.trim()) {
+    lines.push(`Headnote (editorial intro — strong style cue): ${input.headnote.trim()}`);
+  }
   if (input.description?.trim()) {
     lines.push(`Description: ${input.description.trim()}`);
   }
@@ -108,15 +154,10 @@ function buildUserMessage(input: PromptInput): string {
   return lines.join("\n");
 }
 
-type DirectorResponse = {
-  scene_concept?: string;
-  prompt?: string;
-};
-
 async function callCreativeDirector(
   input: PromptInput,
   apiKey: string,
-): Promise<DirectorResponse> {
+): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -125,7 +166,6 @@ async function callCreativeDirector(
     },
     body: JSON.stringify({
       model: CREATIVE_DIRECTOR_MODEL,
-      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: buildUserMessage(input) },
@@ -145,11 +185,39 @@ async function callCreativeDirector(
   };
   const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
   if (!raw) throw new Error("Creative Director returned empty content.");
-  try {
-    return JSON.parse(raw) as DirectorResponse;
-  } catch {
-    throw new Error("Creative Director returned non-JSON content.");
+  return stripAccidentalWrapping(raw);
+}
+
+/**
+ * The director is asked for prose, but models occasionally slip into JSON or
+ * wrap the answer in a markdown code fence. Strip that defensively so the
+ * downstream image model sees clean prose.
+ */
+function stripAccidentalWrapping(text: string): string {
+  let out = text.trim();
+
+  const fenced = out.match(/^```(?:\w+)?\s*([\s\S]*?)\s*```$/);
+  if (fenced) {
+    out = fenced[1].trim();
   }
+
+  if (out.startsWith("{") && out.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(out) as Record<string, unknown>;
+      const candidate =
+        (typeof parsed.prompt === "string" && parsed.prompt) ||
+        (typeof parsed.image_prompt === "string" && parsed.image_prompt) ||
+        (typeof parsed.text === "string" && parsed.text) ||
+        null;
+      if (candidate && candidate.trim()) {
+        out = candidate.trim();
+      }
+    } catch {
+      // not valid JSON — leave the raw text alone
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -159,23 +227,21 @@ async function callCreativeDirector(
 function fallbackPrompt(input: PromptInput): PromptResult {
   const headline = headlineIngredients(input.ingredientNames);
   const subject = [
-    `A finished serving of "${input.name.trim()}"`,
+    `a finished serving of "${input.name.trim()}"`,
     headline.length ? `featuring ${headline.join(", ")}` : null,
   ]
     .filter(Boolean)
     .join(", ");
 
   const prompt = [
-    `${subject}, photographed as a single hero image for a modern editorial cookbook.`,
-    "Served in a visually appropriate vessel on a neutral linen or worn wood surface, with soft natural window light from the side and one or two subtle unstyled props nearby.",
-    "Shot on a full-frame camera with an 85mm prime lens at f/2.0 — shallow depth of field, the subject tack-sharp, the background gently out of focus. Composition is a three-quarter overhead view with the food as the visual hero.",
-    "The image must look like an unretouched real photograph, honest colours, slightly muted, natural shadows. No text, no watermarks, no logos, no hands, no 3D or CGI, no cartoon, no plastic sheen.",
-  ].join("\n\n");
+    `A quiet, editorial cookbook photograph of ${subject}, served in a simple, appropriate vessel on a pale stone or lightly worn tabletop.`,
+    "Soft, diffuse natural daylight, matte and restrained tonality, slightly muted colour, gentle contrast, soft shadows, minimal processing.",
+    "Square 1:1 composition, high three-quarter angle, the food dominates the frame while the vessel remains mostly visible, with calm breathing room around the subject.",
+    "Believable lens rendering in the 50 to 85mm range with moderate depth of field — enough softness to feel photographic but with important food detail still legible.",
+    "Understated styling, no unnecessary garnish, no decorative clutter, no hands, no people, no utensils in motion, no gloss, no HDR, no studio-commercial look.",
+  ].join(" ");
 
-  return {
-    generationPrompt: prompt,
-    sceneConcept: "Fallback: neutral editorial hero shot (director unavailable).",
-  };
+  return { generationPrompt: prompt };
 }
 
 /**
@@ -192,16 +258,11 @@ export async function buildRecipeImagePrompt(
   }
 
   try {
-    const result = await callCreativeDirector(input, apiKey);
-    const prompt = (result.prompt ?? "").trim();
-    const sceneConcept = (result.scene_concept ?? "").trim();
+    const prompt = await callCreativeDirector(input, apiKey);
     if (!prompt) {
       return fallbackPrompt(input);
     }
-    return {
-      generationPrompt: prompt,
-      sceneConcept: sceneConcept || "Director returned no scene summary.",
-    };
+    return { generationPrompt: prompt };
   } catch (err) {
     console.warn(
       "[recipe-image] Creative Director call failed; using fallback prompt",

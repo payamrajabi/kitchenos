@@ -125,8 +125,8 @@ async function buildDraft(
 
   const allIngredientNames = [
     ...new Set(
-      parseResult.recipe.ingredient_sections
-        .flatMap((s) => s.ingredients.map((i) => i.name))
+      parseResult.recipe.ingredient_groups
+        .flatMap((g) => g.items.map((i) => i.ingredient))
         .filter(Boolean),
     ),
   ];
@@ -181,6 +181,39 @@ export async function importRecipeFromTextAction(
   return buildDraft(text, {});
 }
 
+/**
+ * Combined text + images intake. Either (or both) may be provided.
+ * - Text only → parse directly.
+ * - Any images → run vision extraction with the user's text as extra context,
+ *   then parse the extracted content.
+ */
+export async function importRecipeFromIntakeAction(
+  rawText: string,
+  imageDataUrls: string[],
+): Promise<DraftResult> {
+  const text = rawText.trim();
+  const hasImages = imageDataUrls.length > 0;
+
+  if (!text && !hasImages) {
+    return {
+      ok: false,
+      error: "Add some text or at least one image to get started.",
+    };
+  }
+
+  if (!hasImages) {
+    return buildDraft(text, {});
+  }
+
+  const images = imageDataUrls.map((url) => ({ base64DataUrl: url }));
+  const extractResult = await extractRecipeTextFromImages(images, {
+    userText: text || undefined,
+  });
+  if (!extractResult.ok) return extractResult;
+
+  return buildDraft(extractResult.content, {});
+}
+
 /* ------------------------------------------------------------------ */
 /*  Confirm draft — apply resolutions + save recipe to DB             */
 /* ------------------------------------------------------------------ */
@@ -196,20 +229,29 @@ export async function confirmRecipeDraftAction(
   if (!user) return { ok: false, error: "Sign in first." };
 
   const legacyInstructionsText = formatInstructionStepsToRecipeText(
-    parsed.instruction_steps.map((s) => s.body),
+    parsed.instruction_steps.map((s) => s.text),
   );
 
   const { data: newRecipe, error: recipeErr } = await supabase
     .from("recipes")
     .insert({
       name: parsed.name,
+      title_primary: parsed.title.primary,
+      title_qualifier: parsed.title.qualifier,
+      headnote: parsed.headnote,
       description: parsed.description,
       source_url: parsed.source_url,
       servings: parsed.servings,
+      yield_label: parsed.yield.label,
+      yield_quantity: parsed.yield.quantity,
+      yield_unit: parsed.yield.unit,
+      yield_display: parsed.yield.display,
       prep_time_minutes: parsed.prep_time_minutes,
       cook_time_minutes: parsed.cook_time_minutes,
       meal_types: normalizeMealTypesForStorage(parsed.meal_types),
       notes: parsed.notes,
+      notes_type: parsed.recipe_note.type,
+      notes_title: parsed.recipe_note.title,
       instructions: legacyInstructionsText || null,
       updated_at: new Date().toISOString(),
     })
@@ -245,20 +287,20 @@ export async function confirmRecipeDraftAction(
     }
 
     for (
-      let secIdx = 0;
-      secIdx < parsed.ingredient_sections.length;
-      secIdx++
+      let grpIdx = 0;
+      grpIdx < parsed.ingredient_groups.length;
+      grpIdx++
     ) {
-      const section = parsed.ingredient_sections[secIdx];
+      const group = parsed.ingredient_groups[grpIdx];
       let sectionId: string | null = null;
 
-      if (section.title) {
+      if (group.heading) {
         const { data: secRow, error: secErr } = await supabase
           .from("recipe_ingredient_sections")
           .insert({
             recipe_id: recipeId,
-            title: section.title,
-            sort_order: secIdx,
+            heading: group.heading,
+            sort_order: grpIdx,
           })
           .select("id")
           .single();
@@ -274,9 +316,9 @@ export async function confirmRecipeDraftAction(
         sectionId = String(secRow.id);
       }
 
-      for (let i = 0; i < section.ingredients.length; i++) {
-        const ing = section.ingredients[i];
-        const ingredientId = resolvedByName.get(ing.name);
+      for (let i = 0; i < group.items.length; i++) {
+        const ing = group.items[i];
+        const ingredientId = resolvedByName.get(ing.ingredient);
         if (ingredientId == null) continue;
 
         const { error: lineErr } = await supabase
@@ -288,6 +330,8 @@ export async function confirmRecipeDraftAction(
             line_sort_order: i,
             amount: ing.amount,
             unit: normalizeUnit(ing.unit),
+            preparation: ing.preparation,
+            display: ing.display,
             is_optional: ing.is_optional,
           });
 
@@ -304,8 +348,8 @@ export async function confirmRecipeDraftAction(
         .insert(
           parsed.instruction_steps.map((step, idx) => ({
             recipe_id: recipeId,
-            sort_order: idx,
-            body: step.body,
+            step_number: idx + 1,
+            text: step.text,
             timer_seconds_low: step.timer_seconds_low,
             timer_seconds_high: step.timer_seconds_high,
           })),

@@ -376,6 +376,37 @@ export async function updateIngredientGroceryCategoryAction(
   return { ok: true as const };
 }
 
+export async function updateInventoryStorageLocationAction(
+  ingredientId: number,
+  inventoryId: number | "",
+  storageLocation: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const loc = storageLocation.trim();
+  if (!VALID_LOCATIONS.has(loc)) {
+    return { ok: false as const, error: "Invalid storage location." };
+  }
+
+  const resolved = await resolveInventoryRowId(supabase, ingredientId, inventoryId);
+  if (!resolved.ok) return resolved;
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ storage_location: loc })
+    .eq("id", resolved.id);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  revalidatePath("/shop");
+  return { ok: true as const };
+}
+
 export async function updateInventoryStockUnitAction(
   ingredientId: number,
   inventoryId: number | "",

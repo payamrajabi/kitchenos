@@ -66,7 +66,7 @@ const instructionRowCollisionDetection: CollisionDetection = (args) => {
 };
 
 function sortSteps(rows: RecipeInstructionStepRow[]) {
-  return [...rows].sort((a, b) => a.sort_order - b.sort_order);
+  return [...rows].sort((a, b) => a.step_number - b.step_number);
 }
 
 type TimerRange = { low: number; high: number };
@@ -154,7 +154,7 @@ function RecipeInstructionsTableDnd({
       if (oldIndex < 0 || newIndex < 0) return;
       const nextItems = arrayMove(items, oldIndex, newIndex).map((row, i) => ({
         ...row,
-        sort_order: i,
+        step_number: i + 1,
       }));
       onReorder(nextItems);
     },
@@ -211,7 +211,7 @@ function StepTimerDisplay({
     } else {
       const low = effectiveLow(item);
       const high = effectiveHigh(item);
-      const snippet = item.body.length > 50 ? item.body.slice(0, 47) + "…" : item.body;
+      const snippet = item.text.length > 50 ? item.text.slice(0, 47) + "…" : item.text;
       startTimer(item.id, low, high, recipeName, snippet);
     }
   };
@@ -733,7 +733,7 @@ function InstructionSortableRows({
           <SortableInstructionRow
             key={item.id}
             item={item}
-            body={item.body}
+            body={item.text}
             displayIndex={index + 1}
             disabled={disabled}
             completed={completedSteps.has(item.id)}
@@ -810,7 +810,7 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
     (nextRows: RecipeInstructionStepRow[]) => {
       if (nextRows.length === 0) return;
       const orderedLineIds = nextRows.map((r) => r.id);
-      const patched = nextRows.map((r, i) => ({ ...r, sort_order: i }));
+      const patched = nextRows.map((r, i) => ({ ...r, step_number: i + 1 }));
       setItems(sortSteps(patched));
       runAction(`reorder-steps-${orderedLineIds[0]}`, async () => {
         const r = await reorderRecipeInstructionStepsAction(recipeId, orderedLineIds);
@@ -824,7 +824,7 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
   );
 
   const changeBody = useCallback((stepId: number, value: string) => {
-    setItems((cur) => cur.map((s) => (s.id === stepId ? { ...s, body: value } : s)));
+    setItems((cur) => cur.map((s) => (s.id === stepId ? { ...s, text: value } : s)));
   }, []);
 
   const commitBody = useCallback(
@@ -851,7 +851,7 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
     (stepId: number, splitAt: number) => {
       const step = items.find((s) => s.id === stepId);
       if (!step) return;
-      const full = step.body;
+      const full = step.text;
       const before = full.slice(0, splitAt);
       const after = full.slice(splitAt);
       if (after.trim() === "") return;

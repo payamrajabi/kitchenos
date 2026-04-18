@@ -3,12 +3,18 @@
 import { confirmRecipeDraftAction } from "@/app/actions/recipe-import";
 import { DRAFT_STORAGE_KEY } from "@/components/recipe-add-fab";
 import { removeDraftFromStorage } from "@/components/draft-imports-provider";
+import {
+  IngredientSearchControl,
+  type IngredientOption,
+  type IngredientSuggestion,
+} from "@/components/ingredient-search-control";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import type { IngredientResolution } from "@/lib/ingredient-resolution";
 import type {
   DraftRecipeData,
   DraftIngredientOption,
   ParsedIngredient,
+  ParsedRecipe,
 } from "@/lib/recipe-import/types";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
@@ -26,6 +32,13 @@ function resolutionForIngredient(
 ): IngredientResolution | undefined {
   return resolutions.find((r) => r.recipeName === name);
 }
+
+const NOTE_TYPE_LABELS: Record<string, string> = {
+  note: "Note",
+  variation: "Variation",
+  storage: "Storage",
+  substitution: "Substitution",
+};
 
 function isNewIngredient(r: IngredientResolution | undefined): boolean {
   return !!r && r.action !== "use_existing";
@@ -75,7 +88,7 @@ function DraftIngredientRow({
   const isNew = isNewIngredient(resolution);
 
   const matchedName = useMemo(() => {
-    if (!resolution) return ing.name;
+    if (!resolution) return ing.ingredient;
     if (resolution.action === "use_existing")
       return resolution.existingIngredientName;
     return resolution.action === "create_variant_under_existing"
@@ -84,17 +97,17 @@ function DraftIngredientRow({
         ? resolution.cleanName
         : resolution.action === "create_standalone"
           ? resolution.cleanName
-          : ing.name;
-  }, [resolution, ing.name]);
+          : ing.ingredient;
+  }, [resolution, ing.ingredient]);
 
   const handleRemapSelect = useCallback(
     (val: string) => {
       const id = Number(val);
       if (!Number.isFinite(id)) return;
-      onRemap(ing.name, id);
+      onRemap(ing.ingredient, id);
       setShowRemap(false);
     },
-    [ing.name, onRemap],
+    [ing.ingredient, onRemap],
   );
 
   return (
@@ -104,6 +117,11 @@ function DraftIngredientRow({
       </td>
       <td className="draft-ingredient-name">
         <span className="draft-ingredient-name-text">{matchedName}</span>
+        {ing.preparation && (
+          <span className="draft-ingredient-preparation">
+            , {ing.preparation}
+          </span>
+        )}
         {isNew && (
           <>
             <span className="draft-badge-new">NEW</span>
@@ -126,7 +144,7 @@ function DraftIngredientRow({
               value=""
               onChange={handleRemapSelect}
               placeholder="Search ingredients…"
-              aria-label={`Map "${ing.name}" to existing ingredient`}
+              aria-label={`Map "${ing.ingredient}" to existing ingredient`}
               defaultOpen
             />
           </div>
@@ -143,6 +161,7 @@ function DraftIngredientRow({
 export function RecipeDraftReview() {
   const router = useRouter();
   const [draft, setDraft] = useState<DraftRecipeData | null>(null);
+  const [parsed, setParsed] = useState<ParsedRecipe | null>(null);
   const [resolutions, setResolutions] = useState<IngredientResolution[]>([]);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +179,7 @@ export function RecipeDraftReview() {
       const data = JSON.parse(raw) as DraftRecipeData;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraft(data);
+      setParsed(data.parsed);
       setResolutions(data.resolutions);
     } catch {
       router.replace("/recipes");
@@ -171,6 +191,25 @@ export function RecipeDraftReview() {
     () => buildIngredientOptions(draft?.existingIngredients ?? []),
     [draft?.existingIngredients],
   );
+
+  // Build known-ingredient list for the add-ingredient search control.
+  // We preserve parent/variant relationships by mapping `parentName` to the
+  // corresponding standalone ingredient's id, so the "Parent > Variant" label
+  // renders correctly in the autocomplete.
+  const searchIngredients = useMemo<IngredientOption[]>(() => {
+    const list = draft?.existingIngredients ?? [];
+    const parentIdByName = new Map<string, number>();
+    for (const ing of list) {
+      if (!ing.parentName) parentIdByName.set(ing.name, ing.id);
+    }
+    return list.map((ing) => ({
+      id: ing.id,
+      name: ing.name,
+      parentIngredientId: ing.parentName
+        ? parentIdByName.get(ing.parentName) ?? null
+        : null,
+    }));
+  }, [draft?.existingIngredients]);
 
   const handleRemap = useCallback(
     (recipeName: string, ingredientId: number) => {
@@ -196,6 +235,77 @@ export function RecipeDraftReview() {
     [draft?.existingIngredients],
   );
 
+  // Append a new ingredient line to a section (by index), and make sure there
+  // is a resolution for its name. This is purely a client-side draft edit; the
+  // data is persisted on "Save to Recipes" by `confirmRecipeDraftAction`.
+  const handleAddIngredient = useCallback(
+    (groupIndex: number, suggestion: IngredientSuggestion) => {
+      setParsed((prev) => {
+        if (!prev) return prev;
+        const groups = [...prev.ingredient_groups];
+        const group = groups[groupIndex];
+        if (!group) return prev;
+
+        const name =
+          suggestion.kind === "existing"
+            ? suggestion.ingredient.name
+            : suggestion.name.trim();
+        if (!name) return prev;
+
+        const newIng: ParsedIngredient = {
+          ingredient: name,
+          amount: null,
+          unit: null,
+          preparation: null,
+          display: null,
+          is_optional: false,
+        };
+        groups[groupIndex] = {
+          ...group,
+          items: [...group.items, newIng],
+        };
+        return { ...prev, ingredient_groups: groups };
+      });
+
+      setResolutions((prev) => {
+        const name =
+          suggestion.kind === "existing"
+            ? suggestion.ingredient.name
+            : suggestion.name.trim();
+        if (!name) return prev;
+        // If we already have a resolution for this name, keep it — the new
+        // line will share the same mapping on save.
+        if (prev.some((r) => r.recipeName === name)) return prev;
+
+        if (suggestion.kind === "existing") {
+          return [
+            ...prev,
+            {
+              action: "use_existing" as const,
+              recipeName: name,
+              existingIngredientId: suggestion.ingredient.id,
+              existingIngredientName: suggestion.ingredient.name,
+              confidence: 1,
+              reason: "Manually added from draft review.",
+            },
+          ];
+        }
+
+        return [
+          ...prev,
+          {
+            action: "create_standalone" as const,
+            recipeName: name,
+            cleanName: name,
+            confidence: 1,
+            reason: "Manually added from draft review.",
+          },
+        ];
+      });
+    },
+    [],
+  );
+
   const cleanupDraftStorage = useCallback(() => {
     const activeId = sessionStorage.getItem("kitchenos-active-draft-id");
     if (activeId) removeDraftFromStorage(activeId);
@@ -204,14 +314,11 @@ export function RecipeDraftReview() {
   }, []);
 
   const handleSave = useCallback(() => {
-    if (!draft) return;
+    if (!parsed) return;
     setError(null);
     startTransition(async () => {
       try {
-        const result = await confirmRecipeDraftAction(
-          draft.parsed,
-          resolutions,
-        );
+        const result = await confirmRecipeDraftAction(parsed, resolutions);
         if (!result.ok) {
           setError(result.error);
           return;
@@ -224,7 +331,7 @@ export function RecipeDraftReview() {
         setError(err instanceof Error ? err.message : "Failed to save.");
       }
     });
-  }, [draft, resolutions, cleanupDraftStorage]);
+  }, [parsed, resolutions, cleanupDraftStorage]);
 
   const handleDiscard = useCallback(() => {
     cleanupDraftStorage();
@@ -232,9 +339,8 @@ export function RecipeDraftReview() {
   }, [router, cleanupDraftStorage]);
 
   if (!loaded) return null;
-  if (!draft) return null;
+  if (!draft || !parsed) return null;
 
-  const { parsed } = draft;
   const newCount = resolutions.filter((r) => r.action !== "use_existing").length;
 
   return (
@@ -255,7 +361,23 @@ export function RecipeDraftReview() {
 
       <div className="recipe-detail-layout">
         <div className="recipe-detail-main">
-          <h1 className="draft-review-title">{parsed.name}</h1>
+          <h1 className="draft-review-title">
+            {parsed.title.primary}
+            {parsed.title.qualifier ? (
+              <>
+                {" "}
+                <span className="draft-review-title-qualifier">
+                  {parsed.title.qualifier}
+                </span>
+              </>
+            ) : null}
+          </h1>
+
+          {parsed.headnote && (
+            <p className="recipe-pre draft-review-headnote">
+              {parsed.headnote}
+            </p>
+          )}
 
           {parsed.description && (
             <p className="recipe-pre draft-review-description">
@@ -266,19 +388,19 @@ export function RecipeDraftReview() {
           {/* Ingredients */}
           <section className="section">
             <h3>Ingredients</h3>
-            {parsed.ingredient_sections.map((section, sIdx) => (
-              <div key={sIdx} className="draft-ingredient-section">
-                {section.title && (
-                  <h4 className="draft-section-title">{section.title}</h4>
+            {parsed.ingredient_groups.map((group, gIdx) => (
+              <div key={gIdx} className="draft-ingredient-section">
+                {group.heading && (
+                  <h4 className="draft-section-title">{group.heading}</h4>
                 )}
                 <table className="ingredients-table draft-ingredients-table">
                   <tbody>
-                    {section.ingredients.map((ing, iIdx) => (
+                    {group.items.map((ing, iIdx) => (
                       <DraftIngredientRow
-                        key={`${sIdx}-${iIdx}`}
+                        key={`${gIdx}-${iIdx}`}
                         ing={ing}
                         resolution={resolutionForIngredient(
-                          ing.name,
+                          ing.ingredient,
                           resolutions,
                         )}
                         existingIngredients={draft.existingIngredients}
@@ -286,6 +408,30 @@ export function RecipeDraftReview() {
                         onRemap={handleRemap}
                       />
                     ))}
+                    <tr className="draft-ingredient-add-row">
+                      <td
+                        className="draft-ingredient-amount draft-ingredient-add-placeholder"
+                        aria-hidden="true"
+                      />
+                      <td className="draft-ingredient-add-cell">
+                        <IngredientSearchControl
+                          key={`add-${gIdx}-${group.items.length}`}
+                          knownIngredients={searchIngredients}
+                          disabled={isPending}
+                          placeholder="Add ingredient…"
+                          ariaLabel={
+                            group.heading
+                              ? `Add ingredient to ${group.heading}`
+                              : "Add ingredient"
+                          }
+                          inputId={`draft-ingredient-add-${gIdx}`}
+                          labelHidden="Add ingredient"
+                          onPickSuggestion={(suggestion) =>
+                            handleAddIngredient(gIdx, suggestion)
+                          }
+                        />
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -304,9 +450,11 @@ export function RecipeDraftReview() {
                   );
                   return (
                     <li key={idx} className="draft-instruction-step">
-                      <span className="draft-step-number">{idx + 1}</span>
+                      <span className="draft-step-number">
+                        {step.step_number || idx + 1}
+                      </span>
                       <div className="draft-step-content">
-                        <p className="draft-step-body">{step.body}</p>
+                        <p className="draft-step-body">{step.text}</p>
                         {timer && (
                           <span className="draft-step-timer">⏱ {timer}</span>
                         )}
@@ -321,18 +469,28 @@ export function RecipeDraftReview() {
           {/* Notes */}
           {parsed.notes && (
             <section className="section">
-              <h3>Notes</h3>
+              <h3>
+                {parsed.recipe_note.title?.trim() ||
+                  (parsed.recipe_note.type
+                    ? NOTE_TYPE_LABELS[parsed.recipe_note.type]
+                    : null) ||
+                  "Note"}
+              </h3>
               <p className="recipe-pre">{parsed.notes}</p>
             </section>
           )}
 
           {/* Meta */}
           <div className="meta draft-meta">
-            {parsed.servings != null && (
+            {parsed.yield.display ? (
+              <span className="draft-meta-item">
+                <strong>Yield:</strong> {parsed.yield.display}
+              </span>
+            ) : parsed.servings != null ? (
               <span className="draft-meta-item">
                 <strong>Servings:</strong> {parsed.servings}
               </span>
-            )}
+            ) : null}
             {parsed.prep_time_minutes != null && (
               <span className="draft-meta-item">
                 <strong>Prep:</strong> {parsed.prep_time_minutes} min

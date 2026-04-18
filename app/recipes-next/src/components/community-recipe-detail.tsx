@@ -18,6 +18,8 @@ type IngredientLine = {
   name: string;
   amount: string | null;
   unit: string | null;
+  preparation?: string | null;
+  display?: string | null;
   is_optional: boolean;
   section_id: string | null;
   line_sort_order: number;
@@ -27,9 +29,17 @@ type Props = {
   recipe: RecipeRow;
   recipeIngredients: IngredientLine[];
   sections: RecipeIngredientSectionRow[];
-  instructionSteps: { body: string }[];
+  instructionSteps: { text: string }[];
   inLibrary: boolean;
   isOwn: boolean;
+};
+
+/** Friendly labels for recipe_note types surfaced in the read-only view. */
+const NOTE_TYPE_LABELS: Record<string, string> = {
+  note: "Note",
+  variation: "Variation",
+  storage: "Storage",
+  substitution: "Substitution",
 };
 
 function formatAmount(amount: string | null, unit: string | null) {
@@ -95,6 +105,11 @@ export function CommunityRecipeDetail({
         <li key={line.id} className="community-ingredient-line">
           <span className="community-ingredient-name">
             {line.name}
+            {line.preparation ? (
+              <span className="community-ingredient-prep">
+                , {line.preparation}
+              </span>
+            ) : null}
             {line.is_optional ? (
               <span className="community-ingredient-optional"> (optional)</span>
             ) : null}
@@ -109,17 +124,38 @@ export function CommunityRecipeDetail({
     </ul>
   );
 
+  const displayTitle = recipe.title_primary
+    ? recipe.title_qualifier
+      ? `${recipe.title_primary} ${recipe.title_qualifier}`
+      : recipe.title_primary
+    : recipe.name;
+
+  const yieldDisplay = recipe.yield_display?.trim();
+
+  const noteType = recipe.notes_type ?? null;
+  const noteHeading =
+    recipe.notes_title?.trim() ||
+    (noteType ? NOTE_TYPE_LABELS[noteType] ?? "Notes" : "Notes");
+
   return (
     <article className="community-detail">
       <div className="community-detail-layout">
         <div className="community-detail-main">
-          <h1 className="community-detail-title">{recipe.name}</h1>
+          <h1 className="community-detail-title">{displayTitle}</h1>
 
           {recipe.description?.trim() ? (
             <RecipeDescriptionRichText
               as="p"
               text={recipe.description.trim()}
               className="community-detail-description"
+            />
+          ) : null}
+
+          {recipe.headnote?.trim() ? (
+            <RecipeDescriptionRichText
+              as="div"
+              text={recipe.headnote.trim()}
+              className="community-detail-headnote"
             />
           ) : null}
 
@@ -162,7 +198,9 @@ export function CommunityRecipeDetail({
           </div>
 
           <div className="meta">
-            {recipe.servings ? (
+            {yieldDisplay ? (
+              <span>{yieldDisplay}</span>
+            ) : recipe.servings ? (
               <span>{recipe.servings} servings</span>
             ) : null}
             {recipe.calories ? (
@@ -198,7 +236,7 @@ export function CommunityRecipeDetail({
                     return (
                       <div key={sec.id} className="community-ingredient-section">
                         <h4 className="community-ingredient-section-title">
-                          {sec.title}
+                          {sec.heading}
                         </h4>
                         {renderIngredientLines(lines)}
                       </div>
@@ -229,7 +267,7 @@ export function CommunityRecipeDetail({
               <ol className="community-instruction-steps">
                 {instructionSteps.map((step, i) => (
                   <li key={i} className="community-instruction-step">
-                    <InstructionStepFormattedBody body={step.body} />
+                    <InstructionStepFormattedBody body={step.text} />
                   </li>
                 ))}
               </ol>
@@ -243,7 +281,7 @@ export function CommunityRecipeDetail({
 
           {recipe.notes ? (
             <section className="section">
-              <h3>Notes</h3>
+              <h3>{noteHeading}</h3>
               <RecipeDescriptionRichText
                 as="div"
                 text={recipe.notes}
