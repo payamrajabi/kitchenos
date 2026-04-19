@@ -15,12 +15,7 @@ const PRIMARY = [
   { href: "/recipes", label: "Recipes" },
   { href: "/inventory", label: "Inventory" },
   { href: "/shop", label: "Shop" },
-  { href: "/people", label: "People" },
 ] as const;
-
-const COMMUNITY = { href: "/community", label: "Community" } as const;
-
-const PRIMARY_AND_COMMUNITY = [...PRIMARY, COMMUNITY] as const;
 
 function primaryTabState(pathname: string, href: string) {
   const inSection = pathname === href || pathname.startsWith(`${href}/`);
@@ -72,8 +67,6 @@ export function AppHeader() {
     const raw = m?.avatar_url ?? m?.picture ?? m?.avatar;
     return typeof raw === "string" && raw.length > 0 ? raw : undefined;
   })();
-
-  const communityTab = primaryTabState(pathname, COMMUNITY.href);
 
   const onPlanTabClick = (e: MouseEvent<HTMLAnchorElement>) => {
     const { atTop } = primaryTabState(pathname, "/plan");
@@ -163,11 +156,18 @@ export function AppHeader() {
             </button>
             {menuOpen ? (
               <div
-                className="user-menu-dropdown"
+                className="user-menu-dropdown open"
                 role="menu"
                 aria-label="Account"
               >
                 <div className="user-menu-email">{user.email}</div>
+                <Link
+                  href="/people"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Family members
+                </Link>
                 <button type="button" role="menuitem" onClick={signOut}>
                   Sign out
                 </button>
@@ -195,21 +195,6 @@ export function AppHeader() {
             )}
           </div>
           <div ref={rightProbeRef} className="header-right">
-            <Link
-              href={COMMUNITY.href}
-              className={[
-                "page-tab-button",
-                communityTab.inSection && communityTab.atTop ? "active" : "",
-                communityTab.inSection && !communityTab.atTop ? "active-parent" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              aria-current={
-                communityTab.inSection && communityTab.atTop ? "page" : undefined
-              }
-            >
-              {COMMUNITY.label}
-            </Link>
             {headerAuth}
           </div>
         </div>
@@ -224,7 +209,7 @@ export function AppHeader() {
               aria-label="Primary navigation"
             >
               <div className="page-tabs page-tabs--with-auth">
-                {PRIMARY_AND_COMMUNITY.map(({ href, label }) =>
+                {PRIMARY.map(({ href, label }) =>
                   tabLink(
                     href,
                     label,
@@ -257,26 +242,7 @@ export function AppHeader() {
                   )}
                 </div>
               </div>
-              <div className="header-right">
-                <Link
-                  href={COMMUNITY.href}
-                  className={[
-                    "page-tab-button",
-                    communityTab.inSection && communityTab.atTop ? "active" : "",
-                    communityTab.inSection && !communityTab.atTop
-                      ? "active-parent"
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  aria-current={
-                    communityTab.inSection && communityTab.atTop ? "page" : undefined
-                  }
-                >
-                  {COMMUNITY.label}
-                </Link>
-                {headerAuth}
-              </div>
+              <div className="header-right">{headerAuth}</div>
             </nav>
           </div>
         </div>

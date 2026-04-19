@@ -1,13 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
 import { DraftImportsProvider } from "@/components/draft-imports-provider";
-import { DraftRecipeCards } from "@/components/draft-recipe-cards";
 import { RecipeAddFab } from "@/components/recipe-add-fab";
 import { RecipesMealFilterSection } from "@/components/recipes-meal-filter-section";
-import {
-  loadLibraryRecipeIds,
-  ownedOrLibraryOrClause,
-} from "@/lib/recipe-visibility";
+import { loadLibraryRecipeIds } from "@/lib/recipe-visibility";
 import type { RecipeRow } from "@/types/database";
 
 export default async function RecipesPage() {
@@ -37,14 +33,14 @@ export default async function RecipesPage() {
   }
 
   const libraryIds = await loadLibraryRecipeIds(supabase, user.id);
-  const orClause = ownedOrLibraryOrClause(user.id, libraryIds);
 
+  // Fetch every active recipe once; we split "yours" vs "all" on the client so
+  // the Community toggle can flip between them without a round-trip.
   const { data: recipes, error } = await supabase
     .from("recipes")
     .select("*")
-    .or(orClause)
     .is("deleted_at", null)
-    .order("name");
+    .order("created_at", { ascending: false });
 
   if (error) {
     return (
@@ -54,16 +50,26 @@ export default async function RecipesPage() {
     );
   }
 
-  const list = (recipes ?? []) as RecipeRow[];
+  const allRecipes = (recipes ?? []) as RecipeRow[];
+  const libraryIdSet = new Set(libraryIds);
+  const ownRecipes = allRecipes.filter(
+    (r) => r.owner_id === user.id || libraryIdSet.has(r.id),
+  );
+
+  const hasAny = allRecipes.length > 0;
 
   return (
     <DraftImportsProvider>
-      <section className={`grid recipes-page${list.length ? "" : " grid-recipes-empty"}`}>
-        <DraftRecipeCards />
-        <RecipesMealFilterSection recipes={list} />
-        {!list.length ? (
+      <section className={`grid recipes-page${hasAny ? "" : " grid-recipes-empty"}`}>
+        <RecipesMealFilterSection
+          ownRecipes={ownRecipes}
+          allRecipes={allRecipes}
+          libraryIds={libraryIds}
+          userId={user.id}
+        />
+        {!ownRecipes.length && !hasAny ? (
           <p className="grid-recipes-hint">
-            Your recipes show up here after you add one with the + button in the corner.
+            Your recipes show up here after you add one with the input at the bottom of the page.
             Open a card to edit title, ingredients, and steps right on the page — no
             separate edit mode.
           </p>

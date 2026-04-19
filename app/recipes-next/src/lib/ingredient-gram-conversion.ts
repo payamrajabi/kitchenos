@@ -35,6 +35,16 @@ const GRAMS_PER_MASS_UNIT: Record<string, number> = {
   lb: 453.592,
 };
 
+// Unit labels that mean "so little / so vague it shouldn't be shown as grams".
+// Multiplying `pinch × density` or `pinch × piece-weight` would produce nonsense.
+const NON_GRAM_COUNT_UNITS = new Set([
+  "pinch",
+  "dash",
+  "splash",
+  "handful",
+  "to taste",
+]);
+
 const FRACTION_DISPLAY_UNITS = new Set(["cup", "tsp", "tbsp"]);
 
 const DECIMAL_TO_UNICODE: [number, string][] = [
@@ -133,16 +143,19 @@ export type GramConversionResult =
  * Convert an amount + unit pair to grams.
  *
  * - Mass units (g/kg/oz/lb) always convert.
- * - Volume units (ml/l/tsp/tbsp/cup/fl oz) only convert when the ingredient
- *   has a density set; otherwise we report "unsupported" so the caller can
- *   fall back to the authored units.
- * - Count/descriptive units (ea, piece, clove, slice, pinch, …) are always
- *   "unsupported" — the user asked to leave those as-is.
+ * - Volume units (ml/l/tsp/tbsp/cup/fl oz) convert when the ingredient has a
+ *   density set; otherwise "unsupported".
+ * - Count / descriptive units (piece, clove, slice, "3 eggs", empty unit, …)
+ *   convert when the ingredient has a canonical piece weight
+ *   (`canonicalUnitWeightG`) from the backbone catalogue — so "3 eggs" can be
+ *   rendered as ~150 g. A small allow-list of vague units (`pinch`, `dash`,
+ *   `to taste`, …) stays unsupported on purpose.
  */
 export function convertAmountToGrams(
   amountNum: number,
   unit: string | null | undefined,
   densityGPerMl: number | null | undefined,
+  canonicalUnitWeightG?: number | null,
 ): GramConversionResult {
   if (!Number.isFinite(amountNum) || amountNum < 0) {
     return { kind: "unsupported" };
@@ -164,12 +177,23 @@ export function convertAmountToGrams(
     }
     return { kind: "unsupported" };
   }
+  if (NON_GRAM_COUNT_UNITS.has(u)) {
+    return { kind: "unsupported" };
+  }
+  if (
+    typeof canonicalUnitWeightG === "number" &&
+    Number.isFinite(canonicalUnitWeightG) &&
+    canonicalUnitWeightG > 0
+  ) {
+    return { kind: "converted", grams: amountNum * canonicalUnitWeightG };
+  }
   return { kind: "unsupported" };
 }
 
 /**
  * Format a gram weight for display. Uses kg (rounded to the nearest tenth)
- * when the value is ≥ 1000 g, otherwise grams (also rounded to the tenth).
+ * when the value is ≥ 1000 g, otherwise grams rounded to the nearest whole
+ * gram — sub-gram precision is noise for cooking.
  */
 export function formatGramsDisplay(grams: number): {
   amount: string;
@@ -181,7 +205,7 @@ export function formatGramsDisplay(grams: number): {
   if (grams >= 1000) {
     return { amount: formatTenth(grams / 1000), unit: "kg" };
   }
-  return { amount: formatTenth(grams), unit: "g" };
+  return { amount: String(Math.round(grams)), unit: "g" };
 }
 
 /**
@@ -198,6 +222,7 @@ export function displayAmountInGrams(
   unit: string | null | undefined,
   densityGPerMl: number | null | undefined,
   scale = 1,
+  canonicalUnitWeightG?: number | null,
 ): { amount: string; unit: "g" | "kg" } | null {
   if (raw == null) return null;
   const s = String(raw).trim();
@@ -207,8 +232,20 @@ export function displayAmountInGrams(
     /^(\S+(?:\s+\d+\s*\/\s*\d+)?)\s*(?:to|-|–|—)\s*(\S+(?:\s+\d+\s*\/\s*\d+)?)$/i,
   );
   if (rangeMatch) {
-    const low = displayAmountInGrams(rangeMatch[1], unit, densityGPerMl, scale);
-    const high = displayAmountInGrams(rangeMatch[2], unit, densityGPerMl, scale);
+    const low = displayAmountInGrams(
+      rangeMatch[1],
+      unit,
+      densityGPerMl,
+      scale,
+      canonicalUnitWeightG,
+    );
+    const high = displayAmountInGrams(
+      rangeMatch[2],
+      unit,
+      densityGPerMl,
+      scale,
+      canonicalUnitWeightG,
+    );
     if (!low || !high) return null;
     // When the endpoints land on different display units (e.g. 900 g – 1.1 kg)
     // keep them both in grams for clarity — readers expect a consistent unit
@@ -217,7 +254,7 @@ export function displayAmountInGrams(
       const lowG = low.unit === "kg" ? Number(low.amount) * 1000 : Number(low.amount);
       const highG = high.unit === "kg" ? Number(high.amount) * 1000 : Number(high.amount);
       return {
-        amount: `${formatTenth(lowG)}\u2013${formatTenth(highG)}`,
+        amount: `${Math.round(lowG)}\u2013${Math.round(highG)}`,
         unit: "g",
       };
     }
@@ -230,7 +267,7 @@ export function displayAmountInGrams(
   const n = parseAmount(s);
   if (n == null) return null;
   const scaled = Number.isFinite(scale) && scale > 0 ? n * scale : n;
-  const result = convertAmountToGrams(scaled, unit, densityGPerMl);
+  const result = convertAmountToGrams(scaled, unit, densityGPerMl, canonicalUnitWeightG);
   if (result.kind !== "converted") return null;
   return formatGramsDisplay(result.grams);
 }

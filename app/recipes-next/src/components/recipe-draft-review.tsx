@@ -74,15 +74,17 @@ function buildIngredientOptions(
 function DraftIngredientRow({
   ing,
   resolution,
-  existingIngredients,
   selectOptions,
   onRemap,
+  onToggleOptional,
+  onRemove,
 }: {
   ing: ParsedIngredient;
   resolution: IngredientResolution | undefined;
-  existingIngredients: DraftIngredientOption[];
   selectOptions: SelectOption[];
   onRemap: (recipeName: string, ingredientId: number) => void;
+  onToggleOptional: () => void;
+  onRemove: () => void;
 }) {
   const [showRemap, setShowRemap] = useState(false);
   const isNew = isNewIngredient(resolution);
@@ -137,6 +139,24 @@ function DraftIngredientRow({
         {ing.is_optional && (
           <span className="draft-badge-optional">optional</span>
         )}
+        <span className="draft-row-actions">
+          <button
+            type="button"
+            className="draft-row-action"
+            onClick={onToggleOptional}
+            aria-pressed={ing.is_optional ? true : false}
+          >
+            {ing.is_optional ? "unmark optional" : "mark optional"}
+          </button>
+          <button
+            type="button"
+            className="draft-row-action draft-row-action-remove"
+            onClick={onRemove}
+            aria-label={`Remove ${ing.ingredient}`}
+          >
+            remove
+          </button>
+        </span>
         {showRemap && (
           <div className="draft-remap-select-wrap">
             <SearchableSelect
@@ -233,6 +253,53 @@ export function RecipeDraftReview() {
       );
     },
     [draft?.existingIngredients],
+  );
+
+  const handleToggleOptional = useCallback(
+    (groupIndex: number, itemIndex: number) => {
+      setParsed((prev) => {
+        if (!prev) return prev;
+        const groups = [...prev.ingredient_groups];
+        const group = groups[groupIndex];
+        if (!group) return prev;
+        const items = group.items.map((it, i) =>
+          i === itemIndex ? { ...it, is_optional: !it.is_optional } : it,
+        );
+        groups[groupIndex] = { ...group, items };
+        return { ...prev, ingredient_groups: groups };
+      });
+    },
+    [],
+  );
+
+  const handleRemoveIngredient = useCallback(
+    (groupIndex: number, itemIndex: number) => {
+      setParsed((prev) => {
+        if (!prev) return prev;
+        const groups = [...prev.ingredient_groups];
+        const group = groups[groupIndex];
+        if (!group) return prev;
+        const removed = group.items[itemIndex];
+        const items = group.items.filter((_, i) => i !== itemIndex);
+        groups[groupIndex] = { ...group, items };
+        const next = { ...prev, ingredient_groups: groups };
+
+        // If no other ingredient line in the draft still references this name,
+        // drop its resolution too so we don't create an orphan ingredient.
+        if (removed) {
+          const stillUsed = groups.some((g) =>
+            g.items.some((it) => it.ingredient === removed.ingredient),
+          );
+          if (!stillUsed) {
+            setResolutions((rs) =>
+              rs.filter((r) => r.recipeName !== removed.ingredient),
+            );
+          }
+        }
+        return next;
+      });
+    },
+    [],
   );
 
   // Append a new ingredient line to a section (by index), and make sure there
@@ -403,9 +470,12 @@ export function RecipeDraftReview() {
                           ing.ingredient,
                           resolutions,
                         )}
-                        existingIngredients={draft.existingIngredients}
                         selectOptions={selectOptions}
                         onRemap={handleRemap}
+                        onToggleOptional={() =>
+                          handleToggleOptional(gIdx, iIdx)
+                        }
+                        onRemove={() => handleRemoveIngredient(gIdx, iIdx)}
                       />
                     ))}
                     <tr className="draft-ingredient-add-row">

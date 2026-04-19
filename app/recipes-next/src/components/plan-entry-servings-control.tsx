@@ -4,9 +4,14 @@ import {
   deleteMealPlanEntryAction,
   updateMealPlanEntryServingsAction,
 } from "@/app/actions/meal-plan";
+import { useDebouncedCommit } from "@/lib/use-debounced-commit";
 import { Minus, Plus, Trash } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
-import { useTransition, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useTransition,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 function normalizeServings(value: number | null | undefined): number {
   const n = Math.floor(Number(value));
@@ -26,19 +31,23 @@ export function PlanEntryServingsControl({
   pendingParent,
 }: Props) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const servings = normalizeServings(servingsProp);
-  const busy = pending || pendingParent;
+  const serverServings = normalizeServings(servingsProp);
+  const [deletePending, startDeleteTransition] = useTransition();
 
-  const runUpdate = (next: number) => {
-    startTransition(async () => {
-      const result = await updateMealPlanEntryServingsAction(entryId, next);
-      if (result.ok) router.refresh();
-    });
-  };
+  const commit = useCallback(
+    (next: number) => updateMealPlanEntryServingsAction(entryId, next),
+    [entryId],
+  );
+
+  const { value: servings, update, flush } = useDebouncedCommit<number>({
+    value: serverServings,
+    commit,
+  });
+
+  const busy = pendingParent || deletePending;
 
   const runDelete = () => {
-    startTransition(async () => {
+    startDeleteTransition(async () => {
       const result = await deleteMealPlanEntryAction(entryId);
       if (result.ok) router.refresh();
     });
@@ -49,17 +58,18 @@ export function PlanEntryServingsControl({
     event.stopPropagation();
     if (busy) return;
     if (servings <= 1) {
+      flush();
       runDelete();
       return;
     }
-    runUpdate(servings - 1);
+    update(servings - 1);
   };
 
   const onIncrement = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     if (busy || servings >= 99) return;
-    runUpdate(servings + 1);
+    update(servings + 1);
   };
 
   const label = String(servings);
@@ -69,6 +79,8 @@ export function PlanEntryServingsControl({
       className="plan-serving"
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
+      onMouseLeave={() => flush()}
+      onBlur={() => flush()}
     >
       <button
         type="button"

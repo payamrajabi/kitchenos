@@ -23,9 +23,13 @@ type LinkedRecipe = { id: number; name: string };
 export function IngredientDeleteButton({
   ingredientId,
   ingredientName,
+  variant = "icon",
+  onDeleted,
 }: {
   ingredientId: number;
   ingredientName: string;
+  variant?: "icon" | "sheet-footer";
+  onDeleted?: () => void;
 }) {
   const isClient = useSyncExternalStore(
     emptySubscribe,
@@ -71,22 +75,27 @@ export function IngredientDeleteButton({
         startTransition(async () => {
           const res = await deleteIngredientAction(ingredientId);
           if (!res.ok) setError(res.error);
+          else onDeleted?.();
         });
       }
     } finally {
       setLoadingRecipes(false);
     }
-  }, [ingredientId]);
+  }, [ingredientId, onDeleted]);
 
   const handleConfirmDelete = useCallback(() => {
     if (!nameMatches || isPending) return;
     setError("");
     startTransition(async () => {
       const res = await deleteIngredientAction(ingredientId);
-      if (res.ok) close();
-      else setError(res.error);
+      if (res.ok) {
+        close();
+        onDeleted?.();
+      } else {
+        setError(res.error);
+      }
     });
-  }, [close, ingredientId, nameMatches, isPending]);
+  }, [close, ingredientId, nameMatches, isPending, onDeleted]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -198,8 +207,24 @@ export function IngredientDeleteButton({
       </div>
     ) : null;
 
-  return (
-    <>
+  const trigger =
+    variant === "sheet-footer" ? (
+      <button
+        type="button"
+        className="detail-sheet-delete-btn"
+        aria-label={`Delete ${ingredientName}`}
+        onClick={handleDeleteClick}
+        disabled={isPending || loadingRecipes}
+        aria-busy={loadingRecipes}
+      >
+        <Trash size={16} weight="bold" aria-hidden />
+        {isPending
+          ? "Deleting…"
+          : loadingRecipes
+            ? "Checking recipes…"
+            : "Delete ingredient"}
+      </button>
+    ) : (
       <button
         type="button"
         className="inventory-row-delete"
@@ -211,6 +236,11 @@ export function IngredientDeleteButton({
       >
         <Trash size={14} weight="bold" aria-hidden />
       </button>
+    );
+
+  return (
+    <>
+      {trigger}
       {modal ? createPortal(modal, document.body) : null}
     </>
   );

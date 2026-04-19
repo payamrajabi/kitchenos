@@ -20,6 +20,7 @@ import {
   type InventoryIngredient,
   type IngredientResolution,
 } from "@/lib/ingredient-resolution";
+import { findBackboneMatchesForNames } from "@/lib/ingredient-backbone-catalogue";
 import type {
   ParsedRecipe,
   DraftRecipeData,
@@ -50,7 +51,7 @@ async function loadUserInventory(
 }> {
   const { data } = await supabase
     .from("ingredients")
-    .select("id, name, parent_ingredient_id, category, grocery_category");
+    .select("id, name, parent_ingredient_id, category, grocery_category, backbone_id");
   if (!data) return { forResolution: [], forParser: [], forDraft: [] };
 
   const nameById = new Map<number, string>();
@@ -67,6 +68,7 @@ async function loadUserInventory(
     grocery_category: (row as Record<string, unknown>).grocery_category as
       | string
       | null,
+    backbone_id: (row as Record<string, unknown>).backbone_id as string | null,
   }));
 
   const forParser: InventoryHint[] = data.map((row) => ({
@@ -131,7 +133,13 @@ async function buildDraft(
     ),
   ];
 
-  const plan = await resolveRecipeIngredients(allIngredientNames, forResolution);
+  const plan = await resolveRecipeIngredients(
+    allIngredientNames,
+    forResolution,
+    {
+      catalogueLookup: (names) => findBackboneMatchesForNames(supabase, names),
+    },
+  );
 
   return {
     ok: true,

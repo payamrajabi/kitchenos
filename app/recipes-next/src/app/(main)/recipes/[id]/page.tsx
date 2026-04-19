@@ -16,6 +16,7 @@ type RawIngredientJoin = {
   id: unknown;
   name: unknown;
   density_g_per_ml?: unknown;
+  canonical_unit_weight_g?: unknown;
 };
 
 type RawRecipeIngredientRow = {
@@ -77,11 +78,9 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return (
-      <section className="grid is-empty">
-        <p>Sign in to view this recipe.</p>
-      </section>
-    );
+    // Signed-out visitors get the public read-only view. Signing in on that
+    // page brings owners right back to this editor via the isOwn branch.
+    redirect(`/community/${id}`);
   }
 
   const [recipeResult, ingredientsResult, recipeIngredientsResult, sectionsResult] =
@@ -91,7 +90,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
       supabase
         .from("recipe_ingredients")
         .select(
-          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml)",
+          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml, canonical_unit_weight_g)",
         )
         .eq("recipe_id", id),
       supabase
@@ -163,6 +162,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
       id: number;
       name: string;
       density_g_per_ml: number | null;
+      canonical_unit_weight_g: number | null;
     } | null;
   }[] = ((recipeIngredientsResult.data ?? []) as RawRecipeIngredientRow[]).map((row) => {
     const ingredient = Array.isArray(row.ingredients)
@@ -177,6 +177,15 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     const density_g_per_ml =
       typeof densityNum === "number" && Number.isFinite(densityNum) && densityNum > 0
         ? densityNum
+        : null;
+    const pieceWeightRaw = ingredient?.canonical_unit_weight_g;
+    const pieceWeightNum =
+      pieceWeightRaw == null ? null : Number(pieceWeightRaw);
+    const canonical_unit_weight_g =
+      typeof pieceWeightNum === "number" &&
+      Number.isFinite(pieceWeightNum) &&
+      pieceWeightNum > 0
+        ? pieceWeightNum
         : null;
     return {
       id: Number(row.id),
@@ -198,6 +207,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
             id: Number(ingredient.id),
             name: String(ingredient.name ?? ""),
             density_g_per_ml,
+            canonical_unit_weight_g,
           }
         : null,
     };
@@ -222,7 +232,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
   return (
     <>
       <RecipeDetailEditor
-        key={`${r.id}-${r.updated_at ?? r.created_at ?? ""}`}
+        key={r.id}
         recipe={r}
         recipeIngredients={recipeIngredients}
         recipeIngredientSections={recipeIngredientSections}

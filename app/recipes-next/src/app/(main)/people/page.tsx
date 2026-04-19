@@ -1,14 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
-import { macroCaloriesFromPerson, pieDiameterForTarget } from "@/lib/people-macros";
-import { PersonMacroPie } from "@/components/person-macro-pie";
+import { macroCaloriesFromPerson } from "@/lib/people-macros";
+import { PersonMacroPieCard } from "@/components/person-macro-pie-card";
+import { PeopleAddFab } from "@/components/people-add-fab";
 import type { PersonRow } from "@/types/database";
-import type { CSSProperties } from "react";
-import Link from "next/link";
-
-/** Largest pie should nearly fill one grid cell at four columns (~300px); smallest stays readable. */
-const PIE_MIN_PX = 140;
-const PIE_MAX_PX = 300;
 
 export default async function PeoplePage() {
   if (!isSupabaseConfigured()) {
@@ -51,9 +46,10 @@ export default async function PeoplePage() {
       <section className="grid people-view is-empty">
         <div className="empty-state">
           <p className="empty-state-message">
-            No profiles yet. Add people in the classic UI (or your database), then open them here to edit.
+            No profiles yet. Tap the plus button to add your first person.
           </p>
         </div>
+        <PeopleAddFab />
       </section>
     );
   }
@@ -72,48 +68,19 @@ export default async function PeoplePage() {
     });
   });
 
-  const targets = rowsWithMacros
-    .map((r) => r.macros?.targetCalories)
-    .filter((n): n is number => n != null);
-  const maxTarget = targets.length ? Math.max(...targets) : 1;
-
   return (
     <section className="grid people-view people-view--charts-only">
       <div className="people-card-grid">
-        {rowsWithMacros.map(({ person, macros }) => {
-          const name = person.name || "Unnamed";
-          const diameter = macros
-            ? pieDiameterForTarget(macros.targetCalories, maxTarget, PIE_MIN_PX, PIE_MAX_PX)
-            : PIE_MIN_PX;
-
-          return (
-            <Link
-              key={person.id}
-              href={`/people/${person.id}`}
-              className="people-card-link"
-              aria-label={
-                macros
-                  ? `${name}, macro mix pie chart, ${macros.targetCalories} calories per day target`
-                  : `${name}, open profile`
-              }
-            >
-              <article
-                className="people-card"
-                style={{ "--pie-d": `${diameter}px` } as CSSProperties}
-              >
-                <div className="people-card-pie">
-                  {macros ? (
-                    <PersonMacroPie name={name} macros={macros} />
-                  ) : (
-                    <div className="people-card-pie-placeholder" aria-hidden />
-                  )}
-                </div>
-                <h3 className="people-card-name">{name}</h3>
-              </article>
-            </Link>
-          );
-        })}
+        {rowsWithMacros.map(({ person, macros }) => (
+          <PersonMacroPieCard
+            key={person.id}
+            personId={person.id}
+            name={person.name || "Unnamed"}
+            macros={macros}
+          />
+        ))}
       </div>
+      <PeopleAddFab />
     </section>
   );
 }

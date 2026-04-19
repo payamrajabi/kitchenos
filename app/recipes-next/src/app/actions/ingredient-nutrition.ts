@@ -68,7 +68,7 @@ export async function autofillIngredientNutritionAction(
   const { data: ingredient, error: fetchErr } = await supabase
     .from("ingredients")
     .select(
-      "id, name, brand_or_manufacturer, kcal, fat_g, protein_g, carbs_g",
+      "id, name, brand_or_manufacturer, kcal, fat_g, protein_g, carbs_g, canonical_unit_weight_g, density_g_per_ml",
     )
     .eq("id", ingredientId)
     .maybeSingle();
@@ -103,6 +103,19 @@ export async function autofillIngredientNutritionAction(
   const result = await runNutritionPipeline(input);
   const now = new Date().toISOString();
 
+  // Never overwrite a catalogue-supplied (or user-supplied) canonical piece
+  // weight with the pipeline's estimate. The catalogue is considered more
+  // authoritative for generic piece weights (e.g. "1 egg ≈ 50 g") than ad-hoc
+  // USDA portions or LLM guesses.
+  const existingCanonicalWeight =
+    typeof ingredient.canonical_unit_weight_g === "number" &&
+    Number.isFinite(ingredient.canonical_unit_weight_g) &&
+    ingredient.canonical_unit_weight_g > 0
+      ? ingredient.canonical_unit_weight_g
+      : null;
+  const preservedCanonicalUnitWeightG =
+    existingCanonicalWeight ?? result.canonical_unit_weight_g;
+
   if (result.status === "no_match") {
     await supabase
       .from("ingredients")
@@ -125,7 +138,7 @@ export async function autofillIngredientNutritionAction(
       protein_g: result.protein_g,
       carbs_g: result.carbs_g,
       nutrition_basis: result.basis,
-      canonical_unit_weight_g: result.canonical_unit_weight_g,
+      canonical_unit_weight_g: preservedCanonicalUnitWeightG,
       nutrition_source_name: result.source_name,
       nutrition_source_record_id: result.source_record_id,
       nutrition_source_url: result.source_url,

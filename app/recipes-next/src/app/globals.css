@@ -88,7 +88,7 @@
   --grid-gap: clamp(20px, 3vw, 28px);
   --card-padding-x: 12px;
   --card-padding-y: 8px;
-  --card-padding-y-bottom: 8px;
+  --card-padding-y-bottom: 2px;
   /* Tab row padding + control row + bottom border — sticky table headers align below the nav */
   --topbar-sticky-offset: calc(
     var(--space-12) + var(--control-height) + var(--space-12) + var(--space-1)
@@ -184,7 +184,7 @@ samp {
 }
 
 .secondary-tab-button.active {
-  background: var(--mist);
+  background: rgba(0, 0, 0, 0.05);
   color: var(--ink);
 }
 
@@ -205,7 +205,7 @@ samp {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-16);
-  margin-bottom: var(--space-12);
+  margin-bottom: var(--space-24, 24px);
   flex-wrap: wrap;
 }
 
@@ -214,14 +214,59 @@ samp {
 }
 
 .inventory-view-mode-toggle {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-4);
   flex-shrink: 0;
 }
 
-.inventory-view-mode-toggle-btn {
+.inventory-view-mode-toggle-trigger {
   gap: var(--space-6);
+}
+
+.inventory-view-mode-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-4));
+  background: var(--paper);
+  border: var(--space-1) solid var(--ink);
+  border-radius: 0;
+  min-width: var(--space-128, 128px);
+  padding: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.inventory-view-mode-menu-item {
+  border: none;
+  border-bottom: var(--space-1) solid var(--ink);
+  background: transparent;
+  padding: var(--space-8) var(--space-12);
+  text-align: left;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.inventory-view-mode-menu-item:last-child {
+  border-bottom: none;
+}
+
+.inventory-view-mode-menu-item:hover,
+.inventory-view-mode-menu-item:focus-visible {
+  background-color: var(--mist);
+  outline: none;
+}
+
+.inventory-view-mode-menu-item.active {
+  background-color: var(--mist);
+  font-weight: 600;
 }
 
 .inventory-filter-empty {
@@ -414,7 +459,8 @@ samp {
   margin-bottom: var(--space-4);
 }
 
-.user-menu-dropdown button[role="menuitem"] {
+.user-menu-dropdown :is(button, a)[role="menuitem"] {
+  display: block;
   width: 100%;
   border: none;
   border-top: var(--space-1) solid var(--ink);
@@ -428,13 +474,14 @@ samp {
   text-transform: uppercase;
   cursor: pointer;
   color: var(--ink);
+  text-decoration: none;
 }
 
-.user-menu-dropdown button[role="menuitem"]:first-of-type {
+.user-menu-dropdown :is(button, a)[role="menuitem"]:first-of-type {
   border-top: none;
 }
 
-.user-menu-dropdown button[role="menuitem"]:hover {
+.user-menu-dropdown :is(button, a)[role="menuitem"]:hover {
   background-color: var(--ink);
   background-image: var(--hover-fill-overlay);
   color: var(--paper);
@@ -936,6 +983,8 @@ textarea {
 
 .grid.recipes-page {
   gap: var(--space-12);
+  /* Leave room for the fixed AI input bar at the bottom. */
+  padding-bottom: calc(var(--space-80) + env(safe-area-inset-bottom, 0px));
 }
 
 /* Full-width row above the card grid (recipe grid columns are narrow; without this the
@@ -968,7 +1017,8 @@ textarea {
 }
 
 /* Match `.secondary-tab-button` outer size: `min-height` is border-box (padding is inside it). */
-.recipes-meal-filter-clear {
+.recipes-meal-filter-clear,
+.inventory-filter-clear {
   --recipes-meal-filter-chip-size: var(--space-28);
   flex-shrink: 0;
   box-sizing: border-box;
@@ -989,15 +1039,108 @@ textarea {
 }
 
 .recipes-meal-filter-clear:hover,
-.recipes-meal-filter-clear:focus-visible {
+.recipes-meal-filter-clear:focus-visible,
+.inventory-filter-clear:hover,
+.inventory-filter-clear:focus-visible {
   outline: none;
   color: var(--ink);
   background: color-mix(in srgb, var(--mist) 85%, var(--ink));
 }
 
-.recipes-meal-filter-solo-label {
+.recipes-meal-filter-solo-label,
+.inventory-filter-solo-label {
   cursor: default;
   pointer-events: none;
+}
+
+/* Community toggle lives at the far right of the meal-filter strip.
+   Off state reuses the same gray pill as meal chips (`.secondary-tab-button.active`).
+   On state fills with the primary ink color so it reads as a clear "community mode on". */
+.recipes-meal-filter-community {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.recipes-meal-filter-community.is-on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.recipes-meal-filter-community.is-on:hover,
+.recipes-meal-filter-community.is-on:focus-visible {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Narrow-viewport meal-type menu.
+   Above 640px: the full row of meal pills shows; the "All Meal Types" trigger
+   + popover is hidden. At/below 640px the individual pills are hidden and
+   the trigger takes their place. The X + solo-label solo state is shared
+   between both viewports — once a meal is picked the row looks the same. */
+.recipes-meal-filter-menu-wrap {
+  display: none;
+  position: relative;
+}
+
+.recipes-meal-filter-menu-trigger {
+  white-space: nowrap;
+}
+
+.recipes-meal-filter-menu {
+  position: absolute;
+  top: calc(100% + var(--space-4));
+  left: 0;
+  z-index: 20;
+  min-width: 180px;
+  padding: var(--space-4);
+  background: var(--paper);
+  border: var(--space-2) solid var(--ink);
+  border-radius: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.recipes-meal-filter-menu-item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  padding: var(--space-8) var(--space-12);
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.recipes-meal-filter-menu-item:hover,
+.recipes-meal-filter-menu-item:focus-visible {
+  outline: none;
+  background: var(--mist);
+}
+
+@media (max-width: 640px) {
+  .recipes-meal-filter-bar .recipes-meal-filter-pills-only {
+    display: none;
+  }
+
+  .recipes-meal-filter-menu-wrap {
+    display: inline-block;
+  }
+
+  /* On narrow viewports the bar only holds the "All Meal Types" trigger and the
+     Community toggle, so horizontal scrolling isn't needed. Disable overflow
+     clipping so the dropdown popover can extend below the bar without being
+     cut off. */
+  .recipes-meal-filter-bar {
+    overflow: visible;
+  }
+
+  .recipes-meal-filter-strip {
+    overflow: visible;
+  }
 }
 
 .grid-recipes-hint {
@@ -1197,13 +1340,21 @@ textarea {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: min(100%, var(--pie-d, 160px));
   max-width: 100%;
 }
 
 .person-macro-pie-root {
   position: relative;
-  width: 100%;
+  display: block;
+  max-width: 100%;
+}
+
+.person-macro-pie-root[data-interactive="true"] {
+  cursor: default;
+}
+
+.person-macro-pie-root[data-dragging="true"] {
+  user-select: none;
 }
 
 .person-macro-pie-tooltip {
@@ -1270,14 +1421,11 @@ textarea {
 }
 
 .person-detail-macro-pie-wrap {
+  display: flex;
+  justify-content: center;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-}
-
-.person-detail-macro-pie-wrap .person-macro-pie-svg {
-  width: 100%;
-  height: auto;
 }
 
 .person-detail-macro-pie-placeholder {
@@ -1370,6 +1518,40 @@ textarea {
 
 .person-detail-form-message--error {
   color: #8a1f1f;
+}
+
+.person-detail-row--danger {
+  margin-top: var(--space-16);
+  justify-items: start;
+}
+
+.person-detail-delete {
+  appearance: none;
+  height: var(--control-height);
+  padding: 0 var(--space-16);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a1f1f;
+  background: transparent;
+  border: var(--space-1) solid #d7a7a7;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.person-detail-delete:hover {
+  background: #fdf2f2;
+  border-color: #8a1f1f;
+}
+
+.person-detail-delete:focus-visible {
+  outline: var(--space-1) solid #8a1f1f;
+  outline-offset: var(--space-2);
+}
+
+.person-detail-delete:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 /* People — nutrient target sliders */
@@ -2487,6 +2669,172 @@ button.card:hover {
   display: flex;
   gap: var(--space-8);
   flex-wrap: wrap;
+}
+
+/* Airbnb-style save toggle: sits on the card photo, outline by default, fills
+   white when the recipe is saved to the user's library. Dark drop-shadow keeps
+   the icon legible over any food photo. */
+.community-card-heart {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-8);
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  /* Dark halo so the outline stroke has contrast against light photos. */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
+  transition: transform 120ms ease;
+}
+
+.community-card-heart:hover,
+.community-card-heart:focus-visible {
+  outline: none;
+  transform: scale(1.06);
+}
+
+.community-card-heart:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.community-card-heart.is-saved {
+  color: var(--paper);
+}
+
+/* ------------------------------------------------------------------ */
+/*  AI image placeholder (import + generation loading states)         */
+/* ------------------------------------------------------------------ */
+
+.ai-image-placeholder {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background-color: var(--paper);
+  border: var(--space-1) solid var(--ink);
+  box-sizing: border-box;
+  isolation: isolate;
+}
+
+.ai-image-placeholder--compact {
+  border: none;
+  background-color: var(--stripe-b);
+}
+
+.ai-image-placeholder-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--ink) 32%, transparent) 1px,
+    transparent 1.4px
+  );
+  background-size: 14px 14px;
+  background-position: 0 0;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  z-index: 1;
+}
+
+.ai-image-placeholder--compact .ai-image-placeholder-dots {
+  background-size: 10px 10px;
+  opacity: 0.45;
+}
+
+.ai-image-placeholder-glow {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(
+      circle at 30% 35%,
+      rgba(146, 106, 74, 0.0) 0%,
+      rgba(146, 106, 74, 0.0) 35%,
+      rgba(96, 74, 58, 0.55) 65%,
+      rgba(56, 45, 38, 0.85) 100%
+    );
+  filter: blur(14px);
+  animation: ai-image-placeholder-pulse 6s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes ai-image-placeholder-pulse {
+  0% {
+    transform: translate(-6%, -4%) scale(0.9);
+    opacity: 0.0;
+  }
+  35% {
+    transform: translate(0%, 0%) scale(1);
+    opacity: 0.7;
+  }
+  65% {
+    transform: translate(4%, 3%) scale(1.05);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(-6%, -4%) scale(0.9);
+    opacity: 0.0;
+  }
+}
+
+.ai-image-placeholder-caption {
+  position: absolute;
+  top: var(--space-12);
+  left: var(--space-16);
+  right: var(--space-16);
+  z-index: 2;
+  min-height: 1.4em;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.002em;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.ai-image-placeholder--compact .ai-image-placeholder-caption {
+  top: var(--space-8);
+  left: var(--space-10);
+  right: var(--space-10);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ai-image-placeholder-caption-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-image-placeholder-caption-item.is-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Caption flips automatically against light/dark backdrop so it stays legible. */
+.ai-image-placeholder--full .ai-image-placeholder-caption {
+  mix-blend-mode: difference;
+  color: #ffffff;
 }
 
 /* ------------------------------------------------------------------ */
@@ -4184,15 +4532,9 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   position: relative;
 }
 
-/* Original/Grams ghost toggle that sits next to the servings stepper in view
-   mode. Matches the Figma: two uppercase semibold labels side by side, the
-   active one full-opacity, the other dimmed. */
-.recipe-ingredients-unit-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-}
-
+/* "Show in grams" ghost toggle that sits next to the servings stepper in
+   view mode. Reads as dim/disabled by default (original mode); comes alive
+   at full-opacity ink when toggled on (grams mode). */
 .recipe-ingredients-unit-toggle-option {
   appearance: none;
   background: transparent;
@@ -4455,6 +4797,16 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   padding: 12px 0 12px 12px;
   text-align: right;
   vertical-align: top;
+}
+
+/* View-mode rows don't render a row-action menu, so the trailing actions cell
+   is empty. Collapse it to 0 width so the amount/unit in the value cell sits
+   flush against the right edge of the table. Edit mode keeps its 12px gutter
+   so the three-dot menu has breathing room. */
+.recipe-ingredients-table td.recipe-ingredient-actions-cell:empty,
+.recipe-ingredients-table.ingredients-table td.recipe-ingredient-actions-cell:empty {
+  width: 0;
+  padding: 0;
 }
 
 .recipe-ingredient-actions-menu {
@@ -5188,6 +5540,16 @@ tr.recipe-instruction-add-row .recipe-instruction-add-input {
 .recipe-ingredient-amount-display:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Unicode vulgar-fraction glyphs (¼, ½, ¾, ⅛ …) render 2px larger than the
+   surrounding digits/unit text, while keeping the row's 20px line-height so
+   the glyph stays vertically centered within the ingredient row. */
+.recipe-ingredient-amount-fraction {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 20px;
+  vertical-align: middle;
 }
 
 .recipe-ingredient-unit-select {
@@ -6329,17 +6691,6 @@ a.primary {
   white-space: pre-wrap;
 }
 
-.community-detail-description .recipe-rich-link,
-.community-detail-pre--rich .recipe-rich-link {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.community-detail-pre--rich {
-  white-space: pre-wrap;
-}
-
 .community-detail-actions {
   display: flex;
   align-items: center;
@@ -6357,95 +6708,13 @@ a.primary {
   color: #8a1f1f;
 }
 
-.community-detail-aside {
-  min-width: 0;
-  position: sticky;
-  top: var(--space-20);
-}
-
-.community-detail-photo {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border: var(--space-1) solid var(--ink);
-  background-size: cover;
-  background-repeat: no-repeat;
-}
-
-.community-detail-pre {
-  white-space: pre-wrap;
-  margin: 0;
-  font: inherit;
-  font-size: 14px;
-  line-height: 1.45;
-  padding: var(--space-8) var(--control-padding-x);
-  border: var(--space-1) solid var(--ink);
-  background: var(--fog);
-}
-
-.community-ingredient-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.community-ingredient-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-12);
-  padding: var(--space-6) 0;
-  border-bottom: var(--space-1) solid var(--mist);
-  font-size: 14px;
-}
-
-.community-ingredient-line:last-child {
-  border-bottom: none;
-}
-
-.community-ingredient-name {
-  font-weight: 600;
-}
-
-.community-ingredient-optional {
-  font-weight: 400;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.community-ingredient-prep {
-  font-weight: 400;
-  color: var(--muted);
-}
-
-.community-ingredient-amount {
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.community-ingredient-sections {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-20);
-}
-
-.community-ingredient-section-title {
-  margin: 0 0 var(--space-6);
-  font-size: 15px;
-  font-weight: 700;
-}
-
 @media (max-width: 52rem) {
   .community-detail-layout {
     grid-template-columns: 1fr;
   }
-
-  .community-detail-aside {
-    position: static;
-    order: -1;
-  }
 }
 
-/* Recipe add — compact popover above FAB (menu + URL) */
+/* Recipe add — compact popover above FAB (menu + recipe link) */
 .recipe-add-panel {
   min-width: min(100vw - var(--space-48), 280px);
   padding: var(--space-8);
@@ -6458,6 +6727,28 @@ a.primary {
 }
 
 /* Recipe add — text import only: full-viewport modal (minus 24px top/bottom), max 640px */
+.recipe-add-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: rgb(0 0 0 / 0.12);
+  border: var(--space-2) dashed var(--ink);
+  display: grid;
+  place-items: center;
+}
+
+.recipe-add-drop-overlay-card {
+  padding: var(--space-12) var(--space-16);
+  background: var(--paper);
+  border: var(--space-1) solid var(--ink);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  box-shadow: 0 var(--space-4) var(--space-16) rgb(0 0 0 / 0.15);
+}
+
 .recipe-add-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -6988,6 +7279,258 @@ a.primary {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Recipe AI bar — bottom-center input for recipe link / text / image intake */
+/* ------------------------------------------------------------------ */
+
+.recipe-ai-bar-wrap {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: calc(var(--space-16) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  /* Keep at least 24px of breathing room on each side of the viewport. */
+  width: min(720px, calc(100vw - (var(--space-24) * 2)));
+  pointer-events: none;
+}
+
+.recipe-ai-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-8);
+}
+
+.recipe-ai-bar-composer {
+  flex: 1;
+  min-width: 0;
+  /* Grid is single-row at single-line height; switches to two rows (text
+     on top, buttons in a footer) when .is-multiline is set. */
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "attach input send";
+  align-items: center;
+  gap: var(--space-6);
+  /* Equal 6px inset on all sides so the 36px attach/send icons have the
+     same breathing room from every edge of the pill. */
+  padding: var(--space-6);
+  background: var(--paper);
+  border: var(--space-1) solid var(--hair);
+  /* Fixed rounded-rectangle corners: looks like a pill at single-line height
+     (~48px) and stays a tidy rounded rectangle as the textarea grows. */
+  border-radius: var(--space-24);
+  box-shadow: 0 var(--space-4) var(--space-16) rgb(0 0 0 / 0.08);
+  transition: border-color 0.15s ease;
+}
+
+.recipe-ai-bar-composer:focus-within {
+  /* Subtle shade darker than --hair; NOT full --ink, which read as a hard
+     outline. Falls back to a fixed hex for browsers without color-mix. */
+  border-color: #a0a0a0;
+  border-color: color-mix(in srgb, var(--ink) 22%, var(--hair));
+}
+
+.recipe-ai-bar-composer.is-multiline {
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "input input input"
+    "attach .     send";
+  align-items: center;
+  row-gap: var(--space-6);
+  /* Same 6px inset as single-line so attach/send keep the same relative
+     distance from the pill's left, right, and bottom edges. */
+  padding: var(--space-6);
+}
+
+.recipe-ai-bar-thumbs {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipe-ai-bar-composer:has(.recipe-ai-bar-thumbs) {
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "thumbs thumbs thumbs"
+    "attach input  send";
+  align-items: center;
+  row-gap: var(--space-6);
+}
+
+.recipe-ai-bar-composer.is-multiline:has(.recipe-ai-bar-thumbs) {
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "thumbs thumbs thumbs"
+    "input  input   input"
+    "attach .       send";
+  align-items: center;
+}
+
+.recipe-ai-bar-thumb {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border-radius: var(--space-8);
+  background: var(--fog);
+  border: var(--space-1) solid var(--hair);
+}
+
+.recipe-ai-bar-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.recipe-ai-bar-thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recipe-ai-bar-thumb-remove:hover {
+  background: rgb(0 0 0 / 0.85);
+}
+
+.recipe-ai-bar-attach {
+  grid-area: attach;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.recipe-ai-bar-attach:hover {
+  color: var(--ink);
+  background: var(--fog);
+}
+
+/* Kill the global textarea/focus border. The `textarea:focus` rule in
+   globals.css has higher specificity than a plain class selector, so we
+   match both states explicitly and zero out border-width + outline. */
+.recipe-ai-bar-input,
+.recipe-ai-bar-input:focus,
+.recipe-ai-bar-input:focus-visible {
+  grid-area: input;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  /* Input grows up to 256px tall; beyond that, content scrolls inside. */
+  max-height: 256px;
+  margin: 0;
+  padding: var(--space-8) var(--space-4);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  border: 0 none transparent;
+  outline: 0 none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--ink);
+  resize: none;
+  overflow-y: auto;
+}
+
+/* In multi-line mode the textarea spans the full width of the composer,
+   so give its text comfortable side padding that matches the composer's
+   own 6px inset. */
+.recipe-ai-bar-composer.is-multiline .recipe-ai-bar-input {
+  padding: var(--space-8) var(--space-6);
+}
+
+.recipe-ai-bar-input::placeholder {
+  color: var(--muted);
+}
+
+.recipe-ai-bar-send {
+  grid-area: send;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: var(--space-1) solid var(--ink);
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 0.15s ease,
+    transform 0.05s ease;
+}
+
+.recipe-ai-bar-send:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.recipe-ai-bar-send:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.recipe-ai-bar-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0 var(--space-4);
+  font-size: 12px;
+  color: #6b1f1f;
+}
+
+.recipe-ai-bar-manual {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: var(--space-1) solid var(--hair);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 var(--space-4) var(--space-16) rgb(0 0 0 / 0.08);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.recipe-ai-bar-manual:hover:not(:disabled) {
+  background: var(--fog);
+  border-color: var(--ink);
+}
+
+.recipe-ai-bar-manual:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Draft review page                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -7113,6 +7656,41 @@ a.primary {
 
 .draft-remap-toggle:hover {
   opacity: 0.8;
+}
+
+.draft-row-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.draft-ingredient-row:hover .draft-row-actions,
+.draft-ingredient-row:focus-within .draft-row-actions {
+  opacity: 1;
+}
+
+.draft-row-action {
+  all: unset;
+  font-size: 12px;
+  color: var(--ink-subtle, var(--ink));
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.draft-row-action:hover {
+  color: var(--ink);
+}
+
+.draft-row-action-remove {
+  color: var(--danger-text, #b91c1c);
+}
+
+.draft-row-action-remove:hover {
+  color: var(--danger-text-strong, #991b1b);
 }
 
 .draft-remap-select-wrap {
@@ -7362,6 +7940,16 @@ a.primary {
   color: var(--ink);
 }
 
+.recipe-detail-title-qualifier-static {
+  display: inline;
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  font-weight: 400;
+  color: var(--muted);
+  margin: 0;
+}
+
 .recipe-detail-description-static {
   margin: 0 0 var(--space-16);
   font-size: 0.9375rem;
@@ -7452,6 +8040,55 @@ a.primary {
   justify-content: center;
   display: inline-flex;
   align-items: center;
+}
+
+/* Community-viewer actions slotted into the aside where owners see Edit.
+   Stacks the primary Save/Saved button above a small secondary Duplicate
+   link, matching the visual footprint of the owner-side Edit button. */
+.community-save-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Secondary "Duplicate to my recipes" action. Matches the footprint of
+   .recipe-detail-mode-btn (same padding/min-height/type treatment) so it
+   sits flush under the Save button, but renders with no border or fill. */
+.community-duplicate-link {
+  appearance: none;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: var(--space-6) var(--space-12);
+  min-height: 32px;
+  border: var(--space-1) solid transparent;
+  background: transparent;
+  color: var(--ink-60, #666);
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.community-duplicate-link:hover:not(:disabled) {
+  color: var(--ink, #000);
+}
+
+.community-duplicate-link:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.community-save-actions-error {
+  font-size: 12px;
+  color: var(--danger, #b00020);
+  margin: 0;
 }
 
 .recipe-detail-generate-image-wrap {
@@ -7586,11 +8223,13 @@ a.primary {
 }
 
 .draft-review-title-qualifier {
-  display: block;
-  font-size: 0.7em;
+  display: inline;
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
   font-weight: 400;
-  color: #666;
-  margin-top: 4px;
+  color: var(--muted);
+  margin: 0;
 }
 
 .draft-review-headnote {
@@ -7835,25 +8474,38 @@ a.primary {
    column is pushed whole to the next one. The browser auto-balances
    column heights so the page is filled evenly. */
 
+/* Category grid layout strategy:
+   Primary goal is to fit the whole list above the fold with minimal vertical
+   scroll, secondary goal is to fill horizontal space. Because of that we
+   intentionally keep `column-width` small across the board so the browser
+   packs as MANY columns as the viewport allows. As the viewport grows, we
+   add more columns rather than widening them. Section bodies stay intact in
+   a single column via `break-inside: avoid`. Target devices: ≤16" laptops
+   and phones; we don't chase huge-monitor legibility at the cost of extra
+   vertical scroll on the primary targets. */
+
 .inventory-category-view {
-  /* Base (narrow viewports): keep compact but allow whole short names to fit. */
-  column-width: 148px;
-  column-gap: var(--space-14, 14px);
+  column-width: 150px;
+  column-gap: var(--space-24, 24px);
   column-fill: balance;
   width: 100%;
 }
 
-/* Wider viewports: let columns grow so long names like "Garlic Powder"
-   and "Avocado Oil" render in full, while keeping a healthy column count. */
-@media (min-width: 1200px) {
+/* Phones: force a single column. Two very narrow columns truncate long
+   ingredient names and read worse than one comfortable stack. */
+@media (max-width: 599px) {
   .inventory-category-view {
-    column-width: 168px;
+    column-count: 1;
+    column-width: auto;
   }
 }
 
-@media (min-width: 1600px) {
+/* Very wide displays (external monitors): a small bump so text isn't lost
+   in whitespace, but still small enough to keep adding columns as the
+   viewport grows. */
+@media (min-width: 2000px) {
   .inventory-category-view {
-    column-width: 184px;
+    column-width: 170px;
   }
 }
 
@@ -7906,8 +8558,8 @@ a.primary {
 .inv-cat-row::before {
   content: "";
   position: absolute;
-  inset: -4px -8px;
-  border-radius: 4px;
+  inset: 0 -8px;
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.05);
   opacity: 0;
   pointer-events: none;
@@ -7915,7 +8567,8 @@ a.primary {
 }
 
 .inv-cat-row:hover::before,
-.inv-cat-row:focus-within::before {
+.inv-cat-row:focus-within::before,
+.inv-cat-row--selected::before {
   opacity: 1;
 }
 
@@ -7942,15 +8595,19 @@ a.primary {
 
 .inv-cat-row-name:hover,
 .inv-cat-row-name:focus-visible {
-  text-decoration: underline;
   outline: none;
 }
 
 /* Quantity on the right: number always visible; -/+ buttons fade in
-   only on row hover so resting state reads as a dense read-only count. */
+   only on row hover so resting state reads as a dense read-only count.
+   At rest the -/+ buttons collapse to zero width so the name gets the
+   full column width; they expand (and the name truncates as needed)
+   only on hover / focus / selection. Gap between children is 0 so
+   hidden buttons truly occupy no horizontal space — spacing is added
+   back via margins when the buttons become visible. */
 .inventory-category-view .inventory-qty-control {
   padding: 0;
-  gap: var(--space-6, 6px);
+  gap: 0;
   flex-shrink: 0;
 }
 
@@ -7964,30 +8621,48 @@ a.primary {
 }
 
 .inventory-category-view .inventory-qty-control-btn {
+  width: 0;
+  margin: 0;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 80ms ease, color 120ms ease;
+  transition:
+    width 80ms ease,
+    margin 80ms ease,
+    opacity 80ms ease,
+    color 120ms ease;
 }
 
 .inv-cat-row:hover .inventory-qty-control-btn:not(:disabled),
-.inv-cat-row:focus-within .inventory-qty-control-btn:not(:disabled) {
+.inv-cat-row:focus-within .inventory-qty-control-btn:not(:disabled),
+.inv-cat-row--selected .inventory-qty-control-btn:not(:disabled) {
+  width: 12px;
+  margin-inline: var(--space-6, 6px);
   opacity: 1;
   pointer-events: auto;
 }
 
-.inv-cat-row:hover .inventory-qty-control-label {
+.inv-cat-row:hover .inventory-qty-control-label,
+.inv-cat-row--selected .inventory-qty-control-label {
   color: var(--ink);
 }
 
-/* Hide the "0" at rest on empty rows; reveal on hover alongside -/+ so the
+/* Hide the "0" at rest on empty rows and collapse its width too so the
+   name can use the entire column; reveal on hover alongside -/+ so the
    user can still increment from zero. */
 .inv-cat-row--empty .inventory-qty-control-label {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 80ms ease;
+  transition: width 80ms ease, min-width 80ms ease, opacity 80ms ease;
 }
 
 .inv-cat-row--empty:hover .inventory-qty-control-label,
-.inv-cat-row--empty:focus-within .inventory-qty-control-label {
+.inv-cat-row--empty:focus-within .inventory-qty-control-label,
+.inv-cat-row--empty.inv-cat-row--selected .inventory-qty-control-label {
+  width: auto;
+  min-width: 16px;
   opacity: 1;
 }
 
@@ -8010,8 +8685,12 @@ a.primary {
   pointer-events: auto;
 }
 
+:root {
+  --detail-sheet-width: min(480px, 100vw - 32px);
+}
+
 .detail-sheet {
-  width: min(480px, 100vw - 32px);
+  width: var(--detail-sheet-width);
   height: 100%;
   background: var(--paper, #fff);
   border-left: 1px solid var(--hair, #ddd);
@@ -8019,6 +8698,21 @@ a.primary {
   flex-direction: column;
   overflow: hidden;
   animation: detail-sheet-enter 0.18s ease-out;
+}
+
+/* When the detail sheet is open, the inventory grid shell reserves the
+   equivalent width on the right so the grid reflows into the remaining
+   viewport rather than being overlaid. On narrow viewports we skip the
+   reserve and let the sheet sit on top — there simply isn't room for
+   both. */
+.inventory-view-shell {
+  transition: padding-right 0.18s ease-out;
+}
+
+@media (min-width: 900px) {
+  .inventory-view-shell[data-sheet-open="true"] {
+    padding-right: var(--detail-sheet-width);
+  }
 }
 
 @keyframes detail-sheet-enter {
@@ -8047,6 +8741,40 @@ a.primary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-sheet-title--editable {
+  cursor: text;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.detail-sheet-title--editable:hover {
+  background-image: var(--hover-fill-overlay);
+}
+
+.detail-sheet-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--hair, #eee);
+  border-radius: 4px;
+  background: var(--paper, #fff);
+  color: var(--ink, #222);
+  font-family: inherit;
+  outline: none;
+}
+
+.detail-sheet-title-input:focus {
+  border-color: var(--ink, #222);
 }
 
 .detail-sheet-close {
@@ -8366,4 +9094,40 @@ a.primary {
 .detail-sheet-portion-source {
   font-size: 11px;
   color: #aaa;
+}
+
+.detail-sheet-footer {
+  margin-top: var(--space-32, 32px);
+  padding-top: var(--space-16, 16px);
+  border-top: 1px solid #eee;
+}
+
+.detail-sheet-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8, 8px);
+  width: 100%;
+  padding: var(--space-12, 12px) var(--space-16, 16px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid #c0392b;
+  background: transparent;
+  color: #c0392b;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.detail-sheet-delete-btn:hover:not(:disabled) {
+  background: #c0392b;
+  color: var(--paper, #fff);
+}
+
+.detail-sheet-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

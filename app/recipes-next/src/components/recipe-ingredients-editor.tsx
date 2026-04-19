@@ -91,6 +91,36 @@ function coalesceIsOptional(raw: unknown): boolean {
   return raw === true || raw === 1 || raw === "true" || raw === "t";
 }
 
+// Unicode vulgar-fraction glyphs we may render in an amount string
+// (e.g. "1¼", "¾", "⅛"). We wrap each one in a span so CSS can bump it
+// slightly larger than the surrounding digits while keeping row alignment.
+const FRACTION_GLYPH_PATTERN = /[\u00BC-\u00BE\u2150-\u215E]/g;
+
+function renderAmountWithFractions(text: string): ReactNode {
+  if (!text) return text;
+  if (!FRACTION_GLYPH_PATTERN.test(text)) return text;
+  FRACTION_GLYPH_PATTERN.lastIndex = 0;
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = FRACTION_GLYPH_PATTERN.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    nodes.push(
+      <span key={`frac-${key++}`} className="recipe-ingredient-amount-fraction">
+        {match[0]}
+      </span>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+  return nodes;
+}
+
 function IngredientRowActionsMenu({
   disabled,
   ingredientLabel,
@@ -203,6 +233,12 @@ function normalizeRow(row: RecipeIngredientRow): RecipeIngredientRow {
             Number.isFinite(row.ingredients.density_g_per_ml) &&
             row.ingredients.density_g_per_ml > 0
               ? row.ingredients.density_g_per_ml
+              : null,
+          canonical_unit_weight_g:
+            typeof row.ingredients.canonical_unit_weight_g === "number" &&
+            Number.isFinite(row.ingredients.canonical_unit_weight_g) &&
+            row.ingredients.canonical_unit_weight_g > 0
+              ? row.ingredients.canonical_unit_weight_g
               : null,
         }
       : null,
@@ -405,6 +441,7 @@ function RecipeIngredientItemRow({
           item.unit,
           item.ingredients?.density_g_per_ml,
           effectiveScale,
+          item.ingredients?.canonical_unit_weight_g,
         )
       : null;
   const displayedAmountText =
@@ -610,11 +647,11 @@ function RecipeIngredientItemRow({
               onClick={() => setEditingAmount(true)}
               aria-label={`Edit amount for ${item.ingredients?.name ?? "ingredient"}`}
             >
-              {displayedAmountText}
+              {renderAmountWithFractions(displayedAmountText)}
             </button>
           ) : (
             <span className="recipe-ingredient-amount-display recipe-ingredient-amount-display--static">
-              {displayedAmountText}
+              {renderAmountWithFractions(displayedAmountText)}
             </span>
           )}
           {isEditing ? (

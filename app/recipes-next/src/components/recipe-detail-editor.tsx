@@ -5,6 +5,7 @@ import {
   updateRecipeAction,
 } from "@/app/actions/recipes";
 import { generateRecipeImageAction } from "@/app/actions/recipe-image";
+import { AiImagePlaceholder } from "@/components/ai-image-placeholder";
 import { RecipeIngredientsEditor } from "@/components/recipe-ingredients-editor";
 import { RecipeInstructionsEditor } from "@/components/recipe-instructions-editor";
 import { RecipeEditModeProvider } from "@/components/recipe-edit-mode";
@@ -42,6 +43,7 @@ import {
   type DragEvent,
   type MouseEvent,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -62,6 +64,14 @@ type Props = {
   recipeInstructionSteps: RecipeInstructionStepRow[];
   availableIngredients: RecipeIngredientOption[];
   autoGenerating?: boolean;
+  // When true, the editor locks itself into view mode and never exposes any
+  // owner-only UI (edit toggle, image upload, meal-types picker, delete, etc.).
+  // Used by the Community detail page so visitors see the same layout owners
+  // see, minus the authoring affordances.
+  viewOnly?: boolean;
+  // Rendered in the aside under the recipe image, in the slot normally
+  // occupied by the "Edit" button. Only used when `viewOnly` is true.
+  asideActionSlot?: ReactNode;
 };
 
 function str(v: string | null | undefined) {
@@ -80,6 +90,8 @@ export function RecipeDetailEditor({
   recipeInstructionSteps,
   availableIngredients,
   autoGenerating = false,
+  viewOnly = false,
+  asideActionSlot = null,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -139,9 +151,14 @@ export function RecipeDetailEditor({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Recipes always open in read-only "view" mode — whether you came from Plan,
   // the recipe list, or a deep link. Authoring UI lives behind the Edit toggle.
-  const [isEditing, setIsEditing] = useState(false);
+  // `editingRequested` tracks the owner's intent; `isEditing` is the derived
+  // value that also respects `viewOnly` so community viewers can never flip
+  // into edit mode regardless of what state the component is in.
+  const [editingRequested, setEditingRequested] = useState(false);
+  const isEditing = !viewOnly && editingRequested;
   const toggleEditing = useCallback(() => {
-    setIsEditing((value) => {
+    if (viewOnly) return;
+    setEditingRequested((value) => {
       if (value) {
         // Leaving edit mode — flush any in-progress crop gesture so we don't
         // leave the image panel stuck in crop state.
@@ -149,7 +166,7 @@ export function RecipeDetailEditor({
       }
       return !value;
     });
-  }, []);
+  }, [viewOnly]);
   const deleteModalTitleId = useId();
   const deleteModalCancelRef = useRef<HTMLButtonElement>(null);
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -757,9 +774,27 @@ export function RecipeDetailEditor({
               aria-label="Recipe name"
             />
           ) : (
-            <h1 className="recipe-detail-title-static">
-              {str(initial.name).trim() || "Untitled recipe"}
-            </h1>
+            (() => {
+              const primary =
+                str(initial.title_primary).trim() ||
+                str(initial.name).trim();
+              const qualifier = str(initial.title_primary).trim()
+                ? str(initial.title_qualifier).trim()
+                : "";
+              return (
+                <h1 className="recipe-detail-title-static">
+                  {primary || "Untitled recipe"}
+                  {qualifier ? (
+                    <>
+                      {" "}
+                      <span className="recipe-detail-title-qualifier-static">
+                        {qualifier}
+                      </span>
+                    </>
+                  ) : null}
+                </h1>
+              );
+            })()
           )}
           {isEditing ? (
             <textarea
@@ -1005,22 +1040,11 @@ export function RecipeDetailEditor({
         <aside className="recipe-detail-aside" aria-label="Recipe image and recipe options">
           <div className="recipe-detail-aside-stack">
           {isAutoGenerating ? (
-            <div
-              className="recipe-detail-photo-panel recipe-detail-photo-panel--generating"
-              role="status"
-              aria-live="polite"
-              aria-label="Generating recipe image"
-            >
-              <div className="recipe-detail-photo-generating-shimmer" aria-hidden />
-              <div className="recipe-detail-photo-generating-copy">
-                <span className="recipe-detail-photo-generating-title">
-                  Generating image…
-                </span>
-                <span className="recipe-detail-photo-generating-sub">
-                  This usually takes 15–30 seconds.
-                </span>
-              </div>
-            </div>
+            <AiImagePlaceholder
+              variant="generate"
+              size="full"
+              ariaLabel="Generating recipe image"
+            />
           ) : effectiveAutoGenerating && autoGenTimedOut && !img && isEditing ? (
             <p className="recipe-detail-image-message" role="status">
               Image is still being generated. Try refreshing in a moment, or click Regenerate image below.
@@ -1129,14 +1153,18 @@ export function RecipeDetailEditor({
           ) : null}
           {!isEditing ? (
             <div className="recipe-detail-aside-edit-wrap">
-              <button
-                type="button"
-                className="recipe-detail-mode-btn"
-                onClick={toggleEditing}
-                aria-label="Edit recipe"
-              >
-                Edit
-              </button>
+              {viewOnly ? (
+                asideActionSlot
+              ) : (
+                <button
+                  type="button"
+                  className="recipe-detail-mode-btn"
+                  onClick={toggleEditing}
+                  aria-label="Edit recipe"
+                >
+                  Edit
+                </button>
+              )}
             </div>
           ) : null}
           {isEditing && !isAutoGenerating ? (
@@ -1181,7 +1209,7 @@ export function RecipeDetailEditor({
             <section className="section recipe-source-section">
               <p className="recipe-source-row">
                 <label className="recipe-source-label" htmlFor="recipe-source-url">
-                  Source URL
+                  Recipe link
                 </label>
                 <input
                   id="recipe-source-url"

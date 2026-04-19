@@ -17,6 +17,7 @@ import { RECIPE_DESCRIPTION_MAX_LENGTH } from "@/lib/recipes";
 import { normalizeMealTypesForStorage } from "@/lib/recipe-meal-types";
 import type { IngredientRow, RecipeIngredientRow, RecipeInstructionStepRow } from "@/types/database";
 import { maybeAutofillNutrition } from "@/app/actions/ingredient-nutrition";
+import { findBackboneMatchesForNames } from "@/lib/ingredient-backbone-catalogue";
 import {
   resolveRecipeIngredients,
   applyResolutionPlan,
@@ -165,12 +166,21 @@ function normalizeRecipeIngredientJoin(raw: unknown): RecipeIngredientRow["ingre
   const densityRaw = row.density_g_per_ml;
   const densityNum =
     densityRaw == null ? null : Number(densityRaw);
+  const pieceWeightRaw = row.canonical_unit_weight_g;
+  const pieceWeightNum =
+    pieceWeightRaw == null ? null : Number(pieceWeightRaw);
   return {
     id: Number(row.id),
     name: String(row.name ?? ""),
     density_g_per_ml:
       typeof densityNum === "number" && Number.isFinite(densityNum) && densityNum > 0
         ? densityNum
+        : null,
+    canonical_unit_weight_g:
+      typeof pieceWeightNum === "number" &&
+      Number.isFinite(pieceWeightNum) &&
+      pieceWeightNum > 0
+        ? pieceWeightNum
         : null,
   };
 }
@@ -265,7 +275,7 @@ async function syncRecipeInstructionsTextFromSteps(
 }
 
 const RECIPE_INGREDIENT_SELECT =
-  "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml)";
+  "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml, canonical_unit_weight_g)";
 
 async function loadRecipeIngredientRowByLineId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -400,7 +410,7 @@ async function loadUserInventoryIngredients(
 ): Promise<InventoryIngredient[]> {
   const { data } = await supabase
     .from("ingredients")
-    .select("id, name, parent_ingredient_id, category, grocery_category");
+    .select("id, name, parent_ingredient_id, category, grocery_category, backbone_id");
   if (!data) return [];
   return data.map((row) => ({
     id: Number(row.id),
@@ -409,6 +419,7 @@ async function loadUserInventoryIngredients(
       row.parent_ingredient_id != null ? Number(row.parent_ingredient_id) : null,
     category: row.category as string | null,
     grocery_category: (row as Record<string, unknown>).grocery_category as string | null,
+    backbone_id: (row as Record<string, unknown>).backbone_id as string | null,
   }));
 }
 
@@ -426,7 +437,9 @@ async function resolveAndApplySingleIngredient(
   | { ok: false; error: string }
 > {
   const inventory = await loadUserInventoryIngredients(supabase);
-  const plan = await resolveRecipeIngredients([name], inventory);
+  const plan = await resolveRecipeIngredients([name], inventory, {
+    catalogueLookup: (names) => findBackboneMatchesForNames(supabase, names),
+  });
 
   if (plan.resolutions.length === 0) {
     return { ok: false, error: "Could not resolve ingredient." };
@@ -1341,9 +1354,11 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
       ),
     ];
 
-    // Run the resolution pipeline (deterministic + LLM) in one batch call
+    // Run the resolution pipeline (deterministic + catalogue + LLM) in one batch call
     const inventory = await loadUserInventoryIngredients(supabase);
-    const plan = await resolveRecipeIngredients(uniqueNames, inventory);
+    const plan = await resolveRecipeIngredients(uniqueNames, inventory, {
+      catalogueLookup: (names) => findBackboneMatchesForNames(supabase, names),
+    });
     const planResult = await applyResolutionPlan(supabase, plan);
 
     if (!planResult.ok) {

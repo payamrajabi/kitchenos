@@ -24,25 +24,13 @@ export default async function CommunityPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return (
-      <section className="grid is-empty">
-        <div className="empty-state">
-          <p className="empty-state-message">
-            Sign in to browse community recipes.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
   const [recipesResult, libraryIds] = await Promise.all([
     supabase
       .from("recipes")
       .select("*, owner_id")
       .is("deleted_at", null)
-      .order("updated_at", { ascending: false }),
-    loadLibraryRecipeIds(supabase, user.id),
+      .order("created_at", { ascending: false }),
+    user ? loadLibraryRecipeIds(supabase, user.id) : Promise.resolve([]),
   ]);
 
   if (recipesResult.error) {
@@ -55,15 +43,20 @@ export default async function CommunityPage() {
 
   const list = (recipesResult.data ?? []) as RecipeRow[];
   const libraryIdSet = new Set(libraryIds);
+  // Community shows other people's recipes. Your own recipes live on the
+  // Recipes page; hiding them here keeps the two views cleanly separated.
+  const visible = user
+    ? list.filter((recipe) => recipe.owner_id !== user.id)
+    : list;
 
   return (
-    <section className={`grid${list.length ? "" : " is-empty"}`}>
-      {list.length ? (
-        list.map((recipe) => (
+    <section className={`grid${visible.length ? "" : " is-empty"}`}>
+      {visible.length ? (
+        visible.map((recipe) => (
           <CommunityRecipeCard
             key={recipe.id}
             recipe={recipe}
-            isOwn={recipe.owner_id === user.id}
+            isOwn={false}
             inLibrary={libraryIdSet.has(recipe.id)}
           />
         ))

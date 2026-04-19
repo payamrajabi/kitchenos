@@ -8,6 +8,7 @@ export const RECIPE_MEAL_TYPES = [
   "Dinner",
   "Dessert",
   "Drink",
+  "Component",
 ] as const;
 
 export type RecipeMealType = (typeof RECIPE_MEAL_TYPES)[number];

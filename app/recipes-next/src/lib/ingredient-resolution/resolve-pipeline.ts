@@ -8,14 +8,58 @@ import type {
   IngredientResolution,
   ResolutionPlan,
 } from "./types";
-import { deterministicMatch, cleanDisplayName } from "./normalize";
+import { deterministicMatch, cleanDisplayName, normalizeForMatch } from "./normalize";
 import { resolveIngredientsWithLlm, type LlmResolutionItem } from "./llm-resolve";
+import type { BackboneMatch } from "@/lib/ingredient-backbone-catalogue";
 
 const AUTO_APPLY_CONFIDENCE = 0.7;
 
+/**
+ * Catalogue-bridged lookup: given a list of recipe ingredient names, return
+ * a Map of names → backbone catalogue matches (canonical or alias) for the
+ * ones the catalogue recognises.
+ *
+ * Provided by the caller (so the pipeline stays pure / testable). The
+ * default wiring passes in a batched Supabase query; tests can pass in
+ * a stub.
+ */
+export type CatalogueLookup = (
+  names: string[],
+) => Promise<Map<string, BackboneMatch>>;
+
 export type PipelineDeps = {
   llmResolve?: typeof resolveIngredientsWithLlm;
+  catalogueLookup?: CatalogueLookup;
 };
+
+/**
+ * Find an inventory item that shares a canonical identity with the given
+ * catalogue match — either via its stamped `backbone_id`, or via a name
+ * whose normalised key matches the catalogue's `match_key` or any alias.
+ *
+ * Returns the inventory item (or `null` if the user hasn't got one yet).
+ */
+function findInventoryByCatalogueIdentity(
+  match: BackboneMatch,
+  inventory: InventoryIngredient[],
+  inventoryNormalizedIndex: Map<string, InventoryIngredient>,
+): InventoryIngredient | null {
+  for (const item of inventory) {
+    if (item.backbone_id && item.backbone_id === match.entry.backbone_id) {
+      return item;
+    }
+  }
+
+  const canonicalHit = inventoryNormalizedIndex.get(match.entry.match_key);
+  if (canonicalHit) return canonicalHit;
+
+  for (const aliasKey of match.entry.aliases ?? []) {
+    const aliasHit = inventoryNormalizedIndex.get(aliasKey);
+    if (aliasHit) return aliasHit;
+  }
+
+  return null;
+}
 
 /**
  * Build a lookup of which ingredient ids are parents (have at least one child)
@@ -195,6 +239,61 @@ export async function resolveRecipeIngredients(
       });
     } else {
       unresolved.push(name);
+    }
+  }
+
+  // Stage 1.5: Catalogue-bridged match. For each still-unresolved name, see
+  // if the backbone catalogue recognises it; if it does, check whether the
+  // user already has an inventory item with the same canonical identity
+  // (either via stamped backbone_id or via a name that the catalogue calls
+  // the same thing). When it hits, we link to the existing row instead of
+  // asking the LLM — preventing duplicates like "Garbanzo Beans" living
+  // alongside "Chickpeas".
+  if (unresolved.length > 0 && deps.catalogueLookup) {
+    const catalogueMatches = await deps.catalogueLookup(unresolved);
+
+    if (catalogueMatches.size > 0) {
+      // Build once, reuse across every unresolved name.
+      const inventoryNormalizedIndex = new Map<string, InventoryIngredient>();
+      for (const item of inventory) {
+        const key = normalizeForMatch(item.name);
+        if (key && !inventoryNormalizedIndex.has(key)) {
+          inventoryNormalizedIndex.set(key, item);
+        }
+      }
+
+      const stillUnresolved: string[] = [];
+      for (const name of unresolved) {
+        const cMatch = catalogueMatches.get(name);
+        if (!cMatch) {
+          stillUnresolved.push(name);
+          continue;
+        }
+        const existing = findInventoryByCatalogueIdentity(
+          cMatch,
+          inventory,
+          inventoryNormalizedIndex,
+        );
+        if (existing) {
+          const canonical = cMatch.entry.canonical_name;
+          resolutions.push({
+            action: "use_existing",
+            recipeName: name,
+            existingIngredientId: existing.id,
+            existingIngredientName: existing.name,
+            confidence: 0.95,
+            reason:
+              cMatch.matchType === "canonical"
+                ? `Matched "${canonical}" in the ingredient catalogue; reusing "${existing.name}".`
+                : `Matched alias in the ingredient catalogue (canonical: ${canonical}); reusing "${existing.name}".`,
+          });
+        } else {
+          stillUnresolved.push(name);
+        }
+      }
+
+      unresolved.length = 0;
+      unresolved.push(...stillUnresolved);
     }
   }
 

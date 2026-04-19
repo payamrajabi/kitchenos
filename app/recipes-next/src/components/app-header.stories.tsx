@@ -13,7 +13,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Top navigation: primary sections, community link, and sign-in / account. Uses live Supabase auth when env is configured.",
+          "Top navigation: primary sections and sign-in / account. Uses live Supabase auth when env is configured.",
       },
     },
   },

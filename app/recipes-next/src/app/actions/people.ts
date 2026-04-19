@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 const PATCH_KEYS = new Set([
   "name",
@@ -112,4 +113,78 @@ export async function updatePersonPatchAction(
   revalidatePath("/people");
   revalidatePath(`/people/${personId}`);
   return { ok: true as const };
+}
+
+export async function updatePersonMacrosAction(
+  personId: number,
+  payload: {
+    proteinGrams: number;
+    fatGrams: number;
+    carbGrams: number;
+    targetCalories: number;
+  },
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const round = (n: number) =>
+    Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+
+  const { error } = await supabase
+    .from("people")
+    .update({
+      protein_target_grams: round(payload.proteinGrams),
+      fat_target_grams: round(payload.fatGrams),
+      carb_target_grams: round(payload.carbGrams),
+      calorie_target: round(payload.targetCalories),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", personId);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/people");
+  revalidatePath(`/people/${personId}`);
+  return { ok: true as const };
+}
+
+export async function deletePersonAction(personId: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const { error } = await supabase.from("people").delete().eq("id", personId);
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/people");
+  return { ok: true as const };
+}
+
+export async function createPersonAndRedirectAction() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/people");
+  }
+
+  const { data, error } = await supabase
+    .from("people")
+    .insert({ name: "New person" })
+    .select("id")
+    .single();
+
+  if (error || data?.id == null) {
+    redirect("/people");
+  }
+
+  const id = Number(data.id);
+  revalidatePath("/people");
+  redirect(`/people/${id}`);
 }

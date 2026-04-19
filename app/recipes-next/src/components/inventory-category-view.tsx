@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { IngredientRow, InventoryItemRow } from "@/types/database";
 import {
   getInventoryRowForIngredient,
@@ -61,13 +61,69 @@ function buildSections(ingredients: IngredientRow[]): Section[] {
   return sections;
 }
 
+function IngredientRowItem({
+  ingredient,
+  invRow,
+  qty,
+  unit,
+  isEmpty,
+  isSelected,
+  onSelectIngredient,
+}: {
+  ingredient: IngredientRow;
+  invRow: InventoryItemRow | undefined;
+  qty: number;
+  unit: string;
+  isEmpty: boolean;
+  isSelected: boolean;
+  onSelectIngredient: (id: number) => void;
+}) {
+  const nameRef = useRef<HTMLButtonElement | null>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  const checkTruncation = () => {
+    const el = nameRef.current;
+    if (!el) return;
+    setIsTruncated(el.scrollWidth > el.clientWidth);
+  };
+
+  return (
+    <li
+      data-ingredient-id={ingredient.id}
+      className={`inv-cat-row${isEmpty ? " inv-cat-row--empty" : ""}${
+        isSelected ? " inv-cat-row--selected" : ""
+      }`}
+    >
+      <button
+        type="button"
+        className="inv-cat-row-name"
+        onClick={() => onSelectIngredient(ingredient.id)}
+        onMouseEnter={checkTruncation}
+        onFocus={checkTruncation}
+        ref={nameRef}
+        title={isTruncated ? ingredient.name : undefined}
+      >
+        {ingredient.name}
+      </button>
+      <InventoryQtyControl
+        ingredientId={ingredient.id}
+        inventoryId={invRow?.id ?? ""}
+        quantity={qty}
+        unit={unit}
+      />
+    </li>
+  );
+}
+
 export function InventoryCategoryView({
   ingredients,
   inventory,
+  selectedIngredientId,
   onSelectIngredient,
 }: {
   ingredients: IngredientRow[];
   inventory: InventoryItemRow[];
+  selectedIngredientId: number | null;
   onSelectIngredient: (id: number) => void;
 }) {
   const sections = useMemo(() => buildSections(ingredients), [ingredients]);
@@ -95,25 +151,16 @@ export function InventoryCategoryView({
                 typeof stock.quantity === "number" ? stock.quantity : 0;
               const isEmpty = qty <= 0;
               return (
-                <li
-                  className={`inv-cat-row${isEmpty ? " inv-cat-row--empty" : ""}`}
+                <IngredientRowItem
                   key={ing.id}
-                >
-                  <button
-                    type="button"
-                    className="inv-cat-row-name"
-                    onClick={() => onSelectIngredient(ing.id)}
-                    title={ing.name}
-                  >
-                    {ing.name}
-                  </button>
-                  <InventoryQtyControl
-                    ingredientId={ing.id}
-                    inventoryId={invRow?.id ?? ""}
-                    quantity={qty}
-                    unit={stock.unit || ""}
-                  />
-                </li>
+                  ingredient={ing}
+                  invRow={invRow ?? undefined}
+                  qty={qty}
+                  unit={stock.unit || ""}
+                  isEmpty={isEmpty}
+                  isSelected={ing.id === selectedIngredientId}
+                  onSelectIngredient={onSelectIngredient}
+                />
               );
             })}
           </ul>

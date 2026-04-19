@@ -16,6 +16,13 @@ export type InventoryIngredient = {
   parent_ingredient_id: number | null;
   category: string | null;
   grocery_category: string | null;
+  /**
+   * Canonical catalogue id stamped onto the ingredient when it was created
+   * (or backfilled from the admin panel). Used by the catalogue-bridged
+   * matching stage to prevent duplicates across different spellings of the
+   * same canonical ingredient.
+   */
+  backbone_id?: string | null;
 };
 
 /* ------------------------------------------------------------------ */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, useCallback } from "react";
 import type { IngredientRow, InventoryItemRow, IngredientNutrientRow, IngredientPortionRow } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { nutritionPer100gForDisplay } from "@/lib/inventory-nutrition-display";
@@ -10,6 +10,7 @@ import {
   updateInventoryQuantityFieldAction,
   updateInventoryStockUnitAction,
   updateInventoryStorageLocationAction,
+  updateIngredientNameAction,
   updateRecipeUnitAction,
 } from "@/app/actions/inventory";
 import { normalizeInventoryId } from "@/lib/inventory-display";
@@ -21,6 +22,7 @@ import {
 } from "@/lib/unit-mapping";
 import { STOCK_UNIT_OPTIONS, STOCK_UNIT_VALUES } from "@/lib/stock-units";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
+import { IngredientDeleteButton } from "@/components/ingredient-delete-button";
 import { ArrowsClockwise, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -275,6 +277,96 @@ function EditableStorageLocation({
   );
 }
 
+function EditableTitle({
+  ingredientId,
+  name,
+}: {
+  ingredientId: number;
+  name: string;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const [isPending, startTransition] = useTransition();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
+
+  // Mirror the server-truth `name` prop into the local draft when we're
+  // not actively editing. Legitimate prop-to-state sync, so the
+  // set-state-in-effect rule is suppressed here.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!isEditing) setDraft(name);
+  }, [name, isEditing]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const commit = useCallback(
+    (raw: string) => {
+      const next = raw.trim();
+      if (!next) {
+        setDraft(name);
+        setIsEditing(false);
+        return;
+      }
+      if (next === name) {
+        setIsEditing(false);
+        return;
+      }
+      startTransition(async () => {
+        const r = await updateIngredientNameAction(ingredientId, next);
+        if (!r.ok) {
+          toast.error(r.error);
+          setDraft(name);
+        } else {
+          router.refresh();
+        }
+        setIsEditing(false);
+      });
+    },
+    [ingredientId, name, router],
+  );
+
+  if (!isEditing) {
+    return (
+      <h2
+        className="detail-sheet-title detail-sheet-title--editable"
+        onDoubleClick={() => setIsEditing(true)}
+        title="Double-click to rename"
+      >
+        {name}
+      </h2>
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      className="detail-sheet-title-input"
+      value={draft}
+      aria-label="Ingredient name"
+      disabled={isPending}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => commit(draft)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setDraft(name);
+          setIsEditing(false);
+        }
+      }}
+    />
+  );
+}
+
 function NutrientGrid({ nutrients }: { nutrients: IngredientNutrientRow[] }) {
   if (!nutrients.length) {
     return <p className="detail-sheet-empty">No micronutrient data available.</p>;
@@ -390,7 +482,7 @@ export function InventoryDetailSheet({
         aria-label={`Details for ${ingredient.name}`}
       >
         <header className="detail-sheet-header">
-          <h2 className="detail-sheet-title">{ingredient.name}</h2>
+          <EditableTitle ingredientId={ingredient.id} name={ingredient.name} />
           <button
             type="button"
             className="detail-sheet-close"
@@ -529,6 +621,15 @@ export function InventoryDetailSheet({
             <h3 className="detail-sheet-section-title">Known Portions</h3>
             <PortionList portions={portions} />
           </section>
+
+          <div className="detail-sheet-footer">
+            <IngredientDeleteButton
+              ingredientId={ingredient.id}
+              ingredientName={ingredient.name}
+              variant="sheet-footer"
+              onDeleted={onClose}
+            />
+          </div>
         </div>
       </aside>
     </div>

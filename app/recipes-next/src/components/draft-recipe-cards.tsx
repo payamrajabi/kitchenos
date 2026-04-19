@@ -1,5 +1,6 @@
 "use client";
 
+import { AiImagePlaceholder } from "@/components/ai-image-placeholder";
 import {
   useDraftImports,
   type DraftImport,
@@ -33,9 +34,11 @@ function DraftCard({ draft }: { draft: DraftImport }) {
   if (draft.status === "importing") {
     return (
       <div className="card draft-card draft-card--importing">
-        <div className="draft-card-image">
-          <span className="draft-card-spinner" aria-hidden />
-        </div>
+        <AiImagePlaceholder
+          variant="import"
+          size="compact"
+          ariaLabel={`Importing ${draft.label}`}
+        />
         <div className="card-content">
           <h4 className="card-title draft-card-label">{draft.label}</h4>
         </div>

@@ -472,3 +472,61 @@ export function inferBackboneDefaultsFromName(
     shelf_life_freezer_days: shelfLife.freezer,
   };
 }
+
+/**
+ * Subset of `IngredientBackboneDefaults` shaped for direct merging into a
+ * Supabase `ingredients` insert payload. Fields where the rules produced no
+ * useful value (null subcategory, empty default_units, all-null shelf life)
+ * are simply omitted so the database default is used — we never write a
+ * "null" that looks like an intentional user action.
+ *
+ * Booleans (`packaged_common`, `is_composite`) are always included: a `false`
+ * from the rules is meaningful ("we checked — this is not a composite"), and
+ * matches the DB default either way.
+ */
+export type IngredientBackboneInsertFields = {
+  taxonomy_subcategory?: IngredientTaxonomySubcategory;
+  default_units?: string[];
+  storage_hints?: IngredientStorageHint[];
+  shelf_life_counter_days?: number;
+  shelf_life_fridge_days?: number;
+  shelf_life_freezer_days?: number;
+  packaged_common: boolean;
+  is_composite: boolean;
+};
+
+/**
+ * Builds the backbone portion of an `ingredients` insert payload directly
+ * from the ingredient's display name. Used by all insert paths (recipe
+ * import, manual inventory add, manual variant add) so every newly created
+ * ingredient gets the same rule-based defaults the one-time SQL backfill
+ * applied to pre-existing rows.
+ */
+export function buildBackboneInsertFieldsFromName(
+  name: string,
+): IngredientBackboneInsertFields {
+  const defaults = inferBackboneDefaultsFromName(name);
+  const out: IngredientBackboneInsertFields = {
+    packaged_common: defaults.packaged_common,
+    is_composite: defaults.is_composite,
+  };
+  if (defaults.taxonomy_subcategory) {
+    out.taxonomy_subcategory = defaults.taxonomy_subcategory;
+  }
+  if (defaults.default_units && defaults.default_units.length > 0) {
+    out.default_units = defaults.default_units;
+  }
+  if (defaults.storage_hints && defaults.storage_hints.length > 0) {
+    out.storage_hints = defaults.storage_hints;
+  }
+  if (defaults.shelf_life_counter_days != null) {
+    out.shelf_life_counter_days = defaults.shelf_life_counter_days;
+  }
+  if (defaults.shelf_life_fridge_days != null) {
+    out.shelf_life_fridge_days = defaults.shelf_life_fridge_days;
+  }
+  if (defaults.shelf_life_freezer_days != null) {
+    out.shelf_life_freezer_days = defaults.shelf_life_freezer_days;
+  }
+  return out;
+}

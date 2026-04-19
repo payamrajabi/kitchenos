@@ -213,7 +213,10 @@ export type RecipeIngredientRow = {
   /** When true, this ingredient line is optional (e.g. garnish). */
   is_optional: boolean;
   created_at?: string;
-  ingredients?: Pick<IngredientRow, "id" | "name" | "density_g_per_ml"> | null;
+  ingredients?: Pick<
+    IngredientRow,
+    "id" | "name" | "density_g_per_ml" | "canonical_unit_weight_g"
+  > | null;
 };
 
 export type RecipeInstructionStepRow = {

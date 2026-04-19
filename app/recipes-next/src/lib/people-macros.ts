@@ -94,3 +94,25 @@ export function pieDiameterForTarget(
   const ratio = Math.min(1, t / maxTarget);
   return minPx + ratio * (maxPx - minPx);
 }
+
+/**
+ * Absolute calorie↔pixel mapping for interactive pies. Shared across the grid and
+ * detail views so a pie's visual size always reflects its own calorie target.
+ */
+export const PIE_SIZE_MIN_PX = 120;
+export const PIE_SIZE_MAX_PX = 340;
+export const PIE_CAL_MIN = 800;
+export const PIE_CAL_MAX = 4500;
+
+export function sizePxForCalorieTarget(targetCalories: number): number {
+  if (!Number.isFinite(targetCalories)) return PIE_SIZE_MIN_PX;
+  const clamped = Math.max(PIE_CAL_MIN, Math.min(PIE_CAL_MAX, targetCalories));
+  const ratio = (clamped - PIE_CAL_MIN) / (PIE_CAL_MAX - PIE_CAL_MIN);
+  return PIE_SIZE_MIN_PX + ratio * (PIE_SIZE_MAX_PX - PIE_SIZE_MIN_PX);
+}
+
+export function calorieTargetForSizePx(sizePx: number): number {
+  const clamped = Math.max(PIE_SIZE_MIN_PX, Math.min(PIE_SIZE_MAX_PX, sizePx));
+  const ratio = (clamped - PIE_SIZE_MIN_PX) / (PIE_SIZE_MAX_PX - PIE_SIZE_MIN_PX);
+  return Math.round(PIE_CAL_MIN + ratio * (PIE_CAL_MAX - PIE_CAL_MIN));
+}

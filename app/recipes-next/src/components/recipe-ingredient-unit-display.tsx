@@ -48,9 +48,9 @@ export function useIngredientUnitDisplay(): ContextValue {
 }
 
 /**
- * Two-word ghost toggle matching the Figma spec: uppercase semibold labels
- * sitting side by side, the active one at full opacity, the inactive one
- * dimmed. Tap either word to switch modes.
+ * Single-label toggle: a "Show in grams" pill that reads as dim/disabled in
+ * the default "original" mode and comes alive (full-weight ink colour) when
+ * active. Tapping flips between the two modes.
  */
 export function IngredientUnitDisplayToggle({
   className,
@@ -58,50 +58,26 @@ export function IngredientUnitDisplayToggle({
   className?: string;
 }) {
   const { mode, setMode } = useIngredientUnitDisplay();
-  const selectOriginal = useCallback(() => setMode("original"), [setMode]);
-  const selectGrams = useCallback(() => setMode("grams"), [setMode]);
+  const isGrams = mode === "grams";
+  const toggle = useCallback(
+    () => setMode(isGrams ? "original" : "grams"),
+    [isGrams, setMode],
+  );
 
   return (
-    <div
+    <button
+      type="button"
       className={[
-        "recipe-ingredients-unit-toggle",
+        "recipe-ingredients-unit-toggle-option",
+        isGrams ? "recipe-ingredients-unit-toggle-option--active" : "",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
-      role="group"
-      aria-label="Show ingredient amounts in"
+      aria-pressed={isGrams}
+      onClick={toggle}
     >
-      <button
-        type="button"
-        className={[
-          "recipe-ingredients-unit-toggle-option",
-          mode === "original"
-            ? "recipe-ingredients-unit-toggle-option--active"
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        aria-pressed={mode === "original"}
-        onClick={selectOriginal}
-      >
-        Original
-      </button>
-      <button
-        type="button"
-        className={[
-          "recipe-ingredients-unit-toggle-option",
-          mode === "grams"
-            ? "recipe-ingredients-unit-toggle-option--active"
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        aria-pressed={mode === "grams"}
-        onClick={selectGrams}
-      >
-        Grams
-      </button>
-    </div>
+      Show in grams
+    </button>
   );
 }

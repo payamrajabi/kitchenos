@@ -59,8 +59,8 @@ export async function fetchUrlContent(
   rawUrl: string,
 ): Promise<{ ok: true; content: string } | { ok: false; error: string }> {
   const url = rawUrl.trim();
-  if (!url) return { ok: false, error: "URL is required." };
-  if (!isValidUrl(url)) return { ok: false, error: "Invalid URL." };
+  if (!url) return { ok: false, error: "Recipe link is required." };
+  if (!isValidUrl(url)) return { ok: false, error: "That doesn't look like a valid link." };
 
   const jina = await fetchViaJina(url);
   if (jina) return { ok: true, content: jina };
@@ -68,5 +68,5 @@ export async function fetchUrlContent(
   const html = await fetchRawHtml(url);
   if (html) return { ok: true, content: html };
 
-  return { ok: false, error: "Could not fetch content from this URL." };
+  return { ok: false, error: "Couldn't read that recipe link." };
 }

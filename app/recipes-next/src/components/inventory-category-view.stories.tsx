@@ -79,6 +79,7 @@ const SEED: SeedRow[] = [
 export const Default: Story = {
   args: {
     ...build(SEED),
+    selectedIngredientId: null,
     onSelectIngredient: () => {},
   },
 };
@@ -87,6 +88,7 @@ export const TightColumn: Story = {
   name: "Tight 240px column",
   args: {
     ...build(SEED),
+    selectedIngredientId: null,
     onSelectIngredient: () => {},
   },
   decorators: [

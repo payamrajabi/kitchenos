@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
-import { PersonMacroPie } from "@/components/person-macro-pie";
+import { PersonMacroPieInteractive } from "@/components/person-macro-pie-interactive";
 import { PersonDetailForm } from "@/components/person-detail-form";
 import { macroCaloriesFromPerson } from "@/lib/people-macros";
 import type { PersonRow } from "@/types/database";
@@ -84,7 +84,11 @@ export default async function PersonDetailPage({ params }: Props) {
         <aside className="person-detail-macro-aside" aria-label="Macro mix">
           <div className="person-detail-macro-pie-wrap">
             {macros ? (
-              <PersonMacroPie name={displayName} macros={macros} />
+              <PersonMacroPieInteractive
+                personId={person.id}
+                name={displayName}
+                macros={macros}
+              />
             ) : (
               <div className="person-detail-macro-pie-placeholder" aria-hidden />
             )}

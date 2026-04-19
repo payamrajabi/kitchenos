@@ -8,17 +8,15 @@ import {
 import { useDraftImports } from "@/components/draft-imports-provider";
 import { prepareImagesForRecipeImport } from "@/lib/recipe-import/prepare-image-for-import";
 import {
+  PencilLine,
   Plus,
-  NotePencil,
-  Link,
-  Sparkle,
-  Paperclip,
   ArrowUp,
   X,
 } from "@phosphor-icons/react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useTransition,
@@ -27,9 +25,12 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-export const DRAFT_STORAGE_KEY = "kitchenos-recipe-draft";
+const PLACEHOLDER_WIDE =
+  "Paste a recipe link, describe a recipe, or drop photos…";
+const PLACEHOLDER_NARROW = "Add recipe link, description, or photos…";
+const NARROW_VIEWPORT_QUERY = "(max-width: 640px)";
 
-type MenuView = "closed" | "menu" | "url" | "intake";
+export const DRAFT_STORAGE_KEY = "kitchenos-recipe-draft";
 
 type AttachedImage = {
   id: string;
@@ -45,93 +46,92 @@ function makeAttachedImage(file: File): AttachedImage {
   };
 }
 
+// A conservative URL detector: a single token starting with http(s)://.
+function looksLikeUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/\s/.test(trimmed)) return false;
+  return /^https?:\/\/\S+$/i.test(trimmed);
+}
+
+// Input grows from a single line (~36px) up to MAX_INPUT_HEIGHT, then scrolls.
+const MAX_INPUT_HEIGHT = 256;
+// Anything taller than this counts as "multi-line" and drops the buttons
+// into a footer row below the text. Single-line height ≈ 36px, so a little
+// headroom avoids flicker from sub-pixel measurements.
+const MULTILINE_THRESHOLD = 44;
+
 export function RecipeAddFab() {
   const { startImport } = useDraftImports();
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const intakeFileRef = useRef<HTMLInputElement>(null);
-  const intakeTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const ignoreOutsideCloseUntilRef = useRef(0);
-  const [view, setView] = useState<MenuView>("closed");
-  const [url, setUrl] = useState("");
-  const [intakeText, setIntakeText] = useState("");
-  const [intakeImages, setIntakeImages] = useState<AttachedImage[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [text, setText] = useState("");
+  const [images, setImages] = useState<AttachedImage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [isMultiLine, setIsMultiLine] = useState(false);
+  const dragDepthRef = useRef(0);
   const [isPending, startTransition] = useTransition();
+  const [placeholder, setPlaceholder] = useState(PLACEHOLDER_WIDE);
 
-  const showPopover = view === "menu" || view === "url";
-  const showIntakeModal = view === "intake";
-  const showPanel = view !== "closed";
+  // Avoid infinite oscillation when a layout switch changes the textarea's
+  // effective width, which in turn changes scrollHeight measurements.
+  const skipModeUpdateRef = useRef(false);
 
-  useEffect(() => {
-    if (!showIntakeModal) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [showIntakeModal]);
-
-  const autoResizeIntake = useCallback(() => {
-    const el = intakeTextareaRef.current;
+  // Resize the textarea to fit its content up to MAX_INPUT_HEIGHT, and flag
+  // whether we've wrapped past a single line so the layout can switch.
+  const autoResize = useCallback(() => {
+    const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    const scroll = el.scrollHeight;
+    const next = Math.min(scroll, MAX_INPUT_HEIGHT);
+    el.style.height = `${next}px`;
+    if (!skipModeUpdateRef.current) {
+      setIsMultiLine(scroll > MULTILINE_THRESHOLD);
+    }
   }, []);
 
   useEffect(() => {
-    if (!showIntakeModal) return;
-    autoResizeIntake();
-  }, [showIntakeModal, intakeText, intakeImages.length, autoResizeIntake]);
+    autoResize();
+  }, [text, autoResize]);
 
-  const intakeImagesRef = useRef<AttachedImage[]>([]);
+  // After the layout mode flips, the textarea's effective width changes, so
+  // re-measure the height at the new width. Guard the flag so this call
+  // doesn't toggle the mode back and cause oscillation.
+  useLayoutEffect(() => {
+    skipModeUpdateRef.current = true;
+    autoResize();
+    skipModeUpdateRef.current = false;
+  }, [isMultiLine, autoResize]);
+
   useEffect(() => {
-    intakeImagesRef.current = intakeImages;
-  }, [intakeImages]);
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia(NARROW_VIEWPORT_QUERY);
+    const update = () => {
+      setPlaceholder(mq.matches ? PLACEHOLDER_NARROW : PLACEHOLDER_WIDE);
+    };
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const imagesRef = useRef<AttachedImage[]>([]);
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
 
   useEffect(() => {
     return () => {
-      for (const img of intakeImagesRef.current) {
+      for (const img of imagesRef.current) {
         URL.revokeObjectURL(img.previewUrl);
       }
     };
   }, []);
 
-  useEffect(() => {
-    if (!showPanel) return;
-    const onDoc = (e: MouseEvent) => {
-      if (Date.now() < ignoreOutsideCloseUntilRef.current) return;
-      const el = wrapRef.current;
-      if (el && e.target instanceof Node && !el.contains(e.target)) {
-        setView("closed");
-        setError(null);
-      }
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [showPanel]);
-
-  useEffect(() => {
-    if (!showPanel) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (view === "intake") {
-          setView("menu");
-          setError(null);
-        } else {
-          setView("closed");
-          setError(null);
-        }
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [showPanel, view]);
-
   const reset = useCallback(() => {
-    setView("closed");
-    setUrl("");
-    setIntakeText("");
-    setIntakeImages((prev) => {
+    setText("");
+    setImages((prev) => {
       for (const img of prev) URL.revokeObjectURL(img.previewUrl);
       return [];
     });
@@ -145,38 +145,23 @@ export function RecipeAddFab() {
     });
   }, []);
 
-  const handleUrlSubmit = useCallback(() => {
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    startImport("Importing from URL…", () =>
-      importRecipeFromUrlAction(trimmed),
+  const handleFiles = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    e.target.value = "";
+    if (!files?.length) return;
+    const imageFiles = Array.from(files).filter((f) =>
+      f.type.startsWith("image/"),
     );
-    reset();
-  }, [url, startImport, reset]);
+    if (!imageFiles.length) {
+      setError("Please select image files.");
+      return;
+    }
+    setError(null);
+    setImages((prev) => [...prev, ...imageFiles.map(makeAttachedImage)]);
+  }, []);
 
-  const handleIntakeFiles = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      e.target.value = "";
-      if (!files?.length) return;
-      const imageFiles = Array.from(files).filter((f) =>
-        f.type.startsWith("image/"),
-      );
-      if (!imageFiles.length) {
-        setError("Please select image files.");
-        return;
-      }
-      setError(null);
-      setIntakeImages((prev) => [
-        ...prev,
-        ...imageFiles.map(makeAttachedImage),
-      ]);
-    },
-    [],
-  );
-
-  const removeIntakeImage = useCallback((id: string) => {
-    setIntakeImages((prev) => {
+  const removeImage = useCallback((id: string) => {
+    setImages((prev) => {
       const next: AttachedImage[] = [];
       for (const img of prev) {
         if (img.id === id) {
@@ -189,25 +174,34 @@ export function RecipeAddFab() {
     });
   }, []);
 
-  const handleIntakeSubmit = useCallback(() => {
-    const trimmedText = intakeText.trim();
-    const images = intakeImages;
-    if (!trimmedText && !images.length) return;
+  const handleSubmit = useCallback(() => {
+    const trimmed = text.trim();
+    const attached = images;
 
-    const label = images.length
-      ? trimmedText
+    // Link-only submission: no images + single URL token.
+    if (!attached.length && looksLikeUrl(trimmed)) {
+      startImport("Importing from recipe link…", () =>
+        importRecipeFromUrlAction(trimmed),
+      );
+      reset();
+      return;
+    }
+
+    if (!trimmed && !attached.length) return;
+
+    const label = attached.length
+      ? trimmed
         ? "Importing from image and text…"
         : "Importing from image…"
       : "Importing from text…";
 
-    const files = images.map((img) => img.file);
-
+    const files = attached.map((img) => img.file);
     startImport(label, async () => {
       try {
         const blobs = files.length
           ? await prepareImagesForRecipeImport(files)
           : [];
-        return importRecipeFromIntakeAction(trimmedText, blobs);
+        return importRecipeFromIntakeAction(trimmed, blobs);
       } catch (err) {
         return {
           ok: false as const,
@@ -217,269 +211,194 @@ export function RecipeAddFab() {
       }
     });
     reset();
-  }, [intakeText, intakeImages, startImport, reset]);
+  }, [text, images, startImport, reset]);
 
-  const toggleMenu = useCallback(() => {
-    setView((v) => (v === "closed" ? "menu" : "closed"));
+  const addImageFiles = useCallback((files: File[]) => {
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (!imageFiles.length) {
+      setError("Please drop image files.");
+      return false;
+    }
     setError(null);
+    setImages((prev) => [...prev, ...imageFiles.map(makeAttachedImage)]);
+    return true;
   }, []);
 
-  const onIntakePaste = useCallback(
-    (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
-      const items = e.clipboardData?.items;
-      if (!items || items.length === 0) return;
-      const imageFiles: File[] = [];
-      for (const item of Array.from(items)) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) imageFiles.push(file);
-        }
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => {
+      const types = e.dataTransfer?.types;
+      if (!types) return false;
+      for (let i = 0; i < types.length; i++) {
+        if (types[i] === "Files") return true;
       }
-      if (!imageFiles.length) return;
+      return false;
+    };
+
+    const onDragEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
       e.preventDefault();
-      setError(null);
-      setIntakeImages((prev) => [
-        ...prev,
-        ...imageFiles.map(makeAttachedImage),
-      ]);
-    },
-    [],
-  );
+      dragDepthRef.current += 1;
+      setIsDraggingFiles(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setIsDraggingFiles(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      addImageFiles(files);
+    };
 
-  const onIntakeKey = useCallback(
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [addImageFiles]);
+
+  const onPaste = useCallback((e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (!imageFiles.length) return;
+    e.preventDefault();
+    setError(null);
+    setImages((prev) => [...prev, ...imageFiles.map(makeAttachedImage)]);
+  }, []);
+
+  const onKey = useCallback(
     (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      // Enter submits; Shift+Enter inserts a newline (ChatGPT-style).
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        handleIntakeSubmit();
+        handleSubmit();
       }
     },
-    [handleIntakeSubmit],
+    [handleSubmit],
   );
 
-  const intakeCanSend =
-    intakeText.trim().length > 0 || intakeImages.length > 0;
+  const canSend = text.trim().length > 0 || images.length > 0;
 
   return (
-    <div className="inventory-add-fab-wrap" ref={wrapRef}>
-      {showPopover && (
-        <div
-          className="recipe-add-panel"
-          role="dialog"
-          aria-label="Add recipe"
-        >
-          {error && (
-            <p className="recipe-add-panel-error" role="alert">
-              {error}
-            </p>
-          )}
-
-          {view === "menu" && (
-            <div className="recipe-add-menu">
-              <button
-                type="button"
-                className="recipe-add-menu-item"
-                onClick={handleFromScratch}
-                disabled={isPending}
-              >
-                <NotePencil size={18} weight="bold" aria-hidden />
-                {isPending ? "Creating…" : "From scratch"}
-              </button>
-              <button
-                type="button"
-                className="recipe-add-menu-item"
-                onClick={() => {
-                  setView("url");
-                  setError(null);
-                }}
-              >
-                <Link size={18} weight="bold" aria-hidden />
-                From URL
-              </button>
-              <button
-                type="button"
-                className="recipe-add-menu-item"
-                onClick={() => {
-                  setView("intake");
-                  setError(null);
-                }}
-              >
-                <Sparkle size={18} weight="bold" aria-hidden />
-                Image and text
-              </button>
-            </div>
-          )}
-
-          {view === "url" && (
-            <div className="recipe-add-input-group">
-              <button
-                type="button"
-                className="recipe-add-back icon-ghost"
-                onClick={() => {
-                  setView("menu");
-                  setError(null);
-                }}
-                aria-label="Back to menu"
-              >
-                <X size={14} weight="bold" aria-hidden />
-              </button>
-              <input
-                type="url"
-                className="recipe-add-url-input"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleUrlSubmit();
-                }}
-                placeholder="Paste recipe URL…"
-                autoComplete="off"
-                spellCheck={false}
-                autoFocus
-              />
-              <button
-                type="button"
-                className="recipe-add-submit"
-                onClick={handleUrlSubmit}
-                disabled={!url.trim()}
-              >
-                Import
-              </button>
-            </div>
-          )}
+    <div className="recipe-ai-bar-wrap">
+      {isDraggingFiles && (
+        <div className="recipe-add-drop-overlay" aria-hidden>
+          <div className="recipe-add-drop-overlay-card">
+            Drop image to start a new recipe
+          </div>
         </div>
       )}
 
-      {showIntakeModal && (
-        <>
+      <div className="recipe-ai-bar" role="group" aria-label="Add recipe">
+        <div
+          className={`recipe-ai-bar-composer${
+            isMultiLine ? " is-multiline" : ""
+          }`}
+        >
+          {images.length > 0 && (
+            <ul className="recipe-ai-bar-thumbs" aria-label="Attached images">
+              {images.map((img) => (
+                <li key={img.id} className="recipe-ai-bar-thumb">
+                  <img
+                    src={img.previewUrl}
+                    alt=""
+                    className="recipe-ai-bar-thumb-img"
+                  />
+                  <button
+                    type="button"
+                    className="recipe-ai-bar-thumb-remove"
+                    onClick={() => removeImage(img.id)}
+                    aria-label="Remove image"
+                  >
+                    <X size={12} weight="bold" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Grid layout — same DOM order for both states; CSS rearranges the
+              cells when .is-multiline drops the buttons into a footer row. */}
           <button
             type="button"
-            className="recipe-add-modal-backdrop"
-            aria-label="Close"
-            onClick={reset}
-          />
-          <div
-            className="recipe-add-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="recipe-add-intake-title"
+            className="recipe-ai-bar-attach"
+            onClick={() => fileRef.current?.click()}
+            aria-label="Attach images"
           >
-            <header className="recipe-add-modal-header">
-              <button
-                type="button"
-                className="recipe-add-back icon-ghost"
-                onClick={() => {
-                  setView("menu");
-                  setError(null);
-                }}
-                aria-label="Back to menu"
-              >
-                <X size={14} weight="bold" aria-hidden />
-              </button>
-              <h2
-                id="recipe-add-intake-title"
-                className="recipe-add-modal-title"
-              >
-                New recipe
-              </h2>
-              <button
-                type="button"
-                className="recipe-add-modal-close icon-ghost"
-                onClick={reset}
-                aria-label="Close"
-              >
-                <X size={18} weight="bold" aria-hidden />
-              </button>
-            </header>
+            <Plus size={20} weight="bold" aria-hidden />
+          </button>
 
-            <div className="recipe-add-modal-body">
-              {error && (
-                <p className="recipe-add-panel-error" role="alert">
-                  {error}
-                </p>
-              )}
+          <textarea
+            ref={inputRef}
+            className="recipe-ai-bar-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKey}
+            onPaste={onPaste}
+            placeholder={placeholder}
+            rows={1}
+          />
 
-              <div className="recipe-intake-composer">
-                {intakeImages.length > 0 && (
-                  <ul className="recipe-intake-thumbs" aria-label="Attached images">
-                    {intakeImages.map((img) => (
-                      <li key={img.id} className="recipe-intake-thumb">
-                        <img
-                          src={img.previewUrl}
-                          alt=""
-                          className="recipe-intake-thumb-img"
-                        />
-                        <button
-                          type="button"
-                          className="recipe-intake-thumb-remove"
-                          onClick={() => removeIntakeImage(img.id)}
-                          aria-label="Remove image"
-                        >
-                          <X size={12} weight="bold" aria-hidden />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+          <button
+            type="button"
+            className="recipe-ai-bar-send"
+            onClick={handleSubmit}
+            disabled={!canSend}
+            aria-label="Send"
+          >
+            <ArrowUp size={16} weight="bold" aria-hidden />
+          </button>
 
-                <textarea
-                  ref={intakeTextareaRef}
-                  className="recipe-intake-textarea"
-                  value={intakeText}
-                  onChange={(e) => setIntakeText(e.target.value)}
-                  onKeyDown={onIntakeKey}
-                  onPaste={onIntakePaste}
-                  placeholder="Describe the recipe, paste notes or ingredients, or attach photos — anything you give is used to draft the recipe."
-                  autoFocus
-                />
+          {error && (
+            <p className="recipe-ai-bar-error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
 
-                <div className="recipe-intake-toolbar">
-                  <button
-                    type="button"
-                    className="recipe-intake-attach icon-ghost"
-                    onClick={() => intakeFileRef.current?.click()}
-                    aria-label="Attach images"
-                  >
-                    <Paperclip size={16} weight="bold" aria-hidden />
-                  </button>
-                  <button
-                    type="button"
-                    className="recipe-intake-send"
-                    onClick={handleIntakeSubmit}
-                    disabled={!intakeCanSend}
-                    aria-label="Send"
-                  >
-                    <ArrowUp size={16} weight="bold" aria-hidden />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+        <button
+          type="button"
+          className="recipe-ai-bar-manual"
+          onClick={handleFromScratch}
+          disabled={isPending}
+          aria-label="Create blank recipe"
+          title="Create blank recipe"
+        >
+          <PencilLine size={18} weight="regular" aria-hidden />
+        </button>
+      </div>
 
       <input
-        ref={intakeFileRef}
+        ref={fileRef}
         type="file"
         accept="image/*"
         multiple
         className="visually-hidden"
         aria-hidden
         tabIndex={-1}
-        onChange={handleIntakeFiles}
+        onChange={handleFiles}
       />
-
-      <button
-        type="button"
-        className="inventory-add-fab"
-        aria-label={view === "closed" ? "Add recipe" : "Close"}
-        aria-expanded={view !== "closed"}
-        onClick={view === "closed" ? toggleMenu : reset}
-      >
-        {view === "closed" ? (
-          <Plus size={20} weight="bold" color="var(--paper)" aria-hidden />
-        ) : (
-          <X size={20} weight="bold" color="var(--paper)" aria-hidden />
-        )}
-      </button>
     </div>
   );
 }

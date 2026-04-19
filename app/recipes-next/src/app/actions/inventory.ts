@@ -20,6 +20,11 @@ import {
   inferGroceryCategoryFromName,
 } from "@/lib/ingredient-grocery-category";
 import { toTitleCaseAP } from "@/lib/ingredient-resolution/normalize";
+import { buildBackboneInsertFieldsFromName } from "@/lib/ingredient-backbone-inference";
+import {
+  findBackboneMatchForName,
+  ingredientFieldsFromCatalogue,
+} from "@/lib/ingredient-backbone-catalogue";
 
 const VALID_GROCERY_CATEGORIES = new Set<string>(INGREDIENT_GROCERY_CATEGORIES);
 
@@ -467,11 +472,21 @@ export async function createIngredientForInventoryAction(rawName: string) {
       void maybeAutofillNutrition(ingredientRow.id);
     }
   } else {
+    const catalogueMatch = await findBackboneMatchForName(supabase, name);
+    const catalogueFields = catalogueMatch
+      ? ingredientFieldsFromCatalogue(catalogueMatch.entry)
+      : null;
+    const backboneDefaults =
+      catalogueFields ?? buildBackboneInsertFieldsFromName(name);
+    const grocery_category =
+      catalogueFields?.grocery_category ?? inferGroceryCategoryFromName(name);
+
     const { data: inserted, error } = await supabase
       .from("ingredients")
       .insert({
         name,
-        grocery_category: inferGroceryCategoryFromName(name),
+        ...backboneDefaults,
+        grocery_category,
       })
       .select("*")
       .single();
@@ -553,6 +568,20 @@ export async function addIngredientVariantAction(
 
   const parentGrocery =
     (parent as { grocery_category?: string | null }).grocery_category ?? null;
+
+  const catalogueMatch = await findBackboneMatchForName(supabase, trimmed);
+  const catalogueFields = catalogueMatch
+    ? ingredientFieldsFromCatalogue(catalogueMatch.entry)
+    : null;
+  const backboneDefaults =
+    catalogueFields ?? buildBackboneInsertFieldsFromName(trimmed);
+
+  // Parent's grocery category wins when set, then catalogue, then regex.
+  const grocery_category =
+    parentGrocery && VALID_GROCERY_CATEGORIES.has(parentGrocery)
+      ? parentGrocery
+      : (catalogueFields?.grocery_category ?? inferGroceryCategoryFromName(trimmed));
+
   const { data: newIng, error: ingErr } = await supabase
     .from("ingredients")
     .insert({
@@ -560,10 +589,8 @@ export async function addIngredientVariantAction(
       parent_ingredient_id: parentIngredientId,
       variant_sort_order: nextSort,
       category: (parent as { category?: string | null }).category ?? null,
-      grocery_category:
-        parentGrocery && VALID_GROCERY_CATEGORIES.has(parentGrocery)
-          ? parentGrocery
-          : inferGroceryCategoryFromName(trimmed),
+      ...backboneDefaults,
+      grocery_category,
     })
     .select("id")
     .single();

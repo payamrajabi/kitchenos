@@ -1,11 +1,25 @@
 "use client";
 
-import { updatePersonPatchAction } from "@/app/actions/people";
+import {
+  deletePersonAction,
+  updatePersonPatchAction,
+} from "@/app/actions/people";
 import { PersonNutrientSliders } from "@/components/person-nutrient-sliders";
 import { formatListValue } from "@/lib/text";
 import type { PersonRow } from "@/types/database";
 import { useRouter } from "next/navigation";
-import { useCallback, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
+import { createPortal } from "react-dom";
+
+const emptySubscribe = () => () => {};
 
 type Props = {
   person: PersonRow;
@@ -29,7 +43,20 @@ function dateInputValue(v: string | null | undefined) {
 export function PersonDetailForm({ person }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const [isDeleting, startDeleteTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const isClient = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const confirmInputRef = useRef<HTMLInputElement>(null);
+  const deleteTitleId = useId();
+  const deleteInputId = useId();
 
   const [name, setName] = useState(() => str(person.name));
   const [birthDate, setBirthDate] = useState(() => dateInputValue(person.birth_date));
@@ -93,6 +120,24 @@ export function PersonDetailForm({ person }: Props) {
     if (allergies.trim() === formatListValue(person.allergies)) return;
     save({ allergies });
   }, [allergies, person.allergies, save]);
+
+  const handleDelete = useCallback(() => {
+    const displayName = str(person.name) || "this profile";
+    const confirmed = window.confirm(
+      `Delete ${displayName}? This can't be undone.`,
+    );
+    if (!confirmed) return;
+    setError(null);
+    startDeleteTransition(async () => {
+      const r = await deletePersonAction(person.id);
+      if (r.ok) {
+        router.replace("/people");
+        router.refresh();
+      } else {
+        setError(r.error);
+      }
+    });
+  }, [person.id, person.name, router]);
 
   return (
     <div className="person-detail-form">
@@ -191,6 +236,17 @@ export function PersonDetailForm({ person }: Props) {
               rows={3}
             />
           </label>
+        </div>
+
+        <div className="person-detail-row person-detail-row--full person-detail-row--danger">
+          <button
+            type="button"
+            className="person-detail-delete"
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "Deleting…" : "Delete profile"}
+          </button>
         </div>
       </div>
     </div>

@@ -35,9 +35,6 @@ export function RecipeCard({ recipe }: { recipe: RecipeRow }) {
         <h4 ref={titleRef} className="card-title">
           {recipe.name}
         </h4>
-        {recipe.calories ? (
-          <div className="card-meta">{`${recipe.calories} cal`}</div>
-        ) : null}
       </div>
     </Link>
   );

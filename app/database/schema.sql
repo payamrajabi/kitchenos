@@ -119,8 +119,37 @@ CREATE TABLE IF NOT EXISTS ingredients (
 CREATE INDEX IF NOT EXISTS idx_ingredients_taxonomy_subcategory
   ON ingredients (taxonomy_subcategory);
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_ingredients_backbone_id
+CREATE INDEX IF NOT EXISTS ix_ingredients_backbone_id
   ON ingredients (backbone_id);
+
+CREATE TABLE IF NOT EXISTS ingredient_backbone_catalogue (
+  backbone_id TEXT PRIMARY KEY,
+  canonical_name TEXT NOT NULL,
+  variant TEXT,
+  parent_backbone_id TEXT REFERENCES ingredient_backbone_catalogue(backbone_id) ON DELETE SET NULL,
+  match_key TEXT NOT NULL,
+  taxonomy_subcategory TEXT,
+  grocery_category TEXT,
+  default_units TEXT,
+  storage_hints TEXT,
+  shelf_life_counter_days INTEGER CHECK (shelf_life_counter_days IS NULL OR shelf_life_counter_days >= 0),
+  shelf_life_fridge_days INTEGER CHECK (shelf_life_fridge_days IS NULL OR shelf_life_fridge_days >= 0),
+  shelf_life_freezer_days INTEGER CHECK (shelf_life_freezer_days IS NULL OR shelf_life_freezer_days >= 0),
+  packaged_common INTEGER NOT NULL DEFAULT 0,
+  is_composite INTEGER NOT NULL DEFAULT 0,
+  density_g_per_ml REAL CHECK (density_g_per_ml IS NULL OR density_g_per_ml > 0),
+  canonical_unit_weight_g REAL CHECK (canonical_unit_weight_g IS NULL OR canonical_unit_weight_g > 0),
+  aliases TEXT NOT NULL DEFAULT '[]',
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ingredient_backbone_catalogue_match_key
+  ON ingredient_backbone_catalogue (match_key);
+
+CREATE INDEX IF NOT EXISTS idx_ingredient_backbone_catalogue_subcategory
+  ON ingredient_backbone_catalogue (taxonomy_subcategory);
 
 CREATE TABLE IF NOT EXISTS ingredient_aliases (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

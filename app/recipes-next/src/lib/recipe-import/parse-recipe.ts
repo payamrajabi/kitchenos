@@ -20,7 +20,7 @@ import type {
 } from "./types";
 import type { RecipeNoteType, RecipeYieldLabel } from "@/types/database";
 
-const PARSE_MODEL = "gpt-4o-mini";
+const PARSE_MODEL = "gpt-4o";
 const PARSE_TIMEOUT_MS = 45_000;
 
 /** Strip ```json fences and parse; models sometimes wrap JSON in markdown. */
@@ -115,7 +115,10 @@ Rules:
 2. HEADNOTE vs DESCRIPTION: Headnote is the editorial intro paragraph(s) that sit before the recipe proper (often personal, often 60-180 words). Description is a 1-2 sentence tagline summarising the recipe's appeal (max 250 chars). If the source only has one intro blob, put it in headnote and leave description null.
 3. YIELD: Choose "serves" when the text uses Serves/Feeds (a person count). Choose "makes" when it describes what is produced (cookies, loaves, cups, jars, bars). Preserve ranges like "6 to 8" verbatim in quantity. Always compose a clean "display" string (e.g. "Serves 6 to 8", "Makes 12 cups").
 4. INGREDIENT ORDERING: Reorder ingredients so they match when they first appear in the instructions. Ingredients used first should appear first within their group.
-5. INGREDIENT GROUPING: If the recipe has distinct components (sauce, dressing, base, filling, garnish, etc.), group ingredients into groups with descriptive headings ("For the Dressing", "To Serve"). If all ingredients are used together, use a single group with heading null.
+5. INGREDIENT GROUPING: Preserve the source's ingredient structure.
+   a. If the source text contains ANY sub-heading inside the ingredients list — i.e. a short label (bolded, underlined, followed by a colon, on its own line, or otherwise visually distinct) that introduces a bundle of ingredients below it (e.g. "Tofu", "Pre-coat", "Crispy coating", "For frying", "Steam finish", "Sticky Garlic–Soy Glaze", "For the Dressing", "To Serve", "Glaze", "Topping", "Optional thickener") — you MUST emit one ingredient_groups entry per sub-heading, using that exact wording (lightly cleaned, e.g. strip trailing colons) as the heading. Do not merge, omit, or rename these groups. Keep them in the order they appear in the source.
+   b. Parenthetical clarifications attached to a sub-heading (e.g. "Pre-coat (helps the crust stick)" or "Baking powder (optional but highly recommended)") should be dropped from the heading — keep just the core label ("Pre-coat").
+   c. Only use a single group with "heading": null when the source genuinely presents the ingredients as one flat list with no internal sub-labels. When in doubt, prefer grouping over flattening.
 6. INGREDIENT NAME: Use simple, singular, AP-style Title Case names in the "ingredient" field (e.g. "Garlic" not "3 cloves of fresh garlic", "Tomato Paste" not "tomato paste"). Strip brand names, marketing language, and "organic/fresh" qualifiers unless they change the ingredient identity (e.g. keep "Fresh Mozzarella" vs "Mozzarella").
 7. INGREDIENT PREPARATION: Put preparation/state phrases into "preparation" — not into "ingredient". Examples: "finely chopped", "divided", "at room temperature", "cut into 1-inch cubes", "to serve", "for garnish". null if no prep state is implied.
 8. INGREDIENT DISPLAY: Set "display" to a clean verbatim-style source line ("2 cups rolled oats, toasted"). This preserves typographic fidelity for UI fallback. Always provide a display line.
@@ -123,7 +126,7 @@ Rules:
 10. INSTRUCTION SIMPLIFICATION: Rewrite instructions to be scannable — short, direct sentences. Keep important technique details and temperatures. Remove filler text, personal stories, and excessive explanation. Each step should focus on one action.
 11. STEP NUMBERS: Set step_number to 1, 2, 3, … densely across the full instructions array.
 12. TIMERS: Extract timing from instructions. If a step says "cook for 15 minutes", set timer_seconds_low=900 and timer_seconds_high=900. For ranges like "bake 25-30 min", set timer_seconds_low=1500 and timer_seconds_high=1800. Only set timers when there is an explicit wait/cook/bake/rest duration. Both null otherwise.
-13. MEAL TYPES: Choose from exactly: "Breakfast", "Snack", "Lunch", "Dinner", "Dessert", "Drink". A recipe can have multiple. Pick based on what the recipe is (use "Drink" for cocktails, smoothies, and other beverages).
+13. MEAL TYPES: Choose from exactly: "Breakfast", "Snack", "Lunch", "Dinner", "Dessert", "Drink", "Component". A recipe can have multiple. Pick based on what the recipe is (use "Drink" for cocktails, smoothies, and other beverages). Use "Component" for things that are building blocks rather than full meals — sauces, dressings, dips, spice blends, pickled or chopped vegetables, cooked bases (rice, quinoa, beans), stocks, doughs, and other prep-ahead elements that are meant to be combined into a meal rather than eaten on their own.
 14. AMOUNTS: Keep amounts as strings to preserve fractions like "1/2", "3/4". Use null for "to taste" or unspecified amounts.
 15. RECIPE NOTE: If the source has a tip/variation/storage/substitution block after the instructions, populate recipe_note with the appropriate type and the body in text. If the author labels it (e.g. "Variation:"), mirror that into title. If there is no such block, set all three fields to null.
 16. Return ONLY valid JSON. No markdown, no explanation, no extra text.`;
@@ -153,6 +156,7 @@ const VALID_MEAL_TYPES = new Set([
   "Dinner",
   "Dessert",
   "Drink",
+  "Component",
 ]);
 
 const VALID_YIELD_LABELS = new Set<RecipeYieldLabel>(["serves", "makes"]);

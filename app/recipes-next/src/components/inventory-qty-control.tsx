@@ -1,9 +1,9 @@
 "use client";
 
 import { updateInventoryQuantityFieldAction } from "@/app/actions/inventory";
+import { useDebouncedCommit } from "@/lib/use-debounced-commit";
 import { Minus, Plus } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
-import { useTransition, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, type MouseEvent as ReactMouseEvent } from "react";
 
 type Props = {
   ingredientId: number;
@@ -19,10 +19,17 @@ function formatQty(n: number | null): string {
   return String(Math.round(n * 100) / 100);
 }
 
+function normalizeQty(value: number | null): number {
+  return Math.max(0, Math.floor(Number(value ?? 0)) || 0);
+}
+
 /**
  * Inline quantity pill — shows `{qty} {unit}` by default, expands to a
  * minus / number / plus control on hover (mirrors PlanEntryServingsControl
  * but sized for a table cell).
+ *
+ * Clicks update the displayed number immediately. The server write is
+ * debounced so rapid clicks feel instant and only the final value is sent.
  */
 export function InventoryQtyControl({
   ingredientId,
@@ -31,36 +38,36 @@ export function InventoryQtyControl({
   unit,
   disabled = false,
 }: Props) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const qty = Math.max(0, Math.floor(Number(quantity ?? 0)) || 0);
-  const busy = pending || disabled;
+  const serverQty = normalizeQty(quantity);
 
-  const runUpdate = (next: number) => {
-    if (next < 0) return;
-    startTransition(async () => {
-      const result = await updateInventoryQuantityFieldAction(
+  const commit = useCallback(
+    (next: number) =>
+      updateInventoryQuantityFieldAction(
         ingredientId,
         inventoryId,
         "quantity",
         next,
-      );
-      if (result.ok) router.refresh();
-    });
-  };
+      ),
+    [ingredientId, inventoryId],
+  );
+
+  const { value: qty, update, flush } = useDebouncedCommit<number>({
+    value: serverQty,
+    commit,
+  });
 
   const onDecrement = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (busy || qty <= 0) return;
-    runUpdate(qty - 1);
+    if (disabled || qty <= 0) return;
+    update(qty - 1);
   };
 
   const onIncrement = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (busy) return;
-    runUpdate(qty + 1);
+    if (disabled) return;
+    update(qty + 1);
   };
 
   const label = formatQty(qty);
@@ -70,12 +77,14 @@ export function InventoryQtyControl({
       className="inventory-qty-control"
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
+      onMouseLeave={() => flush()}
+      onBlur={() => flush()}
     >
       <button
         type="button"
         className="inventory-qty-control-btn inventory-qty-control-btn--dec"
         aria-label={`Decrease ${unit || "quantity"} (currently ${formatQty(qty)})`}
-        disabled={busy || qty <= 0}
+        disabled={disabled || qty <= 0}
         onClick={onDecrement}
       >
         <Minus size={12} weight="bold" aria-hidden />
@@ -85,7 +94,7 @@ export function InventoryQtyControl({
         type="button"
         className="inventory-qty-control-btn inventory-qty-control-btn--inc"
         aria-label={`Increase ${unit || "quantity"}`}
-        disabled={busy}
+        disabled={disabled}
         onClick={onIncrement}
       >
         <Plus size={12} weight="bold" aria-hidden />

@@ -14,7 +14,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Multi-toggle filters above the inventory table. Each control includes rows that match that dimension; an ingredient stays visible if it matches any enabled toggle (OR).",
+          "Single-select storage-location filter above the inventory view. All chips visible = no filter; clicking a chip swaps the strip for an X clear button plus the selected chip, matching the recipes meal-filter pattern.",
       },
     },
   },
@@ -35,46 +35,12 @@ export const Default: Story = {
   render: () => <Interactive initial={DEFAULT_INVENTORY_FILTERS} />,
 };
 
-export const InStockOnly: Story = {
-  args: {
-    value: {
-      inStock: true,
-      outOfStock: false,
-      recipes: false,
-      mealPlan: false,
-    },
-    onChange: noop,
-  },
-  render: () => (
-    <Interactive
-      initial={{
-        inStock: true,
-        outOfStock: false,
-        recipes: false,
-        mealPlan: false,
-      }}
-    />
-  ),
+export const FridgeSelected: Story = {
+  args: { value: "fridge", onChange: noop },
+  render: () => <Interactive initial="fridge" />,
 };
 
-export const RecipesAndMealPlanOnly: Story = {
-  args: {
-    value: {
-      inStock: false,
-      outOfStock: false,
-      recipes: true,
-      mealPlan: true,
-    },
-    onChange: noop,
-  },
-  render: () => (
-    <Interactive
-      initial={{
-        inStock: false,
-        outOfStock: false,
-        recipes: true,
-        mealPlan: true,
-      }}
-    />
-  ),
+export const ShallowPantrySelected: Story = {
+  args: { value: "shallowPantry", onChange: noop },
+  render: () => <Interactive initial="shallowPantry" />,
 };

@@ -14,6 +14,11 @@ import type {
 } from "./types";
 import { toTitleCaseAP } from "./normalize";
 import { inferGroceryCategoryFromName } from "@/lib/ingredient-grocery-category";
+import { buildBackboneInsertFieldsFromName } from "@/lib/ingredient-backbone-inference";
+import {
+  findBackboneMatchForName,
+  ingredientFieldsFromCatalogue,
+} from "@/lib/ingredient-backbone-catalogue";
 import {
   defaultStorageLocationForNewInventoryRow,
   DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
@@ -60,8 +65,27 @@ async function createIngredientRow(
   copyFieldsFrom: { category: string | null; grocery_category: string | null } | null,
 ): Promise<{ id: number; category: string | null } | null> {
   const displayName = toTitleCaseAP(name);
+
+  // Pass B — catalogue lookup first. On a hit, the catalogue row supplies
+  // backbone_id, variant, subcategory, units, storage, shelf life, density,
+  // unit weight, and `packaged_common`/`is_composite` flags.
+  const catalogueMatch = await findBackboneMatchForName(supabase, displayName);
+  const catalogueFields = catalogueMatch
+    ? ingredientFieldsFromCatalogue(catalogueMatch.entry)
+    : null;
+
+  // Fall back to the regex inference if the catalogue had nothing.
+  const regexBackbone = catalogueFields
+    ? null
+    : buildBackboneInsertFieldsFromName(displayName);
+
+  // Grocery category precedence: parent copy > catalogue > regex.
   const grocery_category =
-    copyFieldsFrom?.grocery_category ?? inferGroceryCategoryFromName(displayName);
+    copyFieldsFrom?.grocery_category ??
+    catalogueFields?.grocery_category ??
+    inferGroceryCategoryFromName(displayName);
+
+  const backboneDefaults = catalogueFields ?? regexBackbone ?? {};
 
   const { data, error } = await supabase
     .from("ingredients")
@@ -70,6 +94,7 @@ async function createIngredientRow(
       parent_ingredient_id: parentId,
       variant_sort_order: variantSortOrder,
       category: copyFieldsFrom?.category ?? null,
+      ...backboneDefaults,
       grocery_category,
     })
     .select("id, category")
