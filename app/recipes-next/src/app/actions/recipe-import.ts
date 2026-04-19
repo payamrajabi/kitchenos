@@ -156,14 +156,26 @@ export async function importRecipeFromUrlAction(
   return buildDraft(fetchResult.content, { sourceUrl: rawUrl.trim() });
 }
 
+async function blobsToBase64DataUrls(
+  blobs: Blob[],
+): Promise<{ base64DataUrl: string }[]> {
+  const out: { base64DataUrl: string }[] = [];
+  for (const blob of blobs) {
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const mime = blob.type || "image/jpeg";
+    out.push({ base64DataUrl: `data:${mime};base64,${buf.toString("base64")}` });
+  }
+  return out;
+}
+
 export async function importRecipeFromImagesAction(
-  imageDataUrls: string[],
+  imageBlobs: Blob[],
 ): Promise<DraftResult> {
-  if (!imageDataUrls.length) {
+  if (!imageBlobs.length) {
     return { ok: false, error: "No images provided." };
   }
 
-  const images = imageDataUrls.map((url) => ({ base64DataUrl: url }));
+  const images = await blobsToBase64DataUrls(imageBlobs);
   const extractResult = await extractRecipeTextFromImages(images);
   if (!extractResult.ok) return extractResult;
 
@@ -189,10 +201,10 @@ export async function importRecipeFromTextAction(
  */
 export async function importRecipeFromIntakeAction(
   rawText: string,
-  imageDataUrls: string[],
+  imageBlobs: Blob[],
 ): Promise<DraftResult> {
   const text = rawText.trim();
-  const hasImages = imageDataUrls.length > 0;
+  const hasImages = imageBlobs.length > 0;
 
   if (!text && !hasImages) {
     return {
@@ -205,7 +217,7 @@ export async function importRecipeFromIntakeAction(
     return buildDraft(text, {});
   }
 
-  const images = imageDataUrls.map((url) => ({ base64DataUrl: url }));
+  const images = await blobsToBase64DataUrls(imageBlobs);
   const extractResult = await extractRecipeTextFromImages(images, {
     userText: text || undefined,
   });

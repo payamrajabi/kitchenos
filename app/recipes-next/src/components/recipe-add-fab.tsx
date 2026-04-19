@@ -204,10 +204,10 @@ export function RecipeAddFab() {
 
     startImport(label, async () => {
       try {
-        const dataUrls = files.length
+        const blobs = files.length
           ? await prepareImagesForRecipeImport(files)
           : [];
-        return importRecipeFromIntakeAction(trimmedText, dataUrls);
+        return importRecipeFromIntakeAction(trimmedText, blobs);
       } catch (err) {
         return {
           ok: false as const,
