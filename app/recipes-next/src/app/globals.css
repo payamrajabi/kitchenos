@@ -27,8 +27,6 @@
   --space-8: 8px;
   --space-12: 12px;
   --space-16: 16px;
-  /* Must match .topbar-tabs-inner gap — used by useTopbarUnifiedNav measurement. */
-  --topbar-split-min-gap: var(--space-16);
   --space-20: 20px;
   --space-24: 24px;
   --space-28: 28px;
@@ -277,88 +275,73 @@ samp {
   text-align: center;
 }
 
+/*
+ * Single, non-flickering header layout:
+ *   - The topbar-tabs row is full-bleed (no inline padding) so the active
+ *     tab's background can sit flush against the viewport edge.
+ *   - `.page-tabs-scroll` is a single scrollable rail. Its inner `.page-tabs`
+ *     carries the left page padding as part of the scrollable content, so
+ *     scrolling flows tabs right up to the edge without a white gap.
+ *   - `.header-right` is absolutely anchored to the right edge and overlays
+ *     the rail, so tabs visually scroll underneath the profile/auth cluster.
+ *   - `padding-inline-end` on the rail reserves space equal to the profile
+ *     width so the last tab can be fully scrolled into view past it.
+ *   - A transparent-to-paper gradient on `.header-right::before` creates a
+ *     soft white fade as tabs slip behind the profile.
+ */
 .topbar-tabs {
   position: relative;
   padding-block: var(--space-12);
   width: 100%;
-  display: flex;
-  align-items: center;
+  display: block;
   min-width: 0;
+  --header-right-reserve: calc(var(--control-height) + var(--space-24));
+}
+
+.topbar > .topbar-row.topbar-tabs {
+  padding-inline: 0;
 }
 
 .page-tabs-scroll {
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  padding-inline-end: var(--header-right-reserve);
 }
 
 .page-tabs-scroll::-webkit-scrollbar {
-  height: 4px;
+  display: none;
 }
 
-.page-tabs--with-auth .header-auth {
-  flex-shrink: 0;
-}
-
-.topbar-nav-cluster {
-  width: 100%;
-  min-width: 0;
-}
-
-/* Off-screen mirror of split groups for width measurement (see useTopbarUnifiedNav). */
-.topbar-layout-probe {
-  position: fixed;
-  left: -10000px;
-  top: 0;
-  visibility: hidden;
-  pointer-events: none;
-  z-index: -1;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--topbar-split-min-gap);
-}
-
-.topbar-tabs-inner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  gap: var(--topbar-split-min-gap);
-  flex-wrap: nowrap;
-  min-width: 0;
+.page-tabs-scroll > .page-tabs {
+  padding-inline-start: var(--page-pad-x);
 }
 
 .header-right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--page-pad-x);
   display: flex;
   align-items: center;
   gap: var(--space-16);
   flex-shrink: 0;
-  margin-left: auto;
+  z-index: 1;
+  background: var(--paper);
 }
 
-/* Unified strip: when split groups would collide (see useTopbarUnifiedNav), one scroll row. */
-.topbar.topbar--unified-nav > .topbar-row.topbar-tabs {
-  padding-inline: 0;
-}
-
-.topbar.topbar--unified-nav .topbar-nav-scroll {
-  padding-left: calc(var(--page-pad-x) + env(safe-area-inset-left, 0px));
-  padding-right: calc(var(--page-pad-x) + env(safe-area-inset-right, 0px));
-  scrollbar-width: none;
-}
-
-.topbar.topbar--unified-nav .topbar-nav-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.header-auth {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
+.header-right::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100%;
+  width: var(--space-24);
+  background: linear-gradient(to right, rgba(255, 255, 255, 0), var(--paper));
+  pointer-events: none;
 }
 
 .header-auth-guest {
@@ -373,11 +356,6 @@ samp {
   padding: 0 var(--space-16);
 }
 
-.header-auth-user {
-  display: flex;
-  align-items: center;
-}
-
 .user-menu {
   position: relative;
 }
@@ -386,9 +364,9 @@ samp {
   width: var(--control-height);
   height: var(--control-height);
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
-  background: var(--ink);
-  color: var(--paper);
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -400,25 +378,9 @@ samp {
   flex-shrink: 0;
 }
 
-.user-avatar-button[data-has-photo] {
-  background: var(--paper);
-  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
-}
-
 .user-avatar-button:hover,
 .user-avatar-button:focus-visible {
   outline: none;
-}
-
-.user-avatar-button:not([data-has-photo]):hover,
-.user-avatar-button:not([data-has-photo]):focus-visible {
-  background: var(--paper);
-  color: var(--ink);
-}
-
-.user-avatar-button[data-has-photo]:hover,
-.user-avatar-button[data-has-photo]:focus-visible {
-  opacity: 0.92;
 }
 
 .user-avatar-image {
@@ -4987,17 +4949,9 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   opacity: 0.45;
 }
 
-.recipe-instruction-row--completed .recipe-instruction-body-input {
-  text-decoration: line-through;
-}
-
-.recipe-instruction-row--completed .recipe-instruction-body-mirror {
-  text-decoration: line-through;
-}
-
-.recipe-instruction-row--completed .recipe-instruction-body-static {
-  text-decoration: line-through;
-}
+/* Completed steps fade via opacity only — the strikethrough was making
+   completed instructions hard to re-read, which matters when a cook
+   accidentally taps the wrong row. */
 
 .recipe-instructions-table td.recipe-instruction-body-cell {
   width: 100%;
@@ -7286,9 +7240,9 @@ a.primary {
   position: fixed;
   z-index: 60;
   left: 50%;
-  bottom: calc(var(--space-16) + env(safe-area-inset-bottom, 0px));
+  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
-  /* Keep at least 24px of breathing room on each side of the viewport. */
+  /* 24px breathing room on each side of the viewport, up to 720px max. */
   width: min(720px, calc(100vw - (var(--space-24) * 2)));
   pointer-events: none;
 }
@@ -7441,8 +7395,11 @@ a.primary {
   min-height: 36px;
   /* Input grows up to 256px tall; beyond that, content scrolls inside. */
   max-height: 256px;
-  margin: 0;
-  padding: var(--space-8) var(--space-4);
+  /* Sit flush against the right edge of the 36×36 attach container:
+     zero left padding, and a negative left margin that cancels the
+     parent grid's 6px column gap. */
+  margin: 0 0 0 calc(-1 * var(--space-6));
+  padding: var(--space-8) var(--space-4) var(--space-8) 0;
   font: inherit;
   font-size: 14px;
   line-height: 1.4;
@@ -7452,18 +7409,43 @@ a.primary {
   background: transparent;
   color: var(--ink);
   resize: none;
+  overflow-x: hidden;
   overflow-y: auto;
+  /* When the placeholder (or a long typed line) is wider than the available
+     room, fade the rightmost ~16px to transparent so the text appears to
+     slide softly under the send button instead of being abruptly clipped. */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
 }
 
 /* In multi-line mode the textarea spans the full width of the composer,
    so give its text comfortable side padding that matches the composer's
    own 6px inset. */
 .recipe-ai-bar-composer.is-multiline .recipe-ai-bar-input {
+  /* In multi-line layout the input spans the full width on its own row,
+     so drop the single-line flush-left offset and use symmetric padding.
+     The right-edge fade is also unnecessary (nothing sits beside the text
+     to fade under), so clear the mask. */
+  margin: 0;
   padding: var(--space-8) var(--space-6);
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .recipe-ai-bar-input::placeholder {
   color: var(--muted);
+  /* Never let the placeholder wrap to a second line. When it's wider than
+     the available room, the textarea's right-edge mask gradient fades it
+     softly toward the send button (see .recipe-ai-bar-input above). */
+  white-space: nowrap;
 }
 
 .recipe-ai-bar-send {
@@ -8281,6 +8263,12 @@ a.primary {
 }
 
 .recipe-instruction-row--static {
+  cursor: pointer;
+}
+
+/* Ingredient rows: tapping anywhere (except interactive controls) toggles
+   the prep checkbox in view mode. */
+.recipe-ingredient-row--tap-toggle {
   cursor: pointer;
 }
 
@@ -9130,4 +9118,290 @@ a.primary {
 .detail-sheet-delete-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* =========================================================================
+   Recipe detail dialog — layered on top of the app via Next.js intercepted
+   routes. Mobile: full-screen sheet that slides up from the bottom. Medium
+   (600–1008px): centered 600px card with a 25% black backdrop. Large
+   (≥1008px): centered 960px card, dual-column like the standalone page.
+   ========================================================================= */
+
+.recipe-detail-dialog {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  width: 100dvw;
+  max-width: 100dvw;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.recipe-detail-dialog[open] {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.recipe-detail-dialog::backdrop {
+  /* Mobile: no visible backdrop — the surface fills the viewport. Medium/
+     large override this below. */
+  background: transparent;
+}
+
+.recipe-detail-dialog-surface {
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  width: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  animation: recipe-detail-dialog-slide-in 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.recipe-detail-dialog[data-closing="true"] .recipe-detail-dialog-surface {
+  animation: recipe-detail-dialog-slide-out 220ms cubic-bezier(0.32, 0.72, 0, 1)
+    forwards;
+}
+
+@keyframes recipe-detail-dialog-slide-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes recipe-detail-dialog-slide-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes recipe-detail-dialog-scale-in {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes recipe-detail-dialog-scale-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recipe-detail-dialog-surface,
+  .recipe-detail-dialog[data-closing="true"] .recipe-detail-dialog-surface {
+    animation: none !important;
+  }
+}
+
+/* --- Medium (600–1008px): centered 600px card, dimmed backdrop --- */
+@media (min-width: 600px) {
+  .recipe-detail-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.25);
+  }
+  .recipe-detail-dialog[open] {
+    padding: var(--space-24);
+    align-items: center;
+  }
+  .recipe-detail-dialog-surface {
+    width: 100%;
+    max-width: var(--space-600, 600px);
+    height: auto;
+    max-height: calc(100dvh - var(--space-48));
+    border: var(--space-1) solid var(--ink);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    animation: recipe-detail-dialog-scale-in 180ms ease;
+  }
+  .recipe-detail-dialog[data-closing="true"] .recipe-detail-dialog-surface {
+    animation: recipe-detail-dialog-scale-out 180ms ease forwards;
+  }
+}
+
+/* --- Large (≥1008px): 960px dual-column card --- */
+@media (min-width: 1008px) {
+  .recipe-detail-dialog-surface {
+    max-width: var(--space-960);
+  }
+}
+
+/* --- Floating overlay chrome (X + kebab) --- */
+
+.recipe-detail-overlay-chrome {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.recipe-detail-overlay-btn {
+  pointer-events: auto;
+  position: absolute;
+  top: var(--space-12);
+  width: var(--space-40);
+  height: var(--space-40);
+  border-radius: 999px;
+  background: var(--paper);
+  border: var(--space-1) solid var(--ink);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition:
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+
+.recipe-detail-overlay-btn:hover {
+  background: var(--mist);
+}
+
+.recipe-detail-overlay-btn:active {
+  transform: scale(0.96);
+}
+
+.recipe-detail-overlay-btn:focus-visible {
+  outline: var(--space-2) solid var(--ink);
+  outline-offset: var(--space-2);
+}
+
+.recipe-detail-overlay-close {
+  left: var(--space-12);
+}
+
+.recipe-detail-overlay-menu-trigger {
+  right: var(--space-12);
+}
+
+/* Hide floating chrome at ≥1008px — inline Edit takes over. */
+@media (min-width: 1008px) {
+  .recipe-detail-overlay-chrome {
+    display: none;
+  }
+}
+
+/* --- Editor layout adjustments when rendered inside the modal --- */
+
+/* Below 1008px: always single column (override the standalone page's
+   832px breakpoint so the medium range also stays single column). */
+@media (max-width: 63rem) {
+  .recipe-detail--in-modal .recipe-detail-layout {
+    grid-template-columns: 1fr;
+    padding: 0;
+    gap: 0;
+  }
+  .recipe-detail--in-modal .recipe-detail-aside {
+    position: static;
+    order: -1;
+    top: auto;
+  }
+  .recipe-detail--in-modal .recipe-detail-aside-stack {
+    gap: var(--space-16);
+  }
+  /* Image fills the top of the card edge-to-edge. */
+  .recipe-detail--in-modal .recipe-detail-photo-panel,
+  .recipe-detail--in-modal .recipe-detail-photo-panel--static,
+  .recipe-detail--in-modal .recipe-detail-photo-panel--generating {
+    border: 0;
+    padding: 0;
+    aspect-ratio: 1 / 1;
+  }
+  /* 16px gap from image to content, 20px side padding. */
+  .recipe-detail--in-modal .recipe-detail-main {
+    padding: var(--space-16) var(--space-20) var(--space-32);
+  }
+  /* The inline Edit button in view mode is redundant with the kebab menu. */
+  .recipe-detail--in-modal .recipe-detail-aside-edit-wrap {
+    display: none;
+  }
+}
+
+/* ≥1008px: dual-column card, match the standalone page look with a bit of
+   inner padding so the content breathes from the card edges. */
+@media (min-width: 1008px) {
+  .recipe-detail--in-modal .recipe-detail-layout {
+    padding: var(--space-32);
+    gap: var(--space-36);
+  }
+  .recipe-detail--in-modal .recipe-detail-aside {
+    /* Sticky doesn't help when the scroll container is the dialog surface —
+       disable it so the aside flows naturally inside the card. */
+    position: static;
+    top: auto;
+  }
+}
+
+/* --- Kebab dropdown menu --- */
+
+.recipe-detail-overlay-menu {
+  background: var(--paper);
+  border: var(--space-1) solid var(--ink);
+  min-width: var(--space-192, 180px);
+  padding: var(--space-4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 3000;
+}
+
+.recipe-detail-overlay-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  font-size: 0.875rem;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.recipe-detail-overlay-menu-item[data-highlighted] {
+  background: var(--mist);
+}
+
+.recipe-detail-overlay-menu-item[data-disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.recipe-detail-overlay-menu-item--destructive {
+  color: #c0392b;
+}
+
+.recipe-detail-overlay-menu-separator {
+  height: var(--space-1);
+  background: var(--mist);
+  margin: var(--space-4) 0;
 }

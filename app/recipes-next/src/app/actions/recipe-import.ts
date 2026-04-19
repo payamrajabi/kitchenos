@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { fetchUrlContent } from "@/lib/recipe-import/fetch-url-content";
+import { scrapeRecipeImageCandidates } from "@/lib/recipe-import/scrape-source-images";
 import { extractRecipeTextFromImages } from "@/lib/recipe-import/extract-from-images";
 import {
   parseRecipeContent,
@@ -27,6 +28,7 @@ import type {
   DraftIngredientOption,
 } from "@/lib/recipe-import/types";
 import { generateAndAttachRecipeImage } from "@/lib/recipe-image-generation";
+import { attachSourceImageToRecipe } from "@/lib/recipe-image-generation/attach-source-image";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -108,7 +110,7 @@ type DraftResult =
 
 async function buildDraft(
   rawContent: string,
-  opts: { sourceUrl?: string },
+  opts: { sourceUrl?: string; sourceImageCandidates?: string[] },
 ): Promise<DraftResult> {
   const supabase = await createClient();
   const {
@@ -147,6 +149,7 @@ async function buildDraft(
       parsed: parseResult.recipe,
       resolutions: plan.resolutions,
       existingIngredients: forDraft,
+      sourceImageCandidates: opts.sourceImageCandidates,
     },
   };
 }
@@ -158,10 +161,26 @@ async function buildDraft(
 export async function importRecipeFromUrlAction(
   rawUrl: string,
 ): Promise<DraftResult> {
-  const fetchResult = await fetchUrlContent(rawUrl);
+  const trimmedUrl = rawUrl.trim();
+
+  // Fetch readable text and scrape candidate hero images in parallel — the
+  // text goes to the parser, the image URLs are stashed on the draft so the
+  // confirm step can skip the expensive AI image generator.
+  const [fetchResult, scrapeResult] = await Promise.all([
+    fetchUrlContent(rawUrl),
+    scrapeRecipeImageCandidates(trimmedUrl),
+  ]);
   if (!fetchResult.ok) return fetchResult;
 
-  return buildDraft(fetchResult.content, { sourceUrl: rawUrl.trim() });
+  const sourceImageCandidates =
+    scrapeResult.ok && scrapeResult.candidates.length > 0
+      ? scrapeResult.candidates
+      : undefined;
+
+  return buildDraft(fetchResult.content, {
+    sourceUrl: trimmedUrl,
+    sourceImageCandidates,
+  });
 }
 
 async function blobsToBase64DataUrls(
@@ -241,6 +260,7 @@ export async function importRecipeFromIntakeAction(
 export async function confirmRecipeDraftAction(
   parsed: ParsedRecipe,
   resolutions: IngredientResolution[],
+  sourceImageCandidates?: string[],
 ): Promise<{ ok: false; error: string }> {
   const supabase = await createClient();
   const {
@@ -383,6 +403,25 @@ export async function confirmRecipeDraftAction(
 
     after(async () => {
       try {
+        if (sourceImageCandidates?.length) {
+          const attached = await attachSourceImageToRecipe(
+            recipeId,
+            sourceImageCandidates,
+          );
+          if (attached.ok) {
+            console.log(
+              "[recipe-image] attached source image",
+              recipeId,
+              attached.sourceUrl,
+            );
+            return;
+          }
+          console.warn(
+            "[recipe-image] source-scrape failed, falling back to AI",
+            recipeId,
+          );
+        }
+
         const result = await generateAndAttachRecipeImage(recipeId);
         if (!result.ok) {
           console.warn(

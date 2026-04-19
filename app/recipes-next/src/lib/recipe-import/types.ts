@@ -86,4 +86,11 @@ export type DraftRecipeData = {
   parsed: ParsedRecipe;
   resolutions: IngredientResolution[];
   existingIngredients: DraftIngredientOption[];
+  /**
+   * Candidate hero-image URLs scraped from the original source page, in
+   * priority order. Only populated for URL imports. When present, the
+   * confirm step will try to download the first working candidate and
+   * attach it instead of invoking the AI image generator.
+   */
+  sourceImageCandidates?: string[];
 };

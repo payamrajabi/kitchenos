@@ -27,7 +27,7 @@ import {
 
 const PLACEHOLDER_WIDE =
   "Paste a recipe link, describe a recipe, or drop photos…";
-const PLACEHOLDER_NARROW = "Add recipe link, description, or photos…";
+const PLACEHOLDER_NARROW = "Add recipe link, text or image";
 const NARROW_VIEWPORT_QUERY = "(max-width: 640px)";
 
 export const DRAFT_STORAGE_KEY = "kitchenos-recipe-draft";

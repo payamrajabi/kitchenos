@@ -13,6 +13,8 @@ import { RecipeServingsScaleProvider } from "@/components/recipe-servings-scale"
 import { RecipeIngredientUnitDisplayProvider } from "@/components/recipe-ingredient-unit-display";
 import { Minus, Plus } from "@phosphor-icons/react";
 import { RecipeDescriptionRichText } from "@/components/recipe-description-rich-text";
+import { useRecipeDetailDialog } from "@/components/recipe-detail-dialog";
+import { RecipeDetailOverlayChrome } from "@/components/recipe-detail-overlay-chrome";
 import { isSupabaseConfigured, recipeImagesBucket } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import { applyMarkdownLinkPaste } from "@/lib/recipe-description-links";
@@ -97,6 +99,12 @@ export function RecipeDetailEditor({
   const searchParams = useSearchParams();
   const autoGenFlag = searchParams?.get("gen") === "1";
   const effectiveAutoGenerating = autoGenerating || autoGenFlag;
+  // When the editor is rendered inside the recipe modal (intercepted route),
+  // we surface a floating close button + kebab menu that replace the inline
+  // Edit button at mobile/medium breakpoints. The dialog context being null
+  // means we're on the standalone page and should render no modal chrome.
+  const modalCtx = useRecipeDetailDialog();
+  const inModal = modalCtx != null;
   const fileRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const replaceImageClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -760,7 +768,23 @@ export function RecipeDetailEditor({
   return (
     <RecipeEditModeProvider mode={isEditing ? "edit" : "view"}>
     <RecipeServingsScaleProvider scale={servingsScale}>
-    <article className={`recipe-detail recipe-detail--${isEditing ? "edit" : "view"}`}>
+    <article
+      className={[
+        "recipe-detail",
+        `recipe-detail--${isEditing ? "edit" : "view"}`,
+        inModal ? "recipe-detail--in-modal" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {inModal ? (
+        <RecipeDetailOverlayChrome
+          onClose={() => modalCtx?.close()}
+          onEdit={viewOnly ? null : toggleEditing}
+          onDelete={viewOnly ? null : openDeleteModal}
+          sourceUrl={initial.source_url}
+        />
+      ) : null}
       <div className="recipe-detail-layout">
         <div className="recipe-detail-main">
           {isEditing ? (

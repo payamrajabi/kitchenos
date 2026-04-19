@@ -385,7 +385,11 @@ export function RecipeDraftReview() {
     setError(null);
     startTransition(async () => {
       try {
-        const result = await confirmRecipeDraftAction(parsed, resolutions);
+        const result = await confirmRecipeDraftAction(
+          parsed,
+          resolutions,
+          draft?.sourceImageCandidates,
+        );
         if (!result.ok) {
           setError(result.error);
           return;
@@ -398,7 +402,7 @@ export function RecipeDraftReview() {
         setError(err instanceof Error ? err.message : "Failed to save.");
       }
     });
-  }, [parsed, resolutions, cleanupDraftStorage]);
+  }, [parsed, resolutions, draft, cleanupDraftStorage]);
 
   const handleDiscard = useCallback(() => {
     cleanupDraftStorage();

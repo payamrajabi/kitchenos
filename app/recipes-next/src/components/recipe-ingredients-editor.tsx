@@ -493,6 +493,21 @@ function RecipeIngredientItemRow({
   }, [amount, item.amount, item.id, onSaveAmount]);
 
   const displayName = item.ingredients?.name ?? "Untitled";
+
+  const handleRowClick = useCallback(
+    (e: ReactMouseEvent<HTMLTableRowElement>) => {
+      // Only honour tap-to-toggle in view mode. In edit mode, row clicks
+      // shouldn't accidentally mark ingredients prepared while authoring.
+      if (isEditing) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("button, input, textarea, select, a, [role=menu], [data-radix-collection-item]")) {
+        return;
+      }
+      onTogglePrepared();
+    },
+    [isEditing, onTogglePrepared],
+  );
+
   const pickLineIngredient = useCallback(
     (suggestion: Suggestion) => {
       if (suggestion.kind === "existing") {
@@ -548,7 +563,8 @@ function RecipeIngredientItemRow({
     <tr
       ref={rowRef}
       style={rowStyle}
-      className={["recipe-ingredient-row", prepared ? "recipe-ingredient-row--prepared" : "", rowClassName].filter(Boolean).join(" ")}
+      onClick={handleRowClick}
+      className={["recipe-ingredient-row", prepared ? "recipe-ingredient-row--prepared" : "", rowClassName, !isEditing ? "recipe-ingredient-row--tap-toggle" : ""].filter(Boolean).join(" ")}
     >
       <td className="recipe-ingredient-lead-cell">
         {isEditing && dragHandleSlot != null ? (

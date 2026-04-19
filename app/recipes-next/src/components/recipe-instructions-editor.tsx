@@ -253,9 +253,9 @@ function StepTimerDisplay({
 
   return (
     <span className="step-timer-block">
-      <span className="step-timer-duration-slot">
-        {showDurationText ? (
-          editingTimer ? (
+      {showDurationText ? (
+        <span className="step-timer-duration-slot">
+          {editingTimer ? (
             <input
               type="text"
               className="step-timer-display step-timer-inline-input"
@@ -300,16 +300,9 @@ function StepTimerDisplay({
             >
               {display}
             </span>
-          )
-        ) : (
-          <span
-            className="step-timer-display step-timer-duration-placeholder"
-            aria-hidden
-          >
-            {display}
-          </span>
-        )}
-      </span>
+          )}
+        </span>
+      ) : null}
       <span className="step-timer-ring-wrap">
         {running && (
           <svg
@@ -549,7 +542,7 @@ function SortableInstructionRow({
       const target = e.target as HTMLElement;
       if (
         target.closest(
-          "textarea, button, input, [role=menu], [data-radix-collection-item], .instruction-actions-row",
+          "textarea, button, input, [role=menu], [data-radix-collection-item]",
         )
       )
         return;
@@ -559,6 +552,11 @@ function SortableInstructionRow({
   );
 
   const staticBody = !isEditing && body.trim();
+
+  // When there's nothing to render in the actions column (no timer, no menu,
+  // not editing), let the body cell span both columns so the text can flow
+  // into the space that would otherwise be reserved by the actions column.
+  const showActionsCell = !completed && (isEditing || timerColumnWhenIncomplete);
 
   return (
     <tr
@@ -596,7 +594,10 @@ function SortableInstructionRow({
           </span>
         )}
       </td>
-      <td className="recipe-instruction-body-cell">
+      <td
+        className="recipe-instruction-body-cell"
+        colSpan={showActionsCell ? undefined : 2}
+      >
         <div className="recipe-instruction-body-stack">
           {isEditing ? (
             <>
@@ -662,31 +663,27 @@ function SortableInstructionRow({
           )}
         </div>
       </td>
-      <td className="instruction-actions-cell">
-        {completed
-          ? null
-          : isEditing || timerColumnWhenIncomplete
-            ? (
-              <div className="instruction-actions-row">
-                <StepTimerDisplay
-                  item={item}
-                  recipeName={recipeName}
-                  disabled={disabled}
-                  onTimerChange={onTimerChange}
-                />
-                {isEditing ? (
-                  <InstructionActionsMenu
-                    item={item}
-                    displayIndex={displayIndex}
-                    disabled={disabled}
-                    onRemove={onRemove}
-                    onTimerChange={onTimerChange}
-                  />
-                ) : null}
-              </div>
-            )
-            : null}
-      </td>
+      {showActionsCell ? (
+        <td className="instruction-actions-cell">
+          <div className="instruction-actions-row">
+            <StepTimerDisplay
+              item={item}
+              recipeName={recipeName}
+              disabled={disabled}
+              onTimerChange={onTimerChange}
+            />
+            {isEditing ? (
+              <InstructionActionsMenu
+                item={item}
+                displayIndex={displayIndex}
+                disabled={disabled}
+                onRemove={onRemove}
+                onTimerChange={onTimerChange}
+              />
+            ) : null}
+          </div>
+        </td>
+      ) : null}
     </tr>
   );
 }
