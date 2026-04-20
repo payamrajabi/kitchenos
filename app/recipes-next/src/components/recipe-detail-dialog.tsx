@@ -12,6 +12,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { getTopLayerHost, setTopLayerHost } from "@/lib/top-layer-host";
 
 // Provides the enclosing modal's close handler to descendants (in particular
 // to the <RecipeDetailEditor>, which renders its own overlay chrome when it
@@ -69,6 +70,17 @@ export function RecipeDetailDialog({
         /* Already open or not supported — harmless. */
       }
     }
+    // Register as the active top-layer host so the global <Toaster> re-
+    // parents into this dialog and its toasts stack above the dialog
+    // content rather than being trapped behind the top-layer.
+    setTopLayerHost(el);
+    return () => {
+      // Only clear if we're still the registered host — another dialog may
+      // have registered after us (unlikely in practice, but cheap to guard).
+      if (getTopLayerHost() === el) {
+        setTopLayerHost(null);
+      }
+    };
   }, []);
 
   const dismiss = useCallback(() => {
@@ -76,6 +88,13 @@ export function RecipeDetailDialog({
     closingRef.current = true;
     setIsClosing(true);
     const el = dialogRef.current;
+
+    // Release the toaster host at the start of the close animation so any
+    // toasts that arrive mid-close land in the body where they'll be
+    // immediately visible, rather than inside a dialog that's sliding away.
+    if (el && getTopLayerHost() === el) {
+      setTopLayerHost(null);
+    }
 
     const finish = () => {
       // Prefer returning via history so the back stack stays clean; fall back

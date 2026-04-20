@@ -6,12 +6,17 @@ import {
   duplicateRecipeAction,
   removeRecipeFromLibraryAction,
 } from "@/app/actions/recipes";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 type Props = {
   recipeId: number;
   inLibrary: boolean;
   isSignedIn: boolean;
+  // Optional callback so a parent can mirror library state (e.g. to also show
+  // a "Remove from my recipes" entry in the modal's kebab menu). When the
+  // prop value changes externally we re-sync internal state so both entry
+  // points stay consistent.
+  onInLibraryChange?: (next: boolean) => void;
 };
 
 /**
@@ -27,8 +32,20 @@ type Props = {
  * - A small secondary "Duplicate to my recipes" button lives underneath and
  *   makes an independent copy (the server action redirects on success).
  */
-export function CommunitySaveActions({ recipeId, inLibrary: initialInLibrary, isSignedIn }: Props) {
-  const [inLibrary, setInLibrary] = useState(initialInLibrary);
+export function CommunitySaveActions({
+  recipeId,
+  inLibrary: inLibraryProp,
+  isSignedIn,
+  onInLibraryChange,
+}: Props) {
+  const [inLibrary, setInLibraryInternal] = useState(inLibraryProp);
+  useEffect(() => {
+    setInLibraryInternal(inLibraryProp);
+  }, [inLibraryProp]);
+  const setInLibrary = (next: boolean) => {
+    setInLibraryInternal(next);
+    onInLibraryChange?.(next);
+  };
   const [isLibraryPending, startLibraryTransition] = useTransition();
   const [isDuplicatePending, startDuplicateTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

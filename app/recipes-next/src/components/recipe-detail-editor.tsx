@@ -74,6 +74,13 @@ type Props = {
   // Rendered in the aside under the recipe image, in the slot normally
   // occupied by the "Edit" button. Only used when `viewOnly` is true.
   asideActionSlot?: ReactNode;
+  // Extra entries prepended to the modal's kebab menu (above the built-in
+  // Edit / Go to source / Delete entries). Only shown when the editor is
+  // rendered inside the recipe modal. Used by the community viewer to expose
+  // a "Remove from my recipes" shortcut for saved community recipes.
+  overlayExtraMenuItems?: import(
+    "@/components/recipe-detail-overlay-chrome"
+  ).RecipeDetailOverlayMenuItem[];
 };
 
 function str(v: string | null | undefined) {
@@ -94,6 +101,7 @@ export function RecipeDetailEditor({
   autoGenerating = false,
   viewOnly = false,
   asideActionSlot = null,
+  overlayExtraMenuItems = [],
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -783,6 +791,7 @@ export function RecipeDetailEditor({
           onEdit={viewOnly ? null : toggleEditing}
           onDelete={viewOnly ? null : openDeleteModal}
           sourceUrl={initial.source_url}
+          extraMenuItems={overlayExtraMenuItems}
         />
       ) : null}
       <div className="recipe-detail-layout">
@@ -1253,20 +1262,6 @@ export function RecipeDetailEditor({
                   </a>
                 </p>
               ) : null}
-            </section>
-          ) : str(initial.source_url).trim() ? (
-            <section className="section recipe-source-section recipe-source-section--static">
-              <span className="recipe-source-label">Source</span>
-              <p className="recipe-source-open-wrap">
-                <a
-                  className="source-link"
-                  href={str(initial.source_url).trim()}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open source
-                </a>
-              </p>
             </section>
           ) : null}
           {isEditing ? (

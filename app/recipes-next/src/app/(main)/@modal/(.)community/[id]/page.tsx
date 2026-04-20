@@ -1,6 +1,5 @@
-import { CommunitySaveActions } from "@/components/community-save-actions";
+import { CommunityRecipeModalBody } from "@/components/community-recipe-modal-body";
 import { RecipeDetailDialog } from "@/components/recipe-detail-dialog";
-import { RecipeDetailEditor } from "@/components/recipe-detail-editor";
 import { RecipeTombstone } from "@/components/recipe-tombstone";
 import { loadCommunityRecipeDetail } from "@/lib/load-recipe-detail";
 import { notFound, redirect } from "next/navigation";
@@ -55,21 +54,15 @@ export default async function CommunityRecipeDetailModalPage({ params }: Props) 
       closeFallbackHref="/community"
       ariaLabel={recipe.name || "Recipe"}
     >
-      <RecipeDetailEditor
-        key={recipe.id}
+      <CommunityRecipeModalBody
         recipe={recipe}
         recipeIngredients={recipeIngredients}
         recipeIngredientSections={recipeIngredientSections}
         recipeInstructionSteps={recipeInstructionSteps}
         availableIngredients={availableIngredients}
-        viewOnly
-        asideActionSlot={
-          <CommunitySaveActions
-            recipeId={recipe.id}
-            inLibrary={inLibrary}
-            isSignedIn={isSignedIn}
-          />
-        }
+        recipeId={recipe.id}
+        initialInLibrary={inLibrary}
+        isSignedIn={isSignedIn}
       />
     </RecipeDetailDialog>
   );

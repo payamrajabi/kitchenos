@@ -2,6 +2,8 @@
 
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import { PlanEntryServingsControl } from "@/components/plan-entry-servings-control";
+import { PlanSuggestionCycleControl } from "@/components/plan-suggestion-cycle-control";
+import { PlanSuggestionDismissButton } from "@/components/plan-suggestion-dismiss-button";
 import { getPlanSlotTimeLabel, type PlanSlotKey } from "@/lib/meal-plan";
 import {
   normalizeMealTypesFromDb,
@@ -207,6 +209,8 @@ export function PlanMealSlot({
             const focusY =
               recipeForImage != null ? recipeImageFocusYPercent(recipeForImage) : 50;
 
+            const isSuggestion = entry.is_suggestion === true;
+
             const imageBody = (
               <div className="plan-board-card-thumb">
                 {imgUrl ? (
@@ -228,11 +232,24 @@ export function PlanMealSlot({
                     {titleText.trim().slice(0, 3).toUpperCase()}
                   </span>
                 )}
-                <PlanEntryServingsControl
-                  entryId={entry.id}
-                  servingsProp={entry.servings}
-                  pendingParent={pending}
-                />
+                {isSuggestion ? (
+                  <>
+                    <PlanSuggestionDismissButton
+                      entryId={entry.id}
+                      pendingParent={pending}
+                    />
+                    <PlanSuggestionCycleControl
+                      entryId={entry.id}
+                      pendingParent={pending}
+                    />
+                  </>
+                ) : (
+                  <PlanEntryServingsControl
+                    entryId={entry.id}
+                    servingsProp={entry.servings}
+                    pendingParent={pending}
+                  />
+                )}
               </div>
             );
 
@@ -246,6 +263,7 @@ export function PlanMealSlot({
               dragEnabled ? "plan-board-card--draggable" : "",
               isDraggingSelf ? "is-dragging" : "",
               isDropHover ? "is-drop-target" : "",
+              isSuggestion ? "plan-board-card--suggestion" : "",
             ]
               .filter(Boolean)
               .join(" ");

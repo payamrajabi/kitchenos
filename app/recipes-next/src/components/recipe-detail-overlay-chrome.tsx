@@ -2,7 +2,13 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ArrowSquareOut, DotsThree, PencilSimple, Trash, X } from "@phosphor-icons/react";
-import type { MouseEvent } from "react";
+import { useSyncExternalStore, type MouseEvent } from "react";
+import {
+  getTopLayerHost,
+  subscribeTopLayerHost,
+} from "@/lib/top-layer-host";
+
+const getServerSnapshot = () => null;
 
 type Props = {
   onClose: () => void;
@@ -42,6 +48,17 @@ export function RecipeDetailOverlayChrome({
   const hasBuiltInActions = !!(onEdit || onDelete || trimmedSource);
   const showMenu = !hideMenu && (hasBuiltInActions || extraMenuItems.length > 0);
 
+  // When the editor is rendered inside the recipe modal, Radix's default
+  // portal target (document.body) renders the menu underneath the native
+  // <dialog> top-layer — so it opens but is invisible and unclickable.
+  // We read the current top-layer host from our shared store and portal the
+  // menu into it so the menu stacks above the dialog content.
+  const topLayerHost = useSyncExternalStore(
+    subscribeTopLayerHost,
+    getTopLayerHost,
+    getServerSnapshot,
+  );
+
   const handleCloseClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -70,7 +87,7 @@ export function RecipeDetailOverlayChrome({
               <DotsThree size={24} weight="bold" aria-hidden />
             </button>
           </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
+          <DropdownMenu.Portal container={topLayerHost ?? undefined}>
             <DropdownMenu.Content
               className="recipe-detail-overlay-menu"
               align="end"
@@ -122,7 +139,7 @@ export function RecipeDetailOverlayChrome({
                   }}
                 >
                   <ArrowSquareOut size={16} weight="regular" aria-hidden />
-                  <span>Open source</span>
+                  <span>Go to source</span>
                 </DropdownMenu.Item>
               ) : null}
 

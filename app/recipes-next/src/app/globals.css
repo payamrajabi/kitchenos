@@ -3751,6 +3751,96 @@ main.container:has(> .shop-view) {
   }
 }
 
+/* Suggestion-card affordances: cycle (top-right) and dismiss (top-left). */
+.plan-suggestion-cycle {
+  --cell: min(26px, calc((100cqw - var(--space-12)) / 3));
+  position: absolute;
+  top: var(--space-6);
+  right: var(--space-6);
+  z-index: 4;
+  width: var(--cell);
+  height: var(--cell);
+  pointer-events: auto;
+}
+
+.plan-suggestion-cycle-btn,
+.plan-suggestion-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #0a0a0a;
+  color: #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    transform 0.12s ease;
+}
+
+.plan-suggestion-cycle-btn:hover,
+.plan-suggestion-cycle-btn:focus-visible,
+.plan-suggestion-dismiss:hover,
+.plan-suggestion-dismiss:focus-visible {
+  background-color: #1a1a1a;
+  outline: none;
+  transform: scale(1.06);
+}
+
+.plan-suggestion-cycle-btn:disabled,
+.plan-suggestion-dismiss:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.plan-suggestion-dismiss {
+  --cell: min(26px, calc((100cqw - var(--space-12)) / 3));
+  position: absolute;
+  top: var(--space-6);
+  left: var(--space-6);
+  z-index: 4;
+  width: var(--cell);
+  height: var(--cell);
+  pointer-events: auto;
+}
+
+/* Subtle "this isn't committed yet" treatment for suggestion cards. */
+.plan-board-card--suggestion {
+  position: relative;
+}
+
+.plan-board-card--suggestion::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px dashed rgb(0 0 0 / 0.25);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.plan-board-card--suggestion .plan-board-card-thumb-img {
+  opacity: 0.88;
+}
+
+.is-spinning {
+  animation: plan-suggestion-spin 0.9s linear infinite;
+}
+
+@keyframes plan-suggestion-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .plan-board-card-thumb-img {
   width: 100%;
   height: 100%;
@@ -8155,17 +8245,6 @@ a.primary {
   border-radius: 0;
 }
 
-/* View-mode source — just the "Open source" link. */
-.recipe-source-section--static {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.recipe-source-section--static .recipe-source-open-wrap {
-  margin: 0;
-}
-
 /* ============================================================
    Ingredient table — static cell variants
    ============================================================ */
@@ -9273,7 +9352,7 @@ a.primary {
   height: var(--space-40);
   border-radius: 999px;
   background: var(--paper);
-  border: var(--space-1) solid var(--ink);
+  border: var(--space-1) solid rgba(0, 0, 0, 0.05);
   color: var(--ink);
   display: inline-flex;
   align-items: center;
@@ -9307,9 +9386,12 @@ a.primary {
   right: var(--space-12);
 }
 
-/* Hide floating chrome at ≥1008px — inline Edit takes over. */
+/* At ≥1008px the inline Edit button takes over for editing, so the floating
+   close button is redundant (Esc / backdrop click still close the dialog).
+   The three-dot menu stays visible so actions like "Go to source" remain
+   reachable from view mode. */
 @media (min-width: 1008px) {
-  .recipe-detail-overlay-chrome {
+  .recipe-detail-overlay-close {
     display: none;
   }
 }
