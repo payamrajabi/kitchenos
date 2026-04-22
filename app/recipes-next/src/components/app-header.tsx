@@ -8,19 +8,6 @@ import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import { AuthModal } from "@/components/auth-modal";
 import { dispatchPlanScrollToToday } from "@/lib/plan-board-scroll";
-import {
-  useTheme,
-  type ThemePreference,
-} from "@/components/theme-provider";
-
-const APPEARANCE_OPTIONS: ReadonlyArray<{
-  value: ThemePreference;
-  label: string;
-}> = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
 
 const PRIMARY = [
   { href: "/plan", label: "Plan" },
@@ -37,8 +24,6 @@ function primaryTabState(pathname: string, href: string) {
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { preference: themePreference, setPreference: setThemePreference } =
-    useTheme();
 
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -171,8 +156,8 @@ export function AppHeader() {
                       className="user-avatar-image"
                       src={avatarUrl}
                       alt=""
-                      width={32}
-                      height={32}
+                      width={36}
+                      height={36}
                       unoptimized
                       referrerPolicy="no-referrer"
                     />
@@ -187,27 +172,6 @@ export function AppHeader() {
                     aria-label="Account"
                   >
                     <div className="user-menu-email">{user.email}</div>
-                    <div
-                      className="user-menu-appearance"
-                      role="group"
-                      aria-label="Appearance"
-                    >
-                      <div className="user-menu-appearance-label">
-                        Appearance
-                      </div>
-                      <div className="user-menu-appearance-segments">
-                        {APPEARANCE_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            aria-pressed={themePreference === opt.value}
-                            onClick={() => setThemePreference(opt.value)}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                     <Link
                       href="/people"
                       role="menuitem"

@@ -32,8 +32,6 @@ import { attachSourceImageToRecipe } from "@/lib/recipe-image-generation/attach-
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { loadOwnerRecipeDetail } from "@/lib/load-recipe-detail";
-import { serializeRecipeDetailForRefinement } from "@/lib/recipe-import/serialize-recipe-detail-for-refinement";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -112,11 +110,7 @@ type DraftResult =
 
 async function buildDraft(
   rawContent: string,
-  opts: {
-    sourceUrl?: string;
-    sourceImageCandidates?: string[];
-    baseRecipeId?: number;
-  } = {},
+  opts: { sourceUrl?: string; sourceImageCandidates?: string[] },
 ): Promise<DraftResult> {
   const supabase = await createClient();
   const {
@@ -124,28 +118,12 @@ async function buildDraft(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Sign in first." };
 
-  let existingRecipeSerialized: string | undefined;
-  if (opts.baseRecipeId != null) {
-    const detail = await loadOwnerRecipeDetail(String(opts.baseRecipeId));
-    if (detail.status !== "ok") {
-      return {
-        ok: false,
-        error:
-          detail.status === "signed-out"
-            ? "Sign in first."
-            : "Could not load the recipe to refine.",
-      };
-    }
-    existingRecipeSerialized = serializeRecipeDetailForRefinement(detail.data);
-  }
-
   const { forResolution, forParser, forDraft } =
     await loadUserInventory(supabase);
 
   const parseResult = await parseRecipeContent(rawContent, {
     sourceUrl: opts.sourceUrl,
     inventory: forParser,
-    existingRecipeSerialized,
   });
   if (!parseResult.ok) return parseResult;
 
@@ -165,17 +143,15 @@ async function buildDraft(
     },
   );
 
-  const draft: DraftRecipeData = {
-    parsed: parseResult.recipe,
-    resolutions: plan.resolutions,
-    existingIngredients: forDraft,
-    sourceImageCandidates: opts.sourceImageCandidates,
+  return {
+    ok: true,
+    draft: {
+      parsed: parseResult.recipe,
+      resolutions: plan.resolutions,
+      existingIngredients: forDraft,
+      sourceImageCandidates: opts.sourceImageCandidates,
+    },
   };
-  if (opts.baseRecipeId != null) {
-    draft.baseRecipeId = opts.baseRecipeId;
-  }
-
-  return { ok: true, draft };
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,7 +160,6 @@ async function buildDraft(
 
 export async function importRecipeFromUrlAction(
   rawUrl: string,
-  actionOpts?: { baseRecipeId?: number },
 ): Promise<DraftResult> {
   const trimmedUrl = rawUrl.trim();
 
@@ -192,7 +167,7 @@ export async function importRecipeFromUrlAction(
   // text goes to the parser, the image URLs are stashed on the draft so the
   // confirm step can skip the expensive AI image generator.
   const [fetchResult, scrapeResult] = await Promise.all([
-    fetchUrlContent(trimmedUrl),
+    fetchUrlContent(rawUrl),
     scrapeRecipeImageCandidates(trimmedUrl),
   ]);
   if (!fetchResult.ok) return fetchResult;
@@ -205,7 +180,6 @@ export async function importRecipeFromUrlAction(
   return buildDraft(fetchResult.content, {
     sourceUrl: trimmedUrl,
     sourceImageCandidates,
-    baseRecipeId: actionOpts?.baseRecipeId,
   });
 }
 
@@ -255,7 +229,6 @@ export async function importRecipeFromTextAction(
 export async function importRecipeFromIntakeAction(
   rawText: string,
   imageBlobs: Blob[],
-  actionOpts?: { baseRecipeId?: number },
 ): Promise<DraftResult> {
   const text = rawText.trim();
   const hasImages = imageBlobs.length > 0;
@@ -267,10 +240,8 @@ export async function importRecipeFromIntakeAction(
     };
   }
 
-  const buildOpts = { baseRecipeId: actionOpts?.baseRecipeId };
-
   if (!hasImages) {
-    return buildDraft(text, buildOpts);
+    return buildDraft(text, {});
   }
 
   const images = await blobsToBase64DataUrls(imageBlobs);
@@ -279,170 +250,51 @@ export async function importRecipeFromIntakeAction(
   });
   if (!extractResult.ok) return extractResult;
 
-  return buildDraft(extractResult.content, buildOpts);
+  return buildDraft(extractResult.content, {});
 }
 
 /* ------------------------------------------------------------------ */
 /*  Confirm draft — apply resolutions + save recipe to DB             */
 /* ------------------------------------------------------------------ */
 
-export type ConfirmRecipeDraftMode = "create" | "update";
-
-export type ConfirmRecipeDraftOptions = {
-  sourceImageCandidates?: string[];
-  mode?: ConfirmRecipeDraftMode;
-  baseRecipeId?: number;
-};
-
-function recipePatchFromParsed(parsed: ParsedRecipe): Record<string, unknown> {
-  const legacyInstructionsText = formatInstructionStepsToRecipeText(
-    parsed.instruction_steps.map((s) => s.text),
-  );
-  return {
-    name: parsed.name,
-    title_primary: parsed.title.primary,
-    title_qualifier: parsed.title.qualifier,
-    headnote: parsed.headnote,
-    description: parsed.description,
-    source_url: parsed.source_url,
-    servings: parsed.servings,
-    yield_label: parsed.yield.label,
-    yield_quantity: parsed.yield.quantity,
-    yield_unit: parsed.yield.unit,
-    yield_display: parsed.yield.display,
-    prep_time_minutes: parsed.prep_time_minutes,
-    cook_time_minutes: parsed.cook_time_minutes,
-    meal_types: normalizeMealTypesForStorage(parsed.meal_types),
-    notes: parsed.notes,
-    notes_type: parsed.recipe_note.type,
-    notes_title: parsed.recipe_note.title,
-    instructions: legacyInstructionsText || null,
-    updated_at: new Date().toISOString(),
-  };
-}
-
-async function insertParsedRecipeStructure(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  recipeId: number,
-  parsed: ParsedRecipe,
-  resolvedByName: Map<string, number>,
-  rollback: () => Promise<void>,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  for (
-    let grpIdx = 0;
-    grpIdx < parsed.ingredient_groups.length;
-    grpIdx++
-  ) {
-    const group = parsed.ingredient_groups[grpIdx];
-    let sectionId: string | null = null;
-
-    if (group.heading) {
-      const { data: secRow, error: secErr } = await supabase
-        .from("recipe_ingredient_sections")
-        .insert({
-          recipe_id: recipeId,
-          heading: group.heading,
-          sort_order: grpIdx,
-        })
-        .select("id")
-        .single();
-
-      if (secErr || !secRow) {
-        await rollback();
-        return {
-          ok: false,
-          error: secErr?.message ?? "Could not create ingredient section.",
-        };
-      }
-      sectionId = String(secRow.id);
-    }
-
-    for (let i = 0; i < group.items.length; i++) {
-      const ing = group.items[i];
-      const ingredientId = resolvedByName.get(ing.ingredient);
-      if (ingredientId == null) continue;
-
-      const { error: lineErr } = await supabase
-        .from("recipe_ingredients")
-        .insert({
-          recipe_id: recipeId,
-          ingredient_id: ingredientId,
-          section_id: sectionId,
-          line_sort_order: i,
-          amount: ing.amount,
-          unit: normalizeUnit(ing.unit),
-          preparation: ing.preparation,
-          display: ing.display,
-          is_optional: ing.is_optional,
-        });
-
-      if (lineErr) {
-        await rollback();
-        return { ok: false, error: lineErr.message };
-      }
-    }
-  }
-
-  if (parsed.instruction_steps.length > 0) {
-    const { error: stepsErr } = await supabase
-      .from("recipe_instruction_steps")
-      .insert(
-        parsed.instruction_steps.map((step, idx) => ({
-          recipe_id: recipeId,
-          step_number: idx + 1,
-          heading: step.heading,
-          text: step.text,
-          timer_seconds_low: step.timer_seconds_low,
-          timer_seconds_high: step.timer_seconds_high,
-        })),
-      );
-
-    if (stepsErr) {
-      await rollback();
-      return { ok: false, error: stepsErr.message };
-    }
-  }
-
-  return { ok: true };
-}
-
 export async function confirmRecipeDraftAction(
   parsed: ParsedRecipe,
   resolutions: IngredientResolution[],
-  third?: ConfirmRecipeDraftOptions | string[],
+  sourceImageCandidates?: string[],
 ): Promise<{ ok: false; error: string }> {
-  const options: ConfirmRecipeDraftOptions =
-    third === undefined
-      ? {}
-      : Array.isArray(third)
-        ? { sourceImageCandidates: third }
-        : third;
-
-  const mode = options.mode ?? "create";
-  const sourceImageCandidates = options.sourceImageCandidates;
-
-  if (mode === "update") {
-    const baseId = options?.baseRecipeId;
-    if (baseId == null || !Number.isFinite(baseId)) {
-      return { ok: false, error: "Missing recipe to update." };
-    }
-    return confirmRecipeDraftUpdateAction(parsed, resolutions, {
-      recipeId: Number(baseId),
-      sourceImageCandidates,
-    });
-  }
-
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Sign in first." };
 
-  const patch = recipePatchFromParsed(parsed);
+  const legacyInstructionsText = formatInstructionStepsToRecipeText(
+    parsed.instruction_steps.map((s) => s.text),
+  );
 
   const { data: newRecipe, error: recipeErr } = await supabase
     .from("recipes")
-    .insert(patch)
+    .insert({
+      name: parsed.name,
+      title_primary: parsed.title.primary,
+      title_qualifier: parsed.title.qualifier,
+      headnote: parsed.headnote,
+      description: parsed.description,
+      source_url: parsed.source_url,
+      servings: parsed.servings,
+      yield_label: parsed.yield.label,
+      yield_quantity: parsed.yield.quantity,
+      yield_unit: parsed.yield.unit,
+      yield_display: parsed.yield.display,
+      prep_time_minutes: parsed.prep_time_minutes,
+      cook_time_minutes: parsed.cook_time_minutes,
+      meal_types: normalizeMealTypesForStorage(parsed.meal_types),
+      notes: parsed.notes,
+      notes_type: parsed.recipe_note.type,
+      notes_title: parsed.recipe_note.title,
+      instructions: legacyInstructionsText || null,
+      updated_at: new Date().toISOString(),
+    })
     .select("id")
     .single();
 
@@ -474,14 +326,80 @@ export async function confirmRecipeDraftAction(
       if (applied.wasCreated) void maybeAutofillNutrition(applied.ingredientId);
     }
 
-    const inserted = await insertParsedRecipeStructure(
-      supabase,
-      recipeId,
-      parsed,
-      resolvedByName,
-      rollback,
-    );
-    if (!inserted.ok) return inserted;
+    for (
+      let grpIdx = 0;
+      grpIdx < parsed.ingredient_groups.length;
+      grpIdx++
+    ) {
+      const group = parsed.ingredient_groups[grpIdx];
+      let sectionId: string | null = null;
+
+      if (group.heading) {
+        const { data: secRow, error: secErr } = await supabase
+          .from("recipe_ingredient_sections")
+          .insert({
+            recipe_id: recipeId,
+            heading: group.heading,
+            sort_order: grpIdx,
+          })
+          .select("id")
+          .single();
+
+        if (secErr || !secRow) {
+          await rollback();
+          return {
+            ok: false,
+            error:
+              secErr?.message ?? "Could not create ingredient section.",
+          };
+        }
+        sectionId = String(secRow.id);
+      }
+
+      for (let i = 0; i < group.items.length; i++) {
+        const ing = group.items[i];
+        const ingredientId = resolvedByName.get(ing.ingredient);
+        if (ingredientId == null) continue;
+
+        const { error: lineErr } = await supabase
+          .from("recipe_ingredients")
+          .insert({
+            recipe_id: recipeId,
+            ingredient_id: ingredientId,
+            section_id: sectionId,
+            line_sort_order: i,
+            amount: ing.amount,
+            unit: normalizeUnit(ing.unit),
+            preparation: ing.preparation,
+            display: ing.display,
+            is_optional: ing.is_optional,
+          });
+
+        if (lineErr) {
+          await rollback();
+          return { ok: false, error: lineErr.message };
+        }
+      }
+    }
+
+    if (parsed.instruction_steps.length > 0) {
+      const { error: stepsErr } = await supabase
+        .from("recipe_instruction_steps")
+        .insert(
+          parsed.instruction_steps.map((step, idx) => ({
+            recipe_id: recipeId,
+            step_number: idx + 1,
+            text: step.text,
+            timer_seconds_low: step.timer_seconds_low,
+            timer_seconds_high: step.timer_seconds_high,
+          })),
+        );
+
+      if (stepsErr) {
+        await rollback();
+        return { ok: false, error: stepsErr.message };
+      }
+    }
 
     after(async () => {
       try {
@@ -529,117 +447,6 @@ export async function confirmRecipeDraftAction(
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Import failed.",
-    };
-  }
-}
-
-async function confirmRecipeDraftUpdateAction(
-  parsed: ParsedRecipe,
-  resolutions: IngredientResolution[],
-  opts: { recipeId: number; sourceImageCandidates?: string[] },
-): Promise<{ ok: false; error: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Sign in first." };
-
-  const recipeId = opts.recipeId;
-
-  const { data: existing, error: exErr } = await supabase
-    .from("recipes")
-    .select("id, owner_id")
-    .eq("id", recipeId)
-    .maybeSingle();
-
-  if (exErr || !existing) {
-    return { ok: false, error: "Recipe not found." };
-  }
-  if (String(existing.owner_id) !== user.id) {
-    return { ok: false, error: "Not allowed." };
-  }
-
-  const patch = recipePatchFromParsed(parsed);
-  const noopRollback = async () => {};
-
-  try {
-    const plan = { resolutions, needsConfirmation: false as const };
-    const planResult = await applyResolutionPlan(supabase, plan);
-
-    if (!planResult.ok) {
-      return { ok: false, error: planResult.error };
-    }
-
-    const resolvedByName = new Map<string, number>();
-    for (const applied of planResult.applied) {
-      resolvedByName.set(applied.recipeName, applied.ingredientId);
-      if (applied.wasCreated) void maybeAutofillNutrition(applied.ingredientId);
-    }
-
-    const { error: delSteps } = await supabase
-      .from("recipe_instruction_steps")
-      .delete()
-      .eq("recipe_id", recipeId);
-    if (delSteps) return { ok: false, error: delSteps.message };
-
-    const { error: delRi } = await supabase
-      .from("recipe_ingredients")
-      .delete()
-      .eq("recipe_id", recipeId);
-    if (delRi) return { ok: false, error: delRi.message };
-
-    const { error: delSec } = await supabase
-      .from("recipe_ingredient_sections")
-      .delete()
-      .eq("recipe_id", recipeId);
-    if (delSec) return { ok: false, error: delSec.message };
-
-    const { error: upErr } = await supabase
-      .from("recipes")
-      .update(patch)
-      .eq("id", recipeId)
-      .eq("owner_id", user.id);
-    if (upErr) return { ok: false, error: upErr.message };
-
-    const inserted = await insertParsedRecipeStructure(
-      supabase,
-      recipeId,
-      parsed,
-      resolvedByName,
-      noopRollback,
-    );
-    if (!inserted.ok) return inserted;
-
-    after(async () => {
-      try {
-        if (opts.sourceImageCandidates?.length) {
-          const attached = await attachSourceImageToRecipe(
-            recipeId,
-            opts.sourceImageCandidates!,
-          );
-          if (attached.ok) {
-            console.log(
-              "[recipe-image] attached source image on update",
-              recipeId,
-              attached.sourceUrl,
-            );
-          }
-        }
-      } catch (e) {
-        console.error("[recipe-image] attach on update threw", recipeId, e);
-      }
-    });
-
-    revalidateAfterImport(recipeId);
-    redirect(`/recipes/${recipeId}`);
-  } catch (err) {
-    const digest = (err as { digest?: string })?.digest;
-    if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) {
-      throw err;
-    }
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Update failed.",
     };
   }
 }

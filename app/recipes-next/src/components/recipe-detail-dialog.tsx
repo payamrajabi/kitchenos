@@ -20,11 +20,6 @@ import { getTopLayerHost, setTopLayerHost } from "@/lib/top-layer-host";
 // it's rendering on a full page and does not render any modal-only chrome.
 type RecipeDetailDialogContextValue = {
   close: () => void;
-  // Scroll container element (the white card). Exposed so descendants like
-  // the floating overlay chrome can portal themselves into it — making them
-  // direct children of the scroll container so `position: sticky` tracks
-  // the full scroll extent regardless of how deep they are in the tree.
-  surfaceEl: HTMLElement | null;
 } | null;
 
 const RecipeDetailDialogContext =
@@ -58,7 +53,6 @@ export function RecipeDetailDialog({
 }: Props) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [surfaceEl, setSurfaceEl] = useState<HTMLElement | null>(null);
   // Guard against double-close: both the native 'cancel' (Esc) and our own
   // click handlers can race, and we only want one animation + router.back().
   const closingRef = useRef(false);
@@ -156,8 +150,8 @@ export function RecipeDetailDialog({
   );
 
   const contextValue = useMemo<RecipeDetailDialogContextValue>(
-    () => ({ close: dismiss, surfaceEl }),
-    [dismiss, surfaceEl],
+    () => ({ close: dismiss }),
+    [dismiss],
   );
 
   return (
@@ -168,7 +162,7 @@ export function RecipeDetailDialog({
       aria-label={ariaLabel}
       onClick={onDialogClick}
     >
-      <div className="recipe-detail-dialog-surface" ref={setSurfaceEl}>
+      <div className="recipe-detail-dialog-surface">
         <RecipeDetailDialogContext.Provider value={contextValue}>
           {children}
         </RecipeDetailDialogContext.Provider>

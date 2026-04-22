@@ -1,9 +1,13 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Toaster } from "sonner";
 import "sonner/dist/styles.css";
-import { useTopLayerHost } from "@/lib/top-layer-host";
+import {
+  getTopLayerHost,
+  subscribeTopLayerHost,
+} from "@/lib/top-layer-host";
 
 /**
  * Global dismissible toasts (bottom-right). Used for nutrition errors,
@@ -19,8 +23,14 @@ import { useTopLayerHost } from "@/lib/top-layer-host";
  * Toaster between hosts is safe — in-flight toasts are picked up by the
  * freshly-mounted Toaster.
  */
+const getServerSnapshot = () => null;
+
 export function AppToaster() {
-  const host = useTopLayerHost();
+  const host = useSyncExternalStore(
+    subscribeTopLayerHost,
+    getTopLayerHost,
+    getServerSnapshot,
+  );
 
   const toaster = (
     <Toaster

@@ -11,6 +11,7 @@ import {
   loadLibraryRecipeIds,
   ownedOrLibraryOrClause,
 } from "@/lib/recipe-visibility";
+import { ensureWeekSuggestionsAction } from "@/app/actions/meal-plan";
 import { Suspense } from "react";
 import type { MealPlanEntryRow, MealPlanRow, RecipeRow } from "@/types/database";
 
@@ -58,9 +59,10 @@ export default async function PlanPage() {
   const libraryIds = await loadLibraryRecipeIds(supabase, user.id);
   const recipeOrClause = ownedOrLibraryOrClause(user.id, libraryIds);
 
-  // Note: the rolling 7-day auto-fill used to run here as a Server Action
-  // during render. Next.js 16 rejects that pattern, so `PlanWeekClient` now
-  // fires the same action from a client-side effect on mount.
+  // Fill any empty slots in the next 7 days with LLM suggestions. Cheap when
+  // there are no gaps; otherwise it adds ~1s to page load while the edge
+  // function runs. We await before reading entries so the new rows appear.
+  await ensureWeekSuggestionsAction();
 
   const [{ data: planRows }, { data: recipeRows }, { data: ingredientRows }] =
     await Promise.all([
@@ -87,40 +89,7 @@ export default async function PlanPage() {
     return (a.sort_order ?? 0) - (b.sort_order ?? 0);
   });
 
-  // The owned-or-library filter above is tight on purpose (so the picker
-  // doesn't explode with community recipes). But the AI can validly suggest
-  // community recipes, and each suggestion_pool item also points to a recipe
-  // we need to render. Pull any referenced recipe rows that aren't already in
-  // the set, so card thumbnails + labels resolve correctly when the user
-  // cycles through suggestions.
-  const initialRecipeIds = new Set<number>(
-    (recipeRows ?? []).map((r) => (r as RecipeRow).id),
-  );
-  const referencedRecipeIds = new Set<number>();
-  for (const entry of entries) {
-    if (typeof entry.recipe_id === "number") referencedRecipeIds.add(entry.recipe_id);
-    if (Array.isArray(entry.suggestion_pool)) {
-      for (const candidate of entry.suggestion_pool) {
-        if (candidate && typeof candidate.recipe_id === "number") {
-          referencedRecipeIds.add(candidate.recipe_id);
-        }
-      }
-    }
-  }
-  const missingRecipeIds = [...referencedRecipeIds].filter(
-    (id) => !initialRecipeIds.has(id),
-  );
-  let extraRecipeRows: RecipeRow[] = [];
-  if (missingRecipeIds.length > 0) {
-    const { data: extra } = await supabase
-      .from("recipes")
-      .select("*")
-      .in("id", missingRecipeIds)
-      .is("deleted_at", null);
-    extraRecipeRows = (extra ?? []) as RecipeRow[];
-  }
-
-  const recipes = [...(recipeRows ?? []), ...extraRecipeRows].map((recipe) => {
+  const recipes = (recipeRows ?? []).map((recipe) => {
     const row = recipe as RecipeRow;
     return {
       id: row.id,

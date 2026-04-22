@@ -46,8 +46,6 @@ export type ParsedIngredientGroup = {
 export type ParsedInstructionStep = {
   /** 1-based sequence number, dense. */
   step_number: number;
-  /** Short action-focused summary shown above the step text. */
-  heading: string | null;
   text: string;
   timer_seconds_low: number | null;
   timer_seconds_high: number | null;
@@ -88,11 +86,6 @@ export type DraftRecipeData = {
   parsed: ParsedRecipe;
   resolutions: IngredientResolution[];
   existingIngredients: DraftIngredientOption[];
-  /**
-   * When set, this draft was produced by refining an existing recipe (recipe
-   * detail AI bar). Draft review can offer "update" vs "save as new".
-   */
-  baseRecipeId?: number;
   /**
    * Candidate hero-image URLs scraped from the original source page, in
    * priority order. Only populated for URL imports. When present, the

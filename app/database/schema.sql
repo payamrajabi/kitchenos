@@ -251,7 +251,6 @@ CREATE TABLE IF NOT EXISTS recipe_instruction_steps (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
   step_number INTEGER NOT NULL DEFAULT 1,
-  heading TEXT,
   text TEXT NOT NULL,
   timer_seconds_low INTEGER,
   timer_seconds_high INTEGER,
@@ -325,12 +324,6 @@ CREATE TABLE IF NOT EXISTS meal_plan_entries (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
--- Prevent duplicate AI suggestions for the same (meal_plan_id, date, slot, sort_order).
--- Real meals (is_suggestion=0) can still share the key, which matches production behavior.
-CREATE UNIQUE INDEX IF NOT EXISTS meal_plan_entries_suggestion_unique
-  ON meal_plan_entries (meal_plan_id, plan_date, meal_slot, sort_order)
-  WHERE is_suggestion = 1;
 
 -- User trashed a suggestion for a given day+slot; auto-fill won't re-suggest
 -- here until the row is removed (e.g. the user drops a real meal into the slot).

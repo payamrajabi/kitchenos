@@ -380,46 +380,34 @@ export function RecipeDraftReview() {
     sessionStorage.removeItem("kitchenos-active-draft-id");
   }, []);
 
-  const runConfirm = useCallback(
-    (mode: "create" | "update") => {
-      if (!parsed) return;
-      setError(null);
-      startTransition(async () => {
-        try {
-          const result = await confirmRecipeDraftAction(
-            parsed,
-            resolutions,
-            {
-              sourceImageCandidates: draft?.sourceImageCandidates,
-              mode,
-              baseRecipeId:
-                mode === "update" ? draft?.baseRecipeId : undefined,
-            },
-          );
-          if (!result.ok) {
-            setError(result.error);
-            return;
-          }
-        } catch (err) {
-          if (isNextRedirectError(err)) {
-            cleanupDraftStorage();
-            return;
-          }
-          setError(err instanceof Error ? err.message : "Failed to save.");
+  const handleSave = useCallback(() => {
+    if (!parsed) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        const result = await confirmRecipeDraftAction(
+          parsed,
+          resolutions,
+          draft?.sourceImageCandidates,
+        );
+        if (!result.ok) {
+          setError(result.error);
+          return;
         }
-      });
-    },
-    [parsed, resolutions, draft, cleanupDraftStorage],
-  );
+      } catch (err) {
+        if (isNextRedirectError(err)) {
+          cleanupDraftStorage();
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Failed to save.");
+      }
+    });
+  }, [parsed, resolutions, draft, cleanupDraftStorage]);
 
   const handleDiscard = useCallback(() => {
     cleanupDraftStorage();
-    if (draft?.baseRecipeId != null) {
-      router.push(`/recipes/${draft.baseRecipeId}`);
-    } else {
-      router.push("/recipes");
-    }
-  }, [router, cleanupDraftStorage, draft]);
+    router.push("/recipes");
+  }, [router, cleanupDraftStorage]);
 
   if (!loaded) return null;
   if (!draft || !parsed) return null;
@@ -430,16 +418,7 @@ export function RecipeDraftReview() {
     <article className="recipe-detail draft-review">
       <div className="draft-review-banner">
         <p className="draft-review-banner-text">
-          {draft.baseRecipeId != null ? (
-            <>
-              Review how this draft should affect your saved recipe — update
-              the original in place or save a separate new recipe (a remix).
-            </>
-          ) : (
-            <>
-              Review this imported recipe before adding it to your account.
-            </>
-          )}
+          Review this imported recipe before adding it to your account.
           {newCount > 0 && (
             <>
               {" "}
@@ -549,9 +528,6 @@ export function RecipeDraftReview() {
                         {step.step_number || idx + 1}
                       </span>
                       <div className="draft-step-content">
-                        {step.heading ? (
-                          <p className="draft-step-heading">{step.heading}</p>
-                        ) : null}
                         <p className="draft-step-body">{step.text}</p>
                         {timer && (
                           <span className="draft-step-timer">⏱ {timer}</span>
@@ -633,35 +609,14 @@ export function RecipeDraftReview() {
             )}
 
             <div className="draft-review-actions">
-              {draft.baseRecipeId != null ? (
-                <>
-                  <button
-                    type="button"
-                    className="draft-save-btn"
-                    onClick={() => runConfirm("update")}
-                    disabled={isPending}
-                  >
-                    {isPending ? "Saving…" : "Update this recipe"}
-                  </button>
-                  <button
-                    type="button"
-                    className="draft-save-btn draft-save-btn--secondary"
-                    onClick={() => runConfirm("create")}
-                    disabled={isPending}
-                  >
-                    {isPending ? "Saving…" : "Save as new recipe"}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="draft-save-btn"
-                  onClick={() => runConfirm("create")}
-                  disabled={isPending}
-                >
-                  {isPending ? "Saving…" : "Save to Recipes"}
-                </button>
-              )}
+              <button
+                type="button"
+                className="draft-save-btn"
+                onClick={handleSave}
+                disabled={isPending}
+              >
+                {isPending ? "Saving…" : "Save to Recipes"}
+              </button>
               <button
                 type="button"
                 className="draft-discard-btn"

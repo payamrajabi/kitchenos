@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DraftImportsProvider } from "@/components/draft-imports-provider";
 import { RecipeAddFab } from "@/components/recipe-add-fab";
 import { RecipesMealFilterSection } from "@/components/recipes-meal-filter-section";
 import { loadLibraryRecipeIds } from "@/lib/recipe-visibility";
@@ -55,53 +56,26 @@ export default async function RecipesPage() {
     (r) => r.owner_id === user.id || libraryIdSet.has(r.id),
   );
 
-  // Counts powering the table view's Ingredients / Instructions columns.
-  // We only need one integer per recipe, so we fetch the keys and count in JS
-  // to avoid paying for a full join or per-row aggregate SQL.
-  const recipeIds = allRecipes.map((r) => r.id);
-  const ingredientCounts: Record<number, number> = {};
-  const instructionCounts: Record<number, number> = {};
-  if (recipeIds.length > 0) {
-    const [ingRes, insRes] = await Promise.all([
-      supabase
-        .from("recipe_ingredients")
-        .select("recipe_id")
-        .in("recipe_id", recipeIds),
-      supabase
-        .from("recipe_instruction_steps")
-        .select("recipe_id")
-        .in("recipe_id", recipeIds),
-    ]);
-    for (const row of (ingRes.data ?? []) as { recipe_id: number }[]) {
-      ingredientCounts[row.recipe_id] =
-        (ingredientCounts[row.recipe_id] ?? 0) + 1;
-    }
-    for (const row of (insRes.data ?? []) as { recipe_id: number }[]) {
-      instructionCounts[row.recipe_id] =
-        (instructionCounts[row.recipe_id] ?? 0) + 1;
-    }
-  }
-
   const hasAny = allRecipes.length > 0;
 
   return (
-    <section className={`grid recipes-page${hasAny ? "" : " grid-recipes-empty"}`}>
-      <RecipesMealFilterSection
-        ownRecipes={ownRecipes}
-        allRecipes={allRecipes}
-        libraryIds={libraryIds}
-        userId={user.id}
-        ingredientCounts={ingredientCounts}
-        instructionCounts={instructionCounts}
-      />
-      {!ownRecipes.length && !hasAny ? (
-        <p className="grid-recipes-hint">
-          Your recipes show up here after you add one with the input at the bottom of the page.
-          Open a card to edit title, ingredients, and steps right on the page — no
-          separate edit mode.
-        </p>
-      ) : null}
-      <RecipeAddFab />
-    </section>
+    <DraftImportsProvider>
+      <section className={`grid recipes-page${hasAny ? "" : " grid-recipes-empty"}`}>
+        <RecipesMealFilterSection
+          ownRecipes={ownRecipes}
+          allRecipes={allRecipes}
+          libraryIds={libraryIds}
+          userId={user.id}
+        />
+        {!ownRecipes.length && !hasAny ? (
+          <p className="grid-recipes-hint">
+            Your recipes show up here after you add one with the input at the bottom of the page.
+            Open a card to edit title, ingredients, and steps right on the page — no
+            separate edit mode.
+          </p>
+        ) : null}
+        <RecipeAddFab />
+      </section>
+    </DraftImportsProvider>
   );
 }

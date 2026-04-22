@@ -5,10 +5,6 @@ import { ConfigBanner } from "@/components/config-banner";
 import { AppToaster } from "@/components/app-toaster";
 import { StepTimerWatcher } from "@/components/step-timer-watcher";
 import { TimeZoneSync } from "@/components/timezone-sync";
-import {
-  ThemeProvider,
-  THEME_INIT_SCRIPT,
-} from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   title: {
@@ -24,24 +20,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={GeistSans.variable} suppressHydrationWarning>
+    <html lang="en" className={GeistSans.variable}>
       <head>
-        <script
-          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
-        />
         <link
           href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css"
           rel="stylesheet"
         />
       </head>
       <body>
-        <ThemeProvider>
-          <ConfigBanner />
-          <AppToaster />
-          <StepTimerWatcher />
-          <TimeZoneSync />
-          {children}
-        </ThemeProvider>
+        <ConfigBanner />
+        <AppToaster />
+        <StepTimerWatcher />
+        <TimeZoneSync />
+        {children}
       </body>
     </html>
   );

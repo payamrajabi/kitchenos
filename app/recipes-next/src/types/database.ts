@@ -224,8 +224,6 @@ export type RecipeInstructionStepRow = {
   recipe_id: number;
   /** Sequence number for the step, 1-based. */
   step_number: number;
-  /** Short action-focused summary shown above the step text. */
-  heading?: string | null;
   /** Single actionable instruction step. */
   text: string;
   /** Low end of the timer range in seconds (or the single value when no range). */

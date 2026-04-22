@@ -234,7 +234,7 @@ function safeInt(v: unknown): number | null {
 }
 
 const INSTRUCTION_STEP_SELECT =
-  "id, recipe_id, step_number, heading, text, timer_seconds_low, timer_seconds_high, created_at";
+  "id, recipe_id, step_number, text, timer_seconds_low, timer_seconds_high, created_at";
 
 function normalizeInstructionStepRow(raw: unknown): RecipeInstructionStepRow | null {
   if (!raw || typeof raw !== "object") return null;
@@ -243,19 +243,10 @@ function normalizeInstructionStepRow(raw: unknown): RecipeInstructionStepRow | n
   const recipe_id = Number(row.recipe_id);
   const step_number = Number(row.step_number ?? 1);
   if (!Number.isFinite(id) || !Number.isFinite(recipe_id)) return null;
-  const rawHeading = row.heading;
-  const heading =
-    rawHeading == null
-      ? null
-      : (() => {
-          const s = String(rawHeading).trim();
-          return s.length > 0 ? s : null;
-        })();
   return {
     id,
     recipe_id,
     step_number: Number.isFinite(step_number) ? step_number : 1,
-    heading,
     text: row.text == null ? "" : String(row.text),
     timer_seconds_low: safeInt(row.timer_seconds_low),
     timer_seconds_high: safeInt(row.timer_seconds_high),
@@ -1420,7 +1411,7 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
 
   const { data: sourceInstructionSteps, error: srcInstErr } = await supabase
     .from("recipe_instruction_steps")
-    .select("step_number, heading, text, timer_seconds_low, timer_seconds_high")
+    .select("step_number, text, timer_seconds_low, timer_seconds_high")
     .eq("recipe_id", sourceRecipeId)
     .order("step_number", { ascending: true });
 
@@ -1433,17 +1424,9 @@ export async function duplicateRecipeAction(sourceRecipeId: number) {
     const { error: instInsErr } = await supabase.from("recipe_instruction_steps").insert(
       sourceInstructionSteps.map((s, idx) => {
         const raw = s as Record<string, unknown>;
-        const rawHeading = raw.heading;
-        const heading =
-          rawHeading == null
-            ? null
-            : String(rawHeading).trim().length > 0
-              ? String(rawHeading).trim()
-              : null;
         return {
           recipe_id: newRecipeId,
           step_number: idx + 1,
-          heading,
           text: String((s as { text?: unknown }).text ?? ""),
           timer_seconds_low: safeInt(raw.timer_seconds_low),
           timer_seconds_high: safeInt(raw.timer_seconds_high),
@@ -1633,7 +1616,6 @@ export async function updateRecipeInstructionStepAction(
   stepId: number,
   patch: {
     body?: string;
-    heading?: string | null;
     timer_seconds_low?: number | null;
     timer_seconds_high?: number | null;
   },
@@ -1647,14 +1629,6 @@ export async function updateRecipeInstructionStepAction(
   const updates: Record<string, unknown> = {};
   if (patch.body !== undefined) {
     updates.text = patch.body === null ? "" : String(patch.body);
-  }
-  if ("heading" in patch) {
-    if (patch.heading == null) {
-      updates.heading = null;
-    } else {
-      const trimmed = String(patch.heading).trim().slice(0, 60);
-      updates.heading = trimmed.length > 0 ? trimmed : null;
-    }
   }
   if ("timer_seconds_low" in patch) {
     updates.timer_seconds_low = safeInt(patch.timer_seconds_low);
@@ -1682,24 +1656,6 @@ export async function updateRecipeInstructionStepAction(
   ) {
     const row = normalizeInstructionStepRow(prior);
     if (row) return { ok: true as const, row };
-  }
-
-  if (
-    prior &&
-    "heading" in updates &&
-    Object.keys(updates).length === 1
-  ) {
-    const priorHeadingRaw = (prior as { heading: unknown }).heading;
-    const priorHeading =
-      priorHeadingRaw == null
-        ? null
-        : String(priorHeadingRaw).trim().length > 0
-          ? String(priorHeadingRaw).trim()
-          : null;
-    if (priorHeading === updates.heading) {
-      const row = normalizeInstructionStepRow(prior);
-      if (row) return { ok: true as const, row };
-    }
   }
 
   const { data, error } = await supabase
