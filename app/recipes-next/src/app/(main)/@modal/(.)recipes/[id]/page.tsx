@@ -48,6 +48,7 @@ export default async function RecipeDetailModalPage({
     recipeIngredientSections,
     recipeInstructionSteps,
     availableIngredients,
+    stockedIngredientIds,
   } = outcome.data;
 
   return (
@@ -62,6 +63,7 @@ export default async function RecipeDetailModalPage({
         recipeIngredientSections={recipeIngredientSections}
         recipeInstructionSteps={recipeInstructionSteps}
         availableIngredients={availableIngredients}
+        stockedIngredientIds={stockedIngredientIds}
         autoGenerating={autoGenerating}
       />
     </RecipeDetailDialog>

@@ -54,6 +54,7 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
     recipeIngredientSections,
     recipeInstructionSteps,
     availableIngredients,
+    stockedIngredientIds,
     isSignedIn,
     inLibrary,
   } = outcome.data;
@@ -66,6 +67,7 @@ export default async function CommunityRecipeDetailPage({ params }: Props) {
       recipeIngredientSections={recipeIngredientSections}
       recipeInstructionSteps={recipeInstructionSteps}
       availableIngredients={availableIngredients}
+      stockedIngredientIds={stockedIngredientIds}
       viewOnly
       asideActionSlot={
         <CommunitySaveActions

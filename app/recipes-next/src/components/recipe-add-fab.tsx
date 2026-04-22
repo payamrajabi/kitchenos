@@ -218,14 +218,26 @@ export function RecipeAddFab({
     return () => mq.removeEventListener("change", update);
   }, []);
 
-  // Track whether the window has scrolled past the collapse threshold.
-  // rAF-throttled so we don't thrash React state on every scroll event.
+  // Track whether the scroll container has moved past the collapse
+  // threshold. When the bar is rendered as a footer inside the recipe
+  // detail <dialog>, the scrolling happens inside the dialog surface (it
+  // has overflow-y: auto), not on the window. Otherwise we track the
+  // window scroll as usual. rAF-throttled so we don't thrash React state
+  // on every scroll event.
+  const modalSurfaceEl = modalCtx?.surfaceEl ?? null;
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const useSurface = isInModalFooter && modalSurfaceEl != null;
+    const target: HTMLElement | Window = useSurface
+      ? modalSurfaceEl
+      : window;
     let raf = 0;
     const read = () => {
       raf = 0;
-      const next = window.scrollY > COLLAPSE_SCROLL_THRESHOLD;
+      const scrollY = useSurface
+        ? (modalSurfaceEl as HTMLElement).scrollTop
+        : window.scrollY;
+      const next = scrollY > COLLAPSE_SCROLL_THRESHOLD;
       setIsScrolledPast((prev) => (prev === next ? prev : next));
       // When the user scrolls back to the top, drop the "explicitly
       // expanded" flag so the next scroll-down collapses cleanly.
@@ -236,12 +248,12 @@ export function RecipeAddFab({
       raf = requestAnimationFrame(read);
     };
     read();
-    window.addEventListener("scroll", onScroll, { passive: true });
+    target.addEventListener("scroll", onScroll, { passive: true });
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      target.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [isInModalFooter, modalSurfaceEl]);
 
   const imagesRef = useRef<AttachedImage[]>([]);
   useEffect(() => {
@@ -459,9 +471,10 @@ export function RecipeAddFab({
   // always show the full bar so the "add recipe" call-to-action stays
   // front and center. Never collapse while the user has a draft in flight
   // (typed text or attached images) so in-progress work never disappears.
-  // In the modal footer mode the bar is always visible as a sticky
-  // footer inside the card, so we skip collapse there too.
-  const canCollapse = baseRecipeId != null && !isInModalFooter;
+  // This applies in both the standalone recipe page and the intercepted
+  // modal — in the modal we switch the scroll source to the dialog
+  // surface (see the scroll-tracking effect above).
+  const canCollapse = baseRecipeId != null;
   const isCollapsed =
     canCollapse && isScrolledPast && !userExpanded && !canSend;
 

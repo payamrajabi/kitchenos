@@ -45,6 +45,7 @@ export default async function CommunityRecipeDetailModalPage({ params }: Props) 
     recipeIngredientSections,
     recipeInstructionSteps,
     availableIngredients,
+    stockedIngredientIds,
     isSignedIn,
     inLibrary,
   } = outcome.data;
@@ -60,6 +61,7 @@ export default async function CommunityRecipeDetailModalPage({ params }: Props) 
         recipeIngredientSections={recipeIngredientSections}
         recipeInstructionSteps={recipeInstructionSteps}
         availableIngredients={availableIngredients}
+        stockedIngredientIds={stockedIngredientIds}
         recipeId={recipe.id}
         initialInLibrary={inLibrary}
         isSignedIn={isSignedIn}

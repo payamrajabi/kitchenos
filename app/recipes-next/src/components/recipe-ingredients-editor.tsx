@@ -47,7 +47,9 @@ import { pluralizeUnit, RECIPE_UNITS } from "@/lib/unit-mapping";
 import type { RecipeIngredientRow, RecipeIngredientSectionRow } from "@/types/database";
 import { useRouter } from "next/navigation";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useMemo,
@@ -67,11 +69,34 @@ import { useTopLayerPortalContainer } from "@/lib/top-layer-host";
 
 const emptySubscribe = () => () => {};
 
+// Set of ingredient ids the viewer has in their inventory. Provided once at
+// the <RecipeIngredientsEditor> root so every leaf row can decide whether to
+// render an "Out of stock" badge without prop-drilling through three
+// intermediate components (SortableContext, drag wrapper, etc.).
+const StockedIngredientsContext = createContext<ReadonlySet<number>>(
+  new Set(),
+);
+
+function useIsIngredientOutOfStock(ingredientId: number): boolean {
+  const stocked = useContext(StockedIngredientsContext);
+  // When the set is empty we treat every ingredient as "stocked" — it means
+  // the viewer is signed out, or the loader had no data — and we hide the
+  // badge entirely rather than scream "Out of stock" at everything.
+  if (stocked.size === 0) return false;
+  return !stocked.has(ingredientId);
+}
+
 type Props = {
   recipeId: number;
   initialItems: RecipeIngredientRow[];
   initialSections: RecipeIngredientSectionRow[];
   ingredientOptions: IngredientOption[];
+  /**
+   * Ingredient ids the viewer currently has stocked in their inventory.
+   * Anything on this recipe that's not in the set gets an inline
+   * "Out of stock" badge in view mode. Defaults to empty (= badge off).
+   */
+  stockedIngredientIds?: number[];
 };
 
 const DEFAULT_UNIT = "g";
@@ -424,6 +449,7 @@ function RecipeIngredientItemRow({
   const isEditing = useIsRecipeEditing();
   const servingsScale = useRecipeServingsScale();
   const { mode: unitDisplayMode } = useIngredientUnitDisplay();
+  const isOutOfStock = useIsIngredientOutOfStock(item.ingredient_id);
   const [amount, setAmount] = useState(item.amount ?? "");
   const authoredUnit = item.unit || DEFAULT_UNIT;
   // Only rescale in view mode — in edit mode the author is editing the stored
@@ -633,6 +659,14 @@ function RecipeIngredientItemRow({
             ) : null}
             {item.is_optional ? (
               <span className="recipe-ingredient-optional-flag"> (optional)</span>
+            ) : null}
+            {isOutOfStock ? (
+              <span
+                className="recipe-ingredient-out-of-stock-badge"
+                title={`${displayName} is not in your inventory`}
+              >
+                Out of stock
+              </span>
             ) : null}
           </span>
         )}
@@ -1116,6 +1150,7 @@ export function RecipeIngredientsEditor({
   initialItems,
   initialSections,
   ingredientOptions,
+  stockedIngredientIds,
 }: Props) {
   const router = useRouter();
   const isEditing = useIsRecipeEditing();
@@ -1127,6 +1162,10 @@ export function RecipeIngredientsEditor({
   );
   const [knownIngredients, setKnownIngredients] = useState(() =>
     sortIngredientOptions(ingredientOptions),
+  );
+  const stockedSet = useMemo(
+    () => new Set<number>(stockedIngredientIds ?? []),
+    [stockedIngredientIds],
   );
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -1441,7 +1480,7 @@ export function RecipeIngredientsEditor({
   );
 
   return (
-    <>
+    <StockedIngredientsContext.Provider value={stockedSet}>
     <section className="section">
       <div className="recipe-ingredients-heading-row">
         <h3 className="recipe-ingredients-heading">Ingredients</h3>
@@ -1638,6 +1677,6 @@ export function RecipeIngredientsEditor({
     {sectionDeleteModal && sectionDeletePortalTarget
       ? createPortal(sectionDeleteModal, sectionDeletePortalTarget)
       : null}
-    </>
+    </StockedIngredientsContext.Provider>
   );
 }

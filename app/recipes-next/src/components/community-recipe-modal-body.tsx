@@ -21,6 +21,7 @@ type Props = {
   recipeIngredientSections: RecipeIngredientSectionRow[];
   recipeInstructionSteps: RecipeInstructionStepRow[];
   availableIngredients: RecipeDetailAvailableIngredient[];
+  stockedIngredientIds: number[];
   recipeId: number;
   initialInLibrary: boolean;
   isSignedIn: boolean;
@@ -44,6 +45,7 @@ export function CommunityRecipeModalBody({
   recipeIngredientSections,
   recipeInstructionSteps,
   availableIngredients,
+  stockedIngredientIds,
   recipeId,
   initialInLibrary,
   isSignedIn,
@@ -85,6 +87,7 @@ export function CommunityRecipeModalBody({
       recipeIngredientSections={recipeIngredientSections}
       recipeInstructionSteps={recipeInstructionSteps}
       availableIngredients={availableIngredients}
+      stockedIngredientIds={stockedIngredientIds}
       viewOnly
       overlayExtraMenuItems={overlayExtraMenuItems}
       asideActionSlot={

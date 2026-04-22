@@ -72,6 +72,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
     recipeIngredientSections,
     recipeInstructionSteps,
     availableIngredients,
+    stockedIngredientIds,
   } = outcome.data;
 
   return (
@@ -82,6 +83,7 @@ export default async function RecipeDetailPage({ params, searchParams }: Props) 
       recipeIngredientSections={recipeIngredientSections}
       recipeInstructionSteps={recipeInstructionSteps}
       availableIngredients={availableIngredients}
+      stockedIngredientIds={stockedIngredientIds}
       autoGenerating={autoGenerating}
     />
   );

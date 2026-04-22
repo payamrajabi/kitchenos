@@ -8569,11 +8569,16 @@ a.primary {
 /*  into the page, which is the effect we actually want.              */
 /* ------------------------------------------------------------------ */
 
+/* Pixel-based fade so the visible gradient is a tight ~56px band above
+   the pill, regardless of how tall --ai-bar-blur-height ends up. Anything
+   below that band is the same colour as the card and effectively
+   invisible, so the bar feels like it's gently dissolving into the
+   recipe rather than parked on a big white slab. */
 .recipe-ai-bar-wrap[data-on-recipe="true"] .recipe-ai-bar-blur {
   background: linear-gradient(
     to top,
-    var(--paper, #fff) 0%,
-    var(--paper, #fff) 55%,
+    var(--paper, #fff) 0,
+    var(--paper, #fff) calc(100% - 56px),
     rgba(255, 255, 255, 0) 100%
   );
 }
@@ -8581,6 +8586,36 @@ a.primary {
 /* Drop all four backdrop-filter layers in white-fade mode. */
 .recipe-ai-bar-wrap[data-on-recipe="true"] .recipe-ai-bar-blur > span {
   display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Collapse-to-FAB inside the modal footer                           */
+/*  When the bar is the sticky footer inside the recipe-detail dialog */
+/*  and the user scrolls the card contents, shrink the whole footer   */
+/*  down to just the FAB pinned to the bottom-right — the same        */
+/*  behaviour as the standalone recipe page.                          */
+/* ------------------------------------------------------------------ */
+
+/* Pull the pill out of flow so the sticky footer doesn't keep
+   reserving its height once it's faded away. The existing opacity /
+   scale transition on .recipe-ai-bar keeps the collapse smooth.
+   (.recipe-ai-bar-blur is already position:absolute in modal-footer
+   mode — see rule above — so its height doesn't factor into the
+   wrap's height either way.) */
+.recipe-ai-bar-wrap[data-modal-footer="true"][data-collapsed="true"]
+  .recipe-ai-bar {
+  position: absolute;
+  left: var(--space-24);
+  right: var(--space-24);
+  bottom: var(--space-24);
+}
+
+/* Size the sticky footer to hold just the 50px FAB + a touch of
+   breathing room. The FAB itself is absolute right:0 bottom:0 of the
+   wrap so it naturally settles into this tighter footer. */
+.recipe-ai-bar-wrap[data-modal-footer="true"][data-collapsed="true"] {
+  min-height: calc(50px + var(--space-32));
+  padding: var(--space-16) var(--space-24);
 }
 
 /* ------------------------------------------------------------------ */
@@ -9298,6 +9333,33 @@ a.primary {
 .recipe-ingredient-preparation {
   color: var(--ink-faint);
   font-weight: 400;
+}
+
+/* Inline "Out of stock" pill in the ingredient name cell. Shown only in
+   view mode (see recipe-ingredients-editor.tsx) when an ingredient on the
+   recipe isn't represented in the viewer's inventory. Styled to match the
+   amber draft-badge pattern already used elsewhere in the app. */
+.recipe-ingredient-out-of-stock-badge {
+  display: inline-block;
+  margin-left: var(--space-6);
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  background: var(--amber-bg, #fef3c7);
+  color: var(--amber-text, #92400e);
+  border: 1px solid var(--amber-border, #fcd34d);
+  vertical-align: middle;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* When the row is marked as prepared, fade the badge alongside the name so
+   it doesn't shout for attention on a greyed-out row. */
+.recipe-ingredient-row--prepared .recipe-ingredient-out-of-stock-badge {
+  opacity: 0.55;
 }
 
 .recipe-detail-headnote-static {
