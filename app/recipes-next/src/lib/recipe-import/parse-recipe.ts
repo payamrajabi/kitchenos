@@ -98,6 +98,7 @@ const BASE_SYSTEM_PROMPT = `You are a recipe parser. Given raw text that contain
   "instructions": [
     {
       "step_number": 1,
+      "heading": "Brown the tempeh",
       "text": "Concise instruction text",
       "timer_seconds_low": 900,
       "timer_seconds_high": 1200
@@ -124,12 +125,23 @@ Rules:
 8. INGREDIENT DISPLAY: Set "display" to a clean verbatim-style source line ("2 cups rolled oats, toasted"). This preserves typographic fidelity for UI fallback. Always provide a display line.
 9. UNITS: Use these exact unit strings when applicable: count, g, kg, oz, lb, ml, l, fl oz, cup, tsp, tbsp, ea, piece, dozen, whole, clove, slice, sprig, pinch, head, bunch, pkg, bag, box, block, tub, container, jar, bottle, can, roll, sleeve. Use null for unitless items (e.g. "salt to taste").
 10. INSTRUCTION SIMPLIFICATION: Rewrite instructions to be scannable — short, direct sentences. Keep important technique details and temperatures. Remove filler text, personal stories, and excessive explanation. Each step should focus on one action.
-11. STEP NUMBERS: Set step_number to 1, 2, 3, … densely across the full instructions array.
-12. TIMERS: Extract timing from instructions. If a step says "cook for 15 minutes", set timer_seconds_low=900 and timer_seconds_high=900. For ranges like "bake 25-30 min", set timer_seconds_low=1500 and timer_seconds_high=1800. Only set timers when there is an explicit wait/cook/bake/rest duration. Both null otherwise.
-13. MEAL TYPES: Choose from exactly: "Breakfast", "Snack", "Lunch", "Dinner", "Dessert", "Drink", "Component". A recipe can have multiple. Pick based on what the recipe is (use "Drink" for cocktails, smoothies, and other beverages). Use "Component" for things that are building blocks rather than full meals — sauces, dressings, dips, spice blends, pickled or chopped vegetables, cooked bases (rice, quinoa, beans), stocks, doughs, and other prep-ahead elements that are meant to be combined into a meal rather than eaten on their own.
-14. AMOUNTS: Keep amounts as strings to preserve fractions like "1/2", "3/4". Use null for "to taste" or unspecified amounts.
-15. RECIPE NOTE: If the source has a tip/variation/storage/substitution block after the instructions, populate recipe_note with the appropriate type and the body in text. If the author labels it (e.g. "Variation:"), mirror that into title. If there is no such block, set all three fields to null.
-16. Return ONLY valid JSON. No markdown, no explanation, no extra text.`;
+11. INSTRUCTION HEADING: Every step MUST include a "heading" — a short, action-led summary of what that step accomplishes. It is the label a cook uses to scan the method at a glance, not the full instruction. Requirements:
+    a. 2-5 words, imperative voice ("Brown the Tempeh", "Cook the Shiitake", "Scramble the Eggs", "Fry the Rice", "Season", "Finish").
+    b. AP-style Title Case.
+    c. Summarises the intent of the step (what you are doing and, when useful, to what). Do NOT repeat the full instruction or restate exact quantities/times.
+    d. Must be distinct from the step "text" — never copy the sentence verbatim.
+    e. Never null. Always provide a heading even for short finishing steps.
+12. STEP NUMBERS: Set step_number to 1, 2, 3, … densely across the full instructions array.
+13. TIMERS: Extract timing from instructions. If a step says "cook for 15 minutes", set timer_seconds_low=900 and timer_seconds_high=900. For ranges like "bake 25-30 min", set timer_seconds_low=1500 and timer_seconds_high=1800. Only set timers when there is an explicit wait/cook/bake/rest duration. Both null otherwise.
+14. MEAL TYPES: Choose from exactly: "Breakfast", "Snack", "Lunch", "Dinner", "Dessert", "Drink", "Component". A recipe can have multiple. Pick based on what the recipe is (use "Drink" for cocktails, smoothies, and other beverages). Use "Component" for things that are building blocks rather than full meals — sauces, dressings, dips, spice blends, pickled or chopped vegetables, cooked bases (rice, quinoa, beans), stocks, doughs, and other prep-ahead elements that are meant to be combined into a meal rather than eaten on their own.
+15. AMOUNTS: Keep amounts as strings to preserve fractions like "1/2", "3/4". Use null for "to taste" or unspecified amounts.
+16. RECIPE NOTE: If the source has a tip/variation/storage/substitution block after the instructions, populate recipe_note with the appropriate type and the body in text. If the author labels it (e.g. "Variation:"), mirror that into title. If there is no such block, set all three fields to null.
+17. Return ONLY valid JSON. No markdown, no explanation, no extra text.`;
+
+const REFINEMENT_SYSTEM_APPEND = `REFINEMENT MODE:
+The user is updating a recipe already saved in their library. Your output must still be ONE complete JSON object using the exact schema described above — a full recipe, not a patch.
+
+The user message has two parts: (A) CURRENT RECIPE … and (B) INPUT … Section (B) may be only edit instructions, OR pasted recipe text, OR text from another page or image. Apply (B) to (A) according to the user's intent. For small requests (e.g. clearer steps, add headings), keep the dish recognizable and preserve structure unless they ask for a full rewrite. If (B) is clearly an entirely new recipe, you may replace content wholesale.`;
 
 /* ------------------------------------------------------------------ */
 /*  Safe primitive coercion                                           */
@@ -275,8 +287,10 @@ function sanitizeInstructionStep(
   const text = safeString(r.text) ?? safeString(r.body);
   if (!text) return null;
   const step = safeInt(r.step_number);
+  const heading = safeString(r.heading, 60);
   return {
     step_number: step && step > 0 ? step : fallbackStepNumber,
+    heading,
     text,
     timer_seconds_low: safeInt(r.timer_seconds_low),
     timer_seconds_high: safeInt(r.timer_seconds_high),
@@ -386,7 +400,12 @@ function sanitizeParsedRecipe(raw: Record<string, unknown>): ParsedRecipe | null
 
 export async function parseRecipeContent(
   rawContent: string,
-  opts?: { sourceUrl?: string; inventory?: InventoryHint[] },
+  opts?: {
+    sourceUrl?: string;
+    inventory?: InventoryHint[];
+    /** When set, user message includes (A) current recipe + (B) new input. */
+    existingRecipeSerialized?: string;
+  },
 ): Promise<{ ok: true; recipe: ParsedRecipe } | { ok: false; error: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -404,9 +423,23 @@ export async function parseRecipeContent(
 
   const truncated = content.slice(0, 30_000);
   const inventoryBlock = buildInventoryBlock(opts?.inventory ?? []);
-  const systemPrompt = inventoryBlock
+  let systemPrompt = inventoryBlock
     ? BASE_SYSTEM_PROMPT + "\n" + inventoryBlock
     : BASE_SYSTEM_PROMPT;
+  if (opts?.existingRecipeSerialized?.trim()) {
+    systemPrompt = `${systemPrompt}\n\n${REFINEMENT_SYSTEM_APPEND}`;
+  }
+
+  const serialized = opts?.existingRecipeSerialized?.trim();
+  let userContent = truncated;
+  if (serialized) {
+    const a = serialized.slice(0, 24_000);
+    userContent = `(A) CURRENT RECIPE IN USER LIBRARY\n\n${a}\n\n(B) INPUT — user request, pasted text, extracted image text, or fetched page content\n\n${truncated}`;
+  }
+  const MAX_USER_CHARS = 48_000;
+  if (userContent.length > MAX_USER_CHARS) {
+    userContent = userContent.slice(0, MAX_USER_CHARS);
+  }
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -421,7 +454,7 @@ export async function parseRecipeContent(
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: truncated },
+          { role: "user", content: userContent },
         ],
       }),
       signal: AbortSignal.timeout(PARSE_TIMEOUT_MS),

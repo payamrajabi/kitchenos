@@ -20,7 +20,7 @@ function DraftCard({ draft }: { draft: DraftImport }) {
     if (!data) return;
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(data));
     sessionStorage.setItem("kitchenos-active-draft-id", draft.id);
-    router.push("/recipes/draft");
+    router.push("/recipe-draft");
   }, [draft, getDraftData, router]);
 
   const handleDismiss = useCallback(

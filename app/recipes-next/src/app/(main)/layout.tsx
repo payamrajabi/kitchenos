@@ -1,4 +1,5 @@
 import { AppHeader } from "@/components/app-header";
+import { MainDraftImportsShell } from "@/components/main-draft-imports-shell";
 import { Suspense } from "react";
 
 function HeaderFallback() {
@@ -25,8 +26,9 @@ export default function MainLayout({
       <Suspense fallback={<HeaderFallback />}>
         <AppHeader />
       </Suspense>
-      <main className="container">{children}</main>
-      {modal}
+      <MainDraftImportsShell modal={modal}>
+        <main className="container">{children}</main>
+      </MainDraftImportsShell>
     </>
   );
 }

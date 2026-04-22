@@ -1,31 +1,36 @@
 "use client";
 
-import { cycleMealPlanSuggestionAction } from "@/app/actions/meal-plan";
 import { ArrowsClockwise } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
 import {
-  useTransition,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
 type Props = {
-  entryId: number;
   pendingParent: boolean;
+  onCycle: () => void;
+  /** True while the slow-path LLM call is in flight; shows a spinning icon. */
+  isSpinning?: boolean;
 };
 
-export function PlanSuggestionCycleControl({ entryId, pendingParent }: Props) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const busy = pendingParent || pending;
+/**
+ * Presentational "show a different suggestion" button.
+ *
+ * Kept intentionally dumb: the parent component (`PlanMealSlot`) owns the
+ * pool state so it can do an optimistic swap on the client BEFORE the server
+ * writes finish. See `handleCycleSuggestion` in plan-meal-slot.tsx.
+ */
+export function PlanSuggestionCycleControl({
+  pendingParent,
+  onCycle,
+  isSpinning = false,
+}: Props) {
+  const busy = pendingParent || isSpinning;
 
   const onClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (busy) return;
-    startTransition(async () => {
-      const result = await cycleMealPlanSuggestionAction(entryId);
-      if (result.ok) router.refresh();
-    });
+    if (pendingParent) return;
+    onCycle();
   };
 
   return (
@@ -46,7 +51,7 @@ export function PlanSuggestionCycleControl({ entryId, pendingParent }: Props) {
           size={14}
           weight="bold"
           aria-hidden
-          className={busy ? "is-spinning" : undefined}
+          className={isSpinning ? "is-spinning" : undefined}
         />
       </button>
     </div>

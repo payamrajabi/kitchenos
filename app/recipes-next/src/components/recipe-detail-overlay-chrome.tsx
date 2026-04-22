@@ -2,13 +2,10 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ArrowSquareOut, DotsThree, PencilSimple, Trash, X } from "@phosphor-icons/react";
-import { useSyncExternalStore, type MouseEvent } from "react";
-import {
-  getTopLayerHost,
-  subscribeTopLayerHost,
-} from "@/lib/top-layer-host";
-
-const getServerSnapshot = () => null;
+import { type MouseEvent } from "react";
+import { createPortal } from "react-dom";
+import { useRecipeDetailDialog } from "@/components/recipe-detail-dialog";
+import { useTopLayerHost } from "@/lib/top-layer-host";
 
 type Props = {
   onClose: () => void;
@@ -51,13 +48,17 @@ export function RecipeDetailOverlayChrome({
   // When the editor is rendered inside the recipe modal, Radix's default
   // portal target (document.body) renders the menu underneath the native
   // <dialog> top-layer — so it opens but is invisible and unclickable.
-  // We read the current top-layer host from our shared store and portal the
-  // menu into it so the menu stacks above the dialog content.
-  const topLayerHost = useSyncExternalStore(
-    subscribeTopLayerHost,
-    getTopLayerHost,
-    getServerSnapshot,
-  );
+  // We portal the menu into the active top-layer host so it stacks above
+  // the dialog content. See `lib/top-layer-host.ts` for the pattern.
+  const topLayerHost = useTopLayerHost();
+
+  // Portal the chrome into the dialog's scroll container so it becomes a
+  // direct child of the scrolling element. That makes `position: sticky`
+  // track the full scroll extent — otherwise, for short recipes, the chrome
+  // would scroll off the top once its immediate (article) parent's bottom
+  // rose into view.
+  const dialogCtx = useRecipeDetailDialog();
+  const portalTarget = dialogCtx?.surfaceEl ?? null;
 
   const handleCloseClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -65,7 +66,7 @@ export function RecipeDetailOverlayChrome({
     onClose();
   };
 
-  return (
+  const chrome = (
     <div className="recipe-detail-overlay-chrome" aria-hidden={false}>
       <button
         type="button"
@@ -165,4 +166,6 @@ export function RecipeDetailOverlayChrome({
       ) : null}
     </div>
   );
+
+  return portalTarget ? createPortal(chrome, portalTarget) : chrome;
 }

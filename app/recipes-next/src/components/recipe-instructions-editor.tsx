@@ -27,9 +27,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, DotsSixVertical, DotsThree, Play, Stop, Timer } from "@phosphor-icons/react";
+import { CheckCircle, Circle, DotsSixVertical, DotsThree, Play, Stop, Timer } from "@phosphor-icons/react";
 import type { RecipeInstructionStepRow } from "@/types/database";
-import { splitInstructionIntro } from "@/lib/instruction-intro-split";
 import {
   addOnTimerEvent,
   startTimer,
@@ -38,6 +37,7 @@ import {
 } from "@/lib/step-timer-store";
 import { useStepTimers } from "@/lib/use-step-timers";
 import { useIsRecipeEditing } from "@/components/recipe-edit-mode";
+import { useTopLayerHost } from "@/lib/top-layer-host";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -364,6 +364,10 @@ function InstructionActionsMenu({
   const [editValue, setEditValue] = useState(() =>
     timerToDisplayString(item.timer_seconds_low, item.timer_seconds_high),
   );
+  // Portal the dropdown into the active top-layer host (the recipe detail
+  // <dialog> when this editor is shown inside the intercepted-route modal)
+  // so the menu stacks above the dialog. See `lib/top-layer-host.ts`.
+  const topLayerHost = useTopLayerHost();
 
   // Sync the timer edit field when the underlying step's timer changes.
   // Intentional sync of local form state with prop.
@@ -401,7 +405,7 @@ function InstructionActionsMenu({
         </button>
       </DropdownMenu.Trigger>
 
-      <DropdownMenu.Portal>
+      <DropdownMenu.Portal container={topLayerHost ?? undefined}>
         <DropdownMenu.Content
           className="instruction-actions-panel"
           align="end"
@@ -473,11 +477,14 @@ function InstructionActionsMenu({
 
 function SortableInstructionRow({
   item,
+  heading,
   body,
   displayIndex,
   disabled,
   completed,
   recipeName,
+  onHeadingChange,
+  onCommitHeading,
   onBodyChange,
   onCommitBody,
   onRemove,
@@ -488,11 +495,14 @@ function SortableInstructionRow({
   onInstructionStepFocused,
 }: {
   item: RecipeInstructionStepRow;
+  heading: string;
   body: string;
   displayIndex: number;
   disabled: boolean;
   completed: boolean;
   recipeName: string;
+  onHeadingChange: (stepId: number, value: string) => void;
+  onCommitHeading: (stepId: number, value: string) => void;
   onBodyChange: (stepId: number, value: string) => void;
   onCommitBody: (stepId: number, body: string) => void;
   onRemove: (stepId: number) => void;
@@ -522,10 +532,6 @@ function SortableInstructionRow({
     onInstructionStepFocused();
   }, [focusInstructionStepId, item.id, onInstructionStepFocused]);
 
-  const introSplit = useMemo(() => splitInstructionIntro(body), [body]);
-  const [bodyFocused, setBodyFocused] = useState(false);
-  const showIntroMirror = Boolean(introSplit) && !bodyFocused && !disabled && !completed;
-
   const rowStyle: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -535,7 +541,7 @@ function SortableInstructionRow({
   };
 
   const handleRowClick = useCallback(
-    (e: React.MouseEvent<HTMLTableRowElement>) => {
+    (e: React.MouseEvent<HTMLDivElement>) => {
       // Only honour click-to-complete in view mode. In edit mode, click events
       // on the row shouldn't accidentally cross out a step while authoring.
       if (isEditing) return;
@@ -551,7 +557,12 @@ function SortableInstructionRow({
     [isEditing, item.id, onToggleComplete],
   );
 
+  const trimmedHeading = heading.trim();
+  const hasHeading = trimmedHeading.length > 0;
   const staticBody = !isEditing && body.trim();
+  // When checked off, hide the full instruction text but keep the heading
+  // visible so a cook can still see what they just did.
+  const showBodyBlock = !completed;
 
   // When there's nothing to render in the actions column (no timer, no menu,
   // not editing), let the body cell span both columns so the text can flow
@@ -559,7 +570,7 @@ function SortableInstructionRow({
   const showActionsCell = !completed && (isEditing || timerColumnWhenIncomplete);
 
   return (
-    <tr
+    <div
       ref={setNodeRef}
       style={rowStyle}
       onClick={handleRowClick}
@@ -572,7 +583,7 @@ function SortableInstructionRow({
         .filter(Boolean)
         .join(" ")}
     >
-      <td
+      <div
         className="recipe-instruction-lead-cell"
         aria-label={`Step ${displayIndex}`}
         {...(isEditing ? attributes : {})}
@@ -581,47 +592,58 @@ function SortableInstructionRow({
         {isEditing ? (
           <DotsSixVertical
             className="recipe-instruction-drag-icon"
-            size={16}
+            size={20}
             weight="bold"
             aria-hidden
           />
         ) : (
-          <span
-            className={`recipe-instruction-check${completed ? " recipe-instruction-check--checked" : ""}`}
-            aria-hidden
-          >
-            {completed ? <Check size={10} weight="bold" aria-hidden /> : null}
+          <span className="recipe-instruction-lead-icon" aria-hidden>
+            {completed ? (
+              <CheckCircle
+                className="recipe-instruction-prep-icon recipe-instruction-prep-icon--done"
+                size={20}
+                weight="fill"
+              />
+            ) : (
+              <Circle className="recipe-instruction-prep-icon" size={20} weight="regular" />
+            )}
           </span>
         )}
-      </td>
-      <td
-        className="recipe-instruction-body-cell"
-        colSpan={showActionsCell ? undefined : 2}
+      </div>
+      <div
+        className={[
+          "recipe-instruction-body-cell",
+          !showActionsCell ? "recipe-instruction-body-cell--span-actions" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         <div className="recipe-instruction-body-stack">
           {isEditing ? (
             <>
-              {showIntroMirror && introSplit ? (
-                <div className="recipe-pre recipe-instruction-body-mirror" aria-hidden>
-                  <span className="recipe-instruction-intro">{introSplit.intro}</span>
-                  <span>{introSplit.rest}</span>
-                </div>
-              ) : null}
+              <input
+                type="text"
+                className="recipe-instruction-heading-input"
+                value={heading}
+                onChange={(e) => onHeadingChange(item.id, e.target.value)}
+                onBlur={(e) => onCommitHeading(item.id, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                disabled={disabled}
+                placeholder="Step heading"
+                aria-label={`Step ${displayIndex} heading`}
+                maxLength={60}
+              />
               <textarea
                 ref={bodyInputRef}
-                className={[
-                  "recipe-pre recipe-instruction-body-input",
-                  showIntroMirror ? "recipe-instruction-body-input--intro-mirror" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
+                className="recipe-pre recipe-instruction-body-input"
                 value={body}
                 onChange={(e) => onBodyChange(item.id, e.target.value)}
-                onFocus={() => setBodyFocused(true)}
-                onBlur={(e) => {
-                  setBodyFocused(false);
-                  onCommitBody(item.id, e.target.value);
-                }}
+                onBlur={(e) => onCommitBody(item.id, e.target.value)}
                 onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
@@ -644,27 +666,29 @@ function SortableInstructionRow({
                 aria-label={`Instruction step ${displayIndex}`}
               />
             </>
-          ) : staticBody ? (
-            introSplit ? (
-              <div className="recipe-pre recipe-instruction-body-static">
-                <span className="recipe-instruction-intro">{introSplit.intro}</span>
-                <span>{introSplit.rest}</span>
-              </div>
-            ) : (
-              <div className="recipe-pre recipe-instruction-body-static">{body}</div>
-            )
           ) : (
-            <div
-              className="recipe-pre recipe-instruction-body-static recipe-instruction-body-static--empty"
-              aria-hidden
-            >
-              —
-            </div>
+            <>
+              {hasHeading ? (
+                <div className="recipe-instruction-heading">{trimmedHeading}</div>
+              ) : null}
+              {showBodyBlock ? (
+                staticBody ? (
+                  <div className="recipe-pre recipe-instruction-body-static">{body}</div>
+                ) : !hasHeading ? (
+                  <div
+                    className="recipe-pre recipe-instruction-body-static recipe-instruction-body-static--empty"
+                    aria-hidden
+                  >
+                    —
+                  </div>
+                ) : null
+              ) : null}
+            </>
           )}
         </div>
-      </td>
+      </div>
       {showActionsCell ? (
-        <td className="instruction-actions-cell">
+        <div className="instruction-actions-cell">
           <div className="instruction-actions-row">
             <StepTimerDisplay
               item={item}
@@ -682,9 +706,9 @@ function SortableInstructionRow({
               />
             ) : null}
           </div>
-        </td>
+        </div>
       ) : null}
-    </tr>
+    </div>
   );
 }
 
@@ -694,6 +718,8 @@ function InstructionSortableRows({
   disabled,
   completedSteps,
   recipeName,
+  onHeadingChange,
+  onCommitHeading,
   onBodyChange,
   onCommitBody,
   onRemove,
@@ -708,6 +734,8 @@ function InstructionSortableRows({
   disabled: boolean;
   completedSteps: Set<number>;
   recipeName: string;
+  onHeadingChange: (stepId: number, value: string) => void;
+  onCommitHeading: (stepId: number, value: string) => void;
   onBodyChange: (stepId: number, value: string) => void;
   onCommitBody: (stepId: number, body: string) => void;
   onRemove: (stepId: number) => void;
@@ -725,16 +753,19 @@ function InstructionSortableRows({
 
   return (
     <SortableContext id={sortableListId} items={ids} strategy={verticalListSortingStrategy}>
-      <tbody>
+      <div className="recipe-instructions-line-list">
         {items.map((item, index) => (
           <SortableInstructionRow
             key={item.id}
             item={item}
+            heading={item.heading ?? ""}
             body={item.text}
             displayIndex={index + 1}
             disabled={disabled}
             completed={completedSteps.has(item.id)}
             recipeName={recipeName}
+            onHeadingChange={onHeadingChange}
+            onCommitHeading={onCommitHeading}
             onBodyChange={onBodyChange}
             onCommitBody={onCommitBody}
             onRemove={onRemove}
@@ -745,7 +776,7 @@ function InstructionSortableRows({
             onInstructionStepFocused={onInstructionStepFocused}
           />
         ))}
-      </tbody>
+      </div>
     </SortableContext>
   );
 }
@@ -828,6 +859,29 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
     (stepId: number, body: string) => {
       runAction(`body-${stepId}`, async () => {
         const r = await updateRecipeInstructionStepAction(recipeId, stepId, { body });
+        if (!r.ok) {
+          setError(r.error);
+          return;
+        }
+        upsertRow(r.row);
+        router.refresh();
+      });
+    },
+    [recipeId, router, runAction, upsertRow],
+  );
+
+  const changeHeading = useCallback((stepId: number, value: string) => {
+    setItems((cur) => cur.map((s) => (s.id === stepId ? { ...s, heading: value } : s)));
+  }, []);
+
+  const commitHeading = useCallback(
+    (stepId: number, raw: string) => {
+      const trimmed = raw.trim();
+      const next = trimmed.length > 0 ? trimmed.slice(0, 60) : null;
+      runAction(`heading-${stepId}`, async () => {
+        const r = await updateRecipeInstructionStepAction(recipeId, stepId, {
+          heading: next,
+        });
         if (!r.ok) {
           setError(r.error);
           return;
@@ -939,13 +993,18 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
           items={items}
           onReorder={reorderSteps}
         >
-          <table className="ingredients-table recipe-ingredients-table recipe-instructions-table">
+          <div
+            className="ingredients-table recipe-ingredients-table recipe-instructions-table recipe-instructions-line-stack"
+            aria-label="Instructions: reorder, heading, body, timer, row menu."
+          >
             <InstructionSortableRows
               sortableListId={`recipe-${recipeId}-instruction-steps`}
               items={items}
               disabled={disabled}
               completedSteps={completedSteps}
               recipeName={recipeName}
+              onHeadingChange={changeHeading}
+              onCommitHeading={commitHeading}
               onBodyChange={changeBody}
               onCommitBody={commitBody}
               onRemove={removeStep}
@@ -956,38 +1015,35 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
               onInstructionStepFocused={consumeInstructionFocus}
             />
             {isEditing ? (
-              <tbody>
-                <tr className="recipe-ingredients-add-row recipe-instruction-add-row">
-                  <td
-                    className="recipe-instruction-lead-cell recipe-ingredients-add-placeholder-cell"
-                    aria-hidden
+              <div className="recipe-ingredients-add-row recipe-instruction-add-row recipe-instruction-row">
+                <div
+                  className="recipe-instruction-lead-cell recipe-ingredients-add-placeholder-cell"
+                  aria-hidden
+                />
+                <div className="recipe-instruction-body-cell recipe-instruction-add-cell recipe-instruction-body-cell--span-actions">
+                  <input
+                    type="text"
+                    className="recipe-instruction-add-input"
+                    value={addDraft}
+                    onChange={(e) => setAddDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        tryAddStep();
+                      }
+                    }}
+                    onBlur={() => {
+                      if (addDraft.trim()) tryAddStep();
+                    }}
+                    disabled={disabled}
+                    placeholder="Add step…"
+                    aria-label="Add instruction step"
+                    id={`recipe-instruction-add-${recipeId}`}
                   />
-                  <td className="recipe-instruction-body-cell recipe-instruction-add-cell">
-                    <input
-                      type="text"
-                      className="recipe-instruction-add-input"
-                      value={addDraft}
-                      onChange={(e) => setAddDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          tryAddStep();
-                        }
-                      }}
-                      onBlur={() => {
-                        if (addDraft.trim()) tryAddStep();
-                      }}
-                      disabled={disabled}
-                      placeholder="Add step…"
-                      aria-label="Add instruction step"
-                      id={`recipe-instruction-add-${recipeId}`}
-                    />
-                  </td>
-                  <td className="instruction-actions-cell" />
-                </tr>
-              </tbody>
+                </div>
+              </div>
             ) : null}
-          </table>
+          </div>
         </RecipeInstructionsTableDnd>
       </div>
     </div>

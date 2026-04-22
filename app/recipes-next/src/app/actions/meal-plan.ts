@@ -27,8 +27,16 @@ import { revalidatePath } from "next/cache";
 const SUGGESTION_WINDOW_DAYS = 7;
 /** How far back to look for the no-repeat rule. */
 const SUGGESTION_LOOKBACK_DAYS = 4;
-/** Candidates requested per gap (1 active + rest stored in suggestion_pool). */
-const CANDIDATES_PER_GAP = 4;
+/**
+ * Candidates requested per gap (1 active + rest stored in suggestion_pool).
+ * Higher = more ideas cached up front so the Cycle button can swap instantly
+ * without hitting the LLM. Cost per call scales roughly linearly.
+ *
+ * The client (see `plan-meal-slot.tsx`) watches its local pool and calls
+ * `refillSuggestionPoolAction` in the background once the pool runs low, so
+ * subsequent clicks also stay on the fast path.
+ */
+const CANDIDATES_PER_GAP = 8;
 
 type AiDay = {
   date: string;
@@ -571,6 +579,7 @@ type RecipeLookupRow = {
   id: number;
   name: string;
   meal_types: string[] | null;
+  owner_id: string | null;
 };
 
 type ExistingEntry = {
@@ -580,6 +589,7 @@ type ExistingEntry = {
   sort_order: number | null;
   recipe_id: number | null;
   label: string | null;
+  is_suggestion: boolean | null;
 };
 
 async function clearDismissalForSlot(
@@ -650,15 +660,16 @@ async function loadSuggestionContext(
         .from("user_recipe_library")
         .select("recipe_id")
         .eq("user_id", userId),
-      // Recipes the user owns OR has in their library, with meal_types.
+      // All recipes visible to this user (RLS scopes to owned + community-published).
+      // We split into "own" vs "community" below so the LLM can prioritize the user's own.
       supabase
         .from("recipes")
-        .select("id,name,meal_types")
+        .select("id,name,meal_types,owner_id")
         .is("deleted_at", null),
       supabase
         .from("meal_plan_entries")
         .select(
-          "id,plan_date,meal_slot,sort_order,recipe_id,label,meal_plans!inner(owner_id)",
+          "id,plan_date,meal_slot,sort_order,recipe_id,label,is_suggestion,meal_plans!inner(owner_id)",
         )
         .eq("meal_plans.owner_id", userId)
         .gte("plan_date", lookbackStart)
@@ -683,11 +694,13 @@ async function loadSuggestionContext(
   );
 
   // RLS on the recipes table already scopes reads to visible rows (owned +
-  // library + community). We additionally carry the library set for future
-  // rule-based filtering (e.g. "only library recipes, never community").
+  // library + community). Split into own vs community so the LLM can prioritize
+  // the user's own recipes and only fall back to community when needed.
   const visibleRecipes = (ownedRes.data ?? []) as RecipeLookupRow[];
   const recipesById = new Map<number, RecipeLookupRow>();
   for (const r of visibleRecipes) recipesById.set(r.id, r);
+  const ownRecipes = visibleRecipes.filter((r) => r.owner_id === userId);
+  const communityRecipes = visibleRecipes.filter((r) => r.owner_id !== userId);
 
   const entries = (entriesRes.data ?? []) as ExistingEntry[];
 
@@ -713,6 +726,8 @@ async function loadSuggestionContext(
     libraryIds,
     recipesById,
     visibleRecipes,
+    ownRecipes,
+    communityRecipes,
     entries,
     dismissalSet,
     inventorySummary,
@@ -720,29 +735,71 @@ async function loadSuggestionContext(
   };
 }
 
-function findGaps(
+/**
+ * Chain rule: a slot on day Y+1 deserves a fresh suggestion ONLY when the
+ * same slot on day Y already has a COMMITTED meal (accepted suggestion,
+ * manually added, or dragged in — anything with is_suggestion = false).
+ *
+ * This walks every entry in the loaded window, and for each committed row
+ * asks: "is the same slot on the next day empty and not dismissed?" If yes,
+ * that's a gap we should fill.
+ *
+ * Effect over time: the calendar always sits exactly one day ahead of what
+ * the user has actually committed to, per slot. If they never commit to a
+ * snack, snacks never get auto-filled. If yesterday's lunch was committed,
+ * today's lunch is seeded as a suggestion.
+ */
+function findChainGaps(
   windowDays: string[],
   entries: ExistingEntry[],
   dismissalSet: Set<string>,
 ): Array<{ date: string; slotKey: PlanSlotKey }> {
-  const filled = new Set<string>();
+  const windowStart = windowDays[0];
+  const windowEnd = windowDays[windowDays.length - 1];
+
+  // Build an occupancy map of the full loaded range (lookback + window) so
+  // we can tell whether "the next day" already has anything in it.
+  const occupied = new Set<string>();
   for (const entry of entries) {
     const slotKey = classifyStoredMealEntry(entry.meal_slot, entry.sort_order);
     if (!slotKey) continue;
     const dateKey = String(entry.plan_date).slice(0, 10);
-    if (!windowDays.includes(dateKey)) continue;
-    filled.add(`${dateKey}::${slotKey}`);
+    occupied.add(`${dateKey}::${slotKey}`);
   }
 
+  // Dedupe gaps — multiple committed rows shouldn't exist for the same slot,
+  // but be defensive.
+  const seen = new Set<string>();
   const gaps: Array<{ date: string; slotKey: PlanSlotKey }> = [];
-  for (const date of windowDays) {
-    for (const slot of planSlotOrder) {
-      if (filled.has(`${date}::${slot.key}`)) continue;
-      const dismissKey = `${date}::${slot.dbMealSlot}::${slot.sortBase}`;
-      if (dismissalSet.has(dismissKey)) continue;
-      gaps.push({ date, slotKey: slot.key });
-    }
+
+  for (const entry of entries) {
+    // Only COMMITTED meals trigger the chain. Pending suggestions do not.
+    if (entry.is_suggestion) continue;
+
+    const slotKey = classifyStoredMealEntry(entry.meal_slot, entry.sort_order);
+    if (!slotKey) continue;
+
+    const sourceDate = String(entry.plan_date).slice(0, 10);
+    const nextDate = addDaysToDateString(sourceDate, 1);
+
+    // Next-day must fall inside the visible forward window. This prevents
+    // chaining backwards into the past or beyond the 7-day horizon.
+    if (nextDate < windowStart || nextDate > windowEnd) continue;
+
+    // Skip if the next-day slot already has anything (real or pending).
+    if (occupied.has(`${nextDate}::${slotKey}`)) continue;
+
+    // Respect explicit dismissals — the user said "not here."
+    const slotConfig = getPlanSlot(slotKey);
+    const dismissKey = `${nextDate}::${slotConfig.dbMealSlot}::${slotConfig.sortBase}`;
+    if (dismissalSet.has(dismissKey)) continue;
+
+    const gapKey = `${nextDate}::${slotKey}`;
+    if (seen.has(gapKey)) continue;
+    seen.add(gapKey);
+    gaps.push({ date: nextDate, slotKey });
   }
+
   return gaps;
 }
 
@@ -762,7 +819,10 @@ async function callSuggestionsEdgeFunction(input: {
   anonKey: string;
   model: string;
   gaps: Array<{ date: string; slotKey: PlanSlotKey }>;
-  library: RecipeLookupRow[];
+  /** Recipes the user owns. AI is instructed to prefer these first. */
+  ownRecipes: RecipeLookupRow[];
+  /** Community recipes visible to this user. Used only as variety fallback. */
+  communityRecipes: RecipeLookupRow[];
   placed: ExistingEntry[];
   peopleNotes: string;
   inventorySummary: string;
@@ -790,7 +850,11 @@ async function callSuggestionsEdgeFunction(input: {
       mode: "weekly_suggestions",
       model: input.model,
       gaps: input.gaps.map((g) => ({ date: g.date, slot_key: g.slotKey })),
-      library_recipes: input.library.map((r) => ({
+      own_recipes: input.ownRecipes.map((r) => ({
+        title: r.name,
+        meal_types: r.meal_types ?? [],
+      })),
+      community_recipes: input.communityRecipes.map((r) => ({
         title: r.name,
         meal_types: r.meal_types ?? [],
       })),
@@ -831,16 +895,17 @@ function pickAcceptableCandidates(
 
   const accepted: SuggestionCandidate[] = [];
   for (const raw of rawCandidates) {
-    const label = (raw.label ?? raw.recipe_title ?? "").trim();
-    if (!label) continue;
     const titleKey = String(raw.recipe_title ?? "").trim().toLowerCase();
-    const matchedRecipe = titleKey
-      ? recipesByTitle.get(titleKey)
-      : undefined;
+    const matchedRecipe = titleKey ? recipesByTitle.get(titleKey) : undefined;
+    // Only accept candidates that match a real recipe the user can see (own or
+    // community). Label-only / invented suggestions are rejected so the UI
+    // never renders gray "mystery meal" cards.
+    if (!matchedRecipe) continue;
+    const label = (raw.label ?? matchedRecipe.name).trim() || matchedRecipe.name;
     const candidate: SuggestionCandidate = {
-      recipe_id: matchedRecipe?.id ?? null,
+      recipe_id: matchedRecipe.id,
       label,
-      recipe_title: raw.recipe_title ?? null,
+      recipe_title: matchedRecipe.name,
       notes: raw.notes ?? null,
     };
     const check = validateSuggestion(
@@ -857,13 +922,16 @@ function pickAcceptableCandidates(
 }
 
 /**
- * Called on /plan page load. Ensures every (day, slot) in the next 7 days is
- * either (a) already filled by a real or suggested meal, (b) deliberately
- * dismissed by the user, or (c) just got a freshly-generated suggestion.
+ * Walks the calendar and, for every slot that has a COMMITTED meal on day Y,
+ * makes sure the SAME slot on day Y+1 has a suggestion (unless the user has
+ * explicitly dismissed it). Suggestions do not chain — only committed meals
+ * (accepted, manually added, or dragged) trigger the next-day suggestion.
  *
- * No-op when there are no gaps — cheap to call on every render.
+ * Called on every /plan page render AND fired from the client after any
+ * commit action (accept / add / drag) so a new next-day suggestion shows up
+ * in the same session. No-op when no gaps exist — cheap on every render.
  */
-export async function ensureWeekSuggestionsAction(options?: { model?: string }) {
+export async function ensureSuggestionChainAction(options?: { model?: string }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -893,7 +961,7 @@ export async function ensureWeekSuggestionsAction(options?: { model?: string }) 
   const windowEnd = windowDays[windowDays.length - 1];
 
   const ctx = await loadSuggestionContext(supabase, user.id, windowStart, windowEnd);
-  const gaps = findGaps(windowDays, ctx.entries, ctx.dismissalSet);
+  const gaps = findChainGaps(windowDays, ctx.entries, ctx.dismissalSet);
   if (gaps.length === 0) {
     return { ok: true as const, filled: 0 };
   }
@@ -904,7 +972,8 @@ export async function ensureWeekSuggestionsAction(options?: { model?: string }) 
     anonKey,
     model: options?.model || "gpt-4o-mini",
     gaps,
-    library: Array.from(ctx.recipesById.values()),
+    ownRecipes: ctx.ownRecipes,
+    communityRecipes: ctx.communityRecipes,
     placed: ctx.entries,
     peopleNotes: ctx.peopleNotes,
     inventorySummary: ctx.inventorySummary,
@@ -986,15 +1055,31 @@ export async function ensureWeekSuggestionsAction(options?: { model?: string }) 
     }
   }
 
-  if (inserts.length > 0) {
-    const insertRes = await supabase.from("meal_plan_entries").insert(inserts);
-    if (insertRes.error) {
-      return { ok: false as const, error: insertRes.error.message };
+  // Insert one at a time so that if a parallel auto-fill run already claimed a
+  // slot (unique partial index on meal_plan_entries_suggestion_unique), the
+  // duplicate-key error can be ignored per-row instead of rolling back the
+  // entire batch. This is the defense against the "stampede" that happens
+  // when the /plan page is reloaded before the first AI call finishes.
+  let filled = 0;
+  for (const row of inserts) {
+    const { error } = await supabase.from("meal_plan_entries").insert(row);
+    if (!error) {
+      filled += 1;
+      continue;
     }
+    // 23505 = unique_violation. Means another concurrent run beat us to it.
+    if (error.code === "23505" || /duplicate key|unique/i.test(error.message)) {
+      continue;
+    }
+    return { ok: false as const, error: error.message };
   }
 
-  revalidatePath("/plan");
-  return { ok: true as const, filled: inserts.length };
+  // Note: no revalidatePath("/plan") here. This action runs DURING render of
+  // PlanPage (server component), and Next.js 16 disallows revalidatePath at
+  // render time. The caller re-reads entries right after this returns, so the
+  // freshly-inserted suggestions show up on the same render without any
+  // revalidation needed.
+  return { ok: true as const, filled };
 }
 
 /**
@@ -1058,7 +1143,8 @@ export async function cycleMealPlanSuggestionAction(entryId: number) {
       anonKey,
       model: "gpt-4o-mini",
       gaps: [{ date: String(entry.plan_date).slice(0, 10), slotKey }],
-      library: Array.from(ctx.recipesById.values()),
+      ownRecipes: ctx.ownRecipes,
+      communityRecipes: ctx.communityRecipes,
       // Exclude the current entry so the LLM can legitimately replace it.
       placed: ctx.entries.filter((e) => e.id !== entry.id),
       peopleNotes: ctx.peopleNotes,
@@ -1110,7 +1196,185 @@ export async function cycleMealPlanSuggestionAction(entryId: number) {
     return { ok: false as const, error: updateRes.error.message };
   }
 
-  revalidatePath("/plan");
+  // Intentionally no revalidatePath: the UI updates optimistically on the
+  // client and a revalidate would cause a re-render flicker. On the slow path
+  // (pool was empty → LLM ran), the client calls router.refresh() itself so
+  // the new recipe row shows up.
+  return {
+    ok: true as const,
+    active: { recipeId: next.recipe_id, label: next.label, notes: next.notes ?? null },
+    poolAfter: rest,
+  };
+}
+
+/**
+ * Background refill for a suggestion's candidate pool.
+ *
+ * Called by the UI (fire-and-forget) when the local pool drops to or below
+ * `POOL_REFILL_THRESHOLD` after a Cycle click. Calls the LLM for fresh ideas
+ * for just this one slot, filters out anything already active or already in
+ * the pool, and appends the survivors to `suggestion_pool` in the database.
+ *
+ * Returns the appended candidates so the client can merge them into its own
+ * in-memory pool without waiting for a page refresh.
+ */
+export async function refillSuggestionPoolAction(entryId: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Not signed in." };
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!session?.access_token || !baseUrl || !anonKey) {
+    return { ok: false as const, error: "No session to refresh suggestions." };
+  }
+
+  const entryRes = await supabase
+    .from("meal_plan_entries")
+    .select(
+      "id,plan_date,meal_slot,sort_order,recipe_id,label,notes,suggestion_pool,is_suggestion,meal_plan_id",
+    )
+    .eq("id", entryId)
+    .single();
+  if (entryRes.error || !entryRes.data) {
+    return { ok: false as const, error: "Could not load suggestion." };
+  }
+  const entry = entryRes.data as ExistingEntry & {
+    notes: string | null;
+    suggestion_pool: unknown;
+    is_suggestion: boolean | null;
+    meal_plan_id: number;
+  };
+  if (!entry.is_suggestion) {
+    return { ok: false as const, error: "Not a suggestion." };
+  }
+
+  const slotKey = classifyStoredMealEntry(entry.meal_slot, entry.sort_order);
+  if (!slotKey) {
+    return { ok: false as const, error: "Unknown slot." };
+  }
+
+  const existingPool = normalizeSuggestionPool(entry.suggestion_pool);
+
+  const timeZone = await getUserTimeZone();
+  const today = planDateKeyInTZ(timeZone);
+  const windowEnd = addDaysToDateString(today, SUGGESTION_WINDOW_DAYS - 1);
+  const ctx = await loadSuggestionContext(supabase, user.id, today, windowEnd);
+
+  const llmResult = await callSuggestionsEdgeFunction({
+    accessToken: session.access_token,
+    baseUrl,
+    anonKey,
+    model: "gpt-4o-mini",
+    gaps: [{ date: String(entry.plan_date).slice(0, 10), slotKey }],
+    ownRecipes: ctx.ownRecipes,
+    communityRecipes: ctx.communityRecipes,
+    // Treat the current entry as "placed" so the LLM won't suggest the same
+    // thing again when applying the no-repeat rule.
+    placed: ctx.entries,
+    peopleNotes: ctx.peopleNotes,
+    inventorySummary: ctx.inventorySummary,
+  });
+  if (!llmResult.ok) return { ok: false as const, error: llmResult.error };
+
+  const recipesByTitle = new Map<string, RecipeLookupRow>();
+  for (const r of ctx.recipesById.values()) {
+    recipesByTitle.set(r.name.trim().toLowerCase(), r);
+  }
+  const placed = buildPlacedMeals(ctx.entries);
+  const first = llmResult.slots[0];
+  const rawAccepted = first
+    ? pickAcceptableCandidates(
+        first.candidates ?? [],
+        { date: String(entry.plan_date).slice(0, 10), slotKey },
+        placed,
+        recipesByTitle,
+        ctx.recipesById,
+      )
+    : [];
+
+  // Exclude anything already showing (active) or already queued.
+  const seenKeys = new Set<string>();
+  const activeLabelKey = String(entry.label ?? "").trim().toLowerCase();
+  if (activeLabelKey) seenKeys.add(`label:${activeLabelKey}`);
+  if (entry.recipe_id != null) seenKeys.add(`id:${entry.recipe_id}`);
+  for (const p of existingPool) {
+    if (p.recipe_id != null) seenKeys.add(`id:${p.recipe_id}`);
+    seenKeys.add(`label:${p.label.trim().toLowerCase()}`);
+  }
+
+  const added: SuggestionCandidate[] = [];
+  for (const c of rawAccepted) {
+    const idKey = c.recipe_id != null ? `id:${c.recipe_id}` : null;
+    const labelKey = `label:${c.label.trim().toLowerCase()}`;
+    if (idKey && seenKeys.has(idKey)) continue;
+    if (seenKeys.has(labelKey)) continue;
+    if (idKey) seenKeys.add(idKey);
+    seenKeys.add(labelKey);
+    added.push(c);
+  }
+
+  if (added.length === 0) {
+    return { ok: true as const, added: [] as SuggestionCandidate[] };
+  }
+
+  const mergedPool = [...existingPool, ...added];
+  const updateRes = await supabase
+    .from("meal_plan_entries")
+    .update({ suggestion_pool: mergedPool.length > 0 ? mergedPool : null })
+    .eq("id", entryId);
+  if (updateRes.error) {
+    return { ok: false as const, error: updateRes.error.message };
+  }
+
+  // Intentionally no revalidatePath: this is a background top-up and we don't
+  // want to trigger a page re-render (which would throw away the client's
+  // optimistic state).
+  return { ok: true as const, added };
+}
+
+/**
+ * User hit the "Accept" check on a suggestion card. Promotes the row from a
+ * tentative AI suggestion into a real, user-owned meal by clearing the
+ * `is_suggestion` flag and the `suggestion_pool` queue. Everything else on
+ * the row (recipe, servings, notes, slot) stays exactly as the user saw it.
+ */
+export async function acceptMealPlanSuggestionAction(entryId: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Not signed in." };
+
+  const entryRes = await supabase
+    .from("meal_plan_entries")
+    .select("id,is_suggestion")
+    .eq("id", entryId)
+    .single();
+  if (entryRes.error || !entryRes.data) {
+    return { ok: false as const, error: "Could not load suggestion." };
+  }
+  const entry = entryRes.data as { id: number; is_suggestion: boolean | null };
+  if (!entry.is_suggestion) {
+    return { ok: true as const };
+  }
+
+  const updateRes = await supabase
+    .from("meal_plan_entries")
+    .update({ is_suggestion: false, suggestion_pool: null })
+    .eq("id", entryId);
+  if (updateRes.error) {
+    return { ok: false as const, error: updateRes.error.message };
+  }
+
+  // No revalidatePath: the client flips `is_suggestion` locally so the card
+  // updates instantly. Triggering a full /plan re-render here would stall the
+  // UI for seconds (ensureSuggestionChain + all the plan queries rerun).
   return { ok: true as const };
 }
 
@@ -1165,6 +1429,8 @@ export async function dismissMealPlanSuggestionAction(entryId: number) {
     // Non-fatal: suggestion is already deleted. Log silently.
   }
 
-  revalidatePath("/plan");
+  // No revalidatePath: the client hides the card locally so the UI responds
+  // instantly. A full /plan re-render here would cost 5–10s in dev because
+  // ensureSuggestionChain + the plan queries would all rerun.
   return { ok: true as const };
 }

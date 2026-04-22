@@ -12,17 +12,26 @@ function safeInt(v: unknown): number | null {
 }
 
 const INSTRUCTION_STEP_SELECT =
-  "id, recipe_id, step_number, text, timer_seconds_low, timer_seconds_high, created_at";
+  "id, recipe_id, step_number, heading, text, timer_seconds_low, timer_seconds_high, created_at";
 
 function normalizeStepRow(raw: Record<string, unknown>): RecipeInstructionStepRow | null {
   const id = Number(raw.id);
   const recipe_id = Number(raw.recipe_id);
   const step_number = Number(raw.step_number ?? 1);
   if (!Number.isFinite(id) || !Number.isFinite(recipe_id)) return null;
+  const rawHeading = raw.heading;
+  const heading =
+    rawHeading == null
+      ? null
+      : (() => {
+          const s = String(rawHeading).trim();
+          return s.length > 0 ? s : null;
+        })();
   return {
     id,
     recipe_id,
     step_number: Number.isFinite(step_number) ? step_number : 1,
+    heading,
     text: raw.text == null ? "" : String(raw.text),
     timer_seconds_low: safeInt(raw.timer_seconds_low),
     timer_seconds_high: safeInt(raw.timer_seconds_high),

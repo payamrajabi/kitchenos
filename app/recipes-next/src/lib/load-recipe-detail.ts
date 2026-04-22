@@ -28,6 +28,13 @@ export type RecipeDetailPayload = {
   recipeIngredientSections: RecipeIngredientSectionRow[];
   recipeInstructionSteps: RecipeInstructionStepRow[];
   availableIngredients: RecipeDetailAvailableIngredient[];
+  /**
+   * Ingredient ids that the current viewer has at least some quantity of in
+   * their inventory (summed across every storage row). Used by the recipe
+   * detail view to render an "Out of stock" badge on ingredients that aren't
+   * represented in the viewer's inventory. Empty for signed-out visitors.
+   */
+  stockedIngredientIds: number[];
 };
 
 export type OwnerLoadOutcome =
@@ -144,6 +151,38 @@ function normalizeRecipeIngredients(
   });
 }
 
+/**
+ * Returns ingredient ids that the current viewer has in their inventory with a
+ * positive summed quantity. We rely on RLS to scope the `inventory_items`
+ * read to the signed-in user. The caller passes the set of ingredient ids
+ * referenced by the recipe so we don't fetch the entire inventory when the
+ * recipe only touches a handful of ingredients.
+ */
+async function loadStockedIngredientIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ingredientIds: number[],
+): Promise<number[]> {
+  if (!ingredientIds.length) return [];
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("ingredient_id, quantity")
+    .in("ingredient_id", ingredientIds);
+  if (error || !data) return [];
+  const totals = new Map<number, number>();
+  for (const row of data as { ingredient_id: unknown; quantity: unknown }[]) {
+    const idNum = Number(row.ingredient_id);
+    if (!Number.isFinite(idNum)) continue;
+    const qtyNum = row.quantity == null ? 0 : Number(row.quantity);
+    const safeQty = Number.isFinite(qtyNum) ? qtyNum : 0;
+    totals.set(idNum, (totals.get(idNum) ?? 0) + safeQty);
+  }
+  const stocked: number[] = [];
+  for (const [id, total] of totals) {
+    if (total > 0) stocked.push(id);
+  }
+  return stocked;
+}
+
 function normalizeSections(rows: unknown[]): RecipeIngredientSectionRow[] {
   return (
     rows as {
@@ -225,6 +264,17 @@ export async function loadOwnerRecipeDetail(
     recipe.instructions,
   );
 
+  const normalizedRecipeIngredients = normalizeRecipeIngredients(
+    (recipeIngredientsResult.data ?? []) as RawRecipeIngredientRow[],
+  );
+  const recipeIngredientIds = Array.from(
+    new Set(normalizedRecipeIngredients.map((r) => r.ingredient_id)),
+  );
+  const stockedIngredientIds = await loadStockedIngredientIds(
+    supabase,
+    recipeIngredientIds,
+  );
+
   return {
     status: "ok",
     data: {
@@ -232,11 +282,10 @@ export async function loadOwnerRecipeDetail(
       availableIngredients: normalizeAvailableIngredients(
         ingredientsResult.data ?? [],
       ),
-      recipeIngredients: normalizeRecipeIngredients(
-        (recipeIngredientsResult.data ?? []) as RawRecipeIngredientRow[],
-      ),
+      recipeIngredients: normalizedRecipeIngredients,
       recipeIngredientSections: normalizeSections(sectionsResult.data ?? []),
       recipeInstructionSteps,
+      stockedIngredientIds,
     },
   };
 }
@@ -311,7 +360,7 @@ export async function loadCommunityRecipeDetail(
     supabase
       .from("recipe_instruction_steps")
       .select(
-        "id, recipe_id, step_number, text, timer_seconds_low, timer_seconds_high, created_at",
+        "id, recipe_id, step_number, heading, text, timer_seconds_low, timer_seconds_high, created_at",
       )
       .eq("recipe_id", id)
       .order("step_number", { ascending: true }),
@@ -380,6 +429,21 @@ export async function loadCommunityRecipeDetail(
     }));
   }
 
+  const normalizedRecipeIngredients = normalizeRecipeIngredients(
+    (recipeIngredientsResult.data ?? []) as RawRecipeIngredientRow[],
+  );
+  // For community viewers we still want to show the "Out of stock" badge
+  // relative to their own inventory — RLS scopes the query to them, and
+  // signed-out visitors simply see nothing stocked (which effectively hides
+  // the badge since we gate on sign-in state in the UI too).
+  const recipeIngredientIds = user
+    ? Array.from(new Set(normalizedRecipeIngredients.map((r) => r.ingredient_id)))
+    : [];
+  const stockedIngredientIds = await loadStockedIngredientIds(
+    supabase,
+    recipeIngredientIds,
+  );
+
   return {
     status: "ok",
     data: {
@@ -387,11 +451,10 @@ export async function loadCommunityRecipeDetail(
       availableIngredients: normalizeAvailableIngredients(
         ingredientsResult.data ?? [],
       ),
-      recipeIngredients: normalizeRecipeIngredients(
-        (recipeIngredientsResult.data ?? []) as RawRecipeIngredientRow[],
-      ),
+      recipeIngredients: normalizedRecipeIngredients,
       recipeIngredientSections: normalizeSections(sectionsResult.data ?? []),
       recipeInstructionSteps,
+      stockedIngredientIds,
       isOwn,
       isSignedIn: !!user,
       inLibrary,

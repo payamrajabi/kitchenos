@@ -1,0 +1,60 @@
+---
+description: Popovers, dropdowns, menus, tooltips, and nested modal cards must always render above whatever surface they are triggered from (including native <dialog>s).
+alwaysApply: true
+---
+
+# Popovers must always stack above their trigger surface
+
+Every floating UI element — popover, dropdown menu, combobox list, tooltip, toast, or nested confirmation modal — must render **above** whatever surface opened it. This is non-negotiable. Don't ship a popover that can disappear behind a dialog.
+
+## Why this rule exists
+
+The recipe detail view (and any future modal like it) is a native `<dialog>` opened via `showModal()`. The browser renders `showModal`-ed dialogs in a special **top layer** that sits above everything else in the document and that `z-index` cannot beat. Anything portaled into `<body>` with a default `createPortal` or Radix `Portal` will render **underneath** the dialog — the menu opens, the user just can't see it.
+
+We solved this with a shared `top-layer host` tracker. Any popover that portals must use it.
+
+## The rule
+
+If you are adding **anything that portals** (i.e. renders into a different DOM root than its trigger), its portal target **must** be the active top-layer host when one is set. Use the helper:
+
+```tsx
+import { useTopLayerPortalContainer } from "@/lib/top-layer-host";
+
+const container = useTopLayerPortalContainer();
+
+// React portal:
+createPortal(<Popover />, container);
+
+// Radix portal:
+<DropdownMenu.Portal container={useTopLayerHost() ?? undefined}>…</DropdownMenu.Portal>
+```
+
+`useTopLayerPortalContainer()` returns:
+
+- the currently-open native `<dialog>` element, when one is open via `showModal()`
+- `document.body`, otherwise (or `null` during SSR — the helper already guards this, so gate rendering on it with `container && createPortal(…, container)`).
+
+This works for **every** kind of floating surface:
+
+- Searchable selects / comboboxes (`SearchableSelect`)
+- Dropdown menus (Radix `@radix-ui/react-dropdown-menu`)
+- Any future Popover, Tooltip, HoverCard, ContextMenu, Select (Radix or otherwise)
+- Custom "modal card" confirmations that you portal into the DOM
+- Toast containers (see `AppToaster`)
+
+## What to do
+
+1. **Never** call `createPortal(…, document.body)` directly for a floating UI surface. Route through `useTopLayerPortalContainer()` instead.
+2. **Never** leave a Radix `Portal` without a `container` prop for anything that can be rendered inside a modal surface. Pass `container={useTopLayerHost() ?? undefined}`.
+3. **Don't** try to fight the native dialog with `z-index`. It cannot be beaten. Always portal into the dialog instead.
+4. If you add a new modal-like container that participates in the top layer (another `<dialog>` + `showModal`, a `popover` attribute element, etc.), call `setTopLayerHost(el)` when it mounts and clear it on unmount, matching `RecipeDetailDialog`'s pattern. That way everything in the system stacks correctly above it automatically.
+5. If you add a new portal-based primitive, write a short comment pointing to this rule and to `lib/top-layer-host.ts`.
+
+## Where this is enforced today
+
+- `app/recipes-next/src/lib/top-layer-host.ts` — the store, the hook (`useTopLayerHost`), and the container helper (`useTopLayerPortalContainer`).
+- `app/recipes-next/src/components/recipe-detail-dialog.tsx` — the producer that registers the native `<dialog>` as the top-layer host.
+- `app/recipes-next/src/components/searchable-select.tsx` — example portal consumer using the hook.
+- `app/recipes-next/src/components/recipe-detail-overlay-chrome.tsx` — example Radix consumer using the hook.
+- `app/recipes-next/src/components/app-toaster.tsx` — example toaster consumer.
+- `app/recipes-next/src/components/recipe-detail-editor.tsx` / `recipe-ingredients-editor.tsx` / `ingredient-delete-button.tsx` — nested confirmation modals consuming the hook.

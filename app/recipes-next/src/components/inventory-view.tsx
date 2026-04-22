@@ -9,7 +9,6 @@ import {
   useTransition,
 } from "react";
 import type { IngredientRow, InventoryItemRow } from "@/types/database";
-import { InventoryTableBody } from "@/components/inventory-table-body";
 import {
   DEFAULT_INVENTORY_FILTERS,
   InventoryFilterBar,
@@ -21,15 +20,12 @@ import { getInventoryGroup } from "@/lib/inventory-filters";
 import { InventoryDetailSheet } from "@/components/inventory-detail-sheet";
 import { updateInventoryQuantityFieldAction } from "@/app/actions/inventory";
 import { toast } from "sonner";
-// NOTE: The list/table view is intentionally hidden from users for now.
-// The view-mode toggle is not rendered, and `viewMode` is pinned to
-// "categories". Keep the list render path and the toggle component in the
-// codebase so we can bring the tabular view back in the future without a
-// rewrite. To re-enable the switcher, re-import `InventoryViewModeToggle`,
-// restore the `useState` + `setViewMode`, and render it inside
-// `.inventory-view-controls`.
-import { type InventoryViewMode } from "@/components/inventory-view-mode-toggle";
+import {
+  InventoryViewModeToggle,
+  type InventoryViewMode,
+} from "@/components/inventory-view-mode-toggle";
 import { InventoryCategoryView } from "@/components/inventory-category-view";
+import { InventoryTableView } from "@/components/inventory-table-view";
 
 type Props = {
   ingredients: IngredientRow[];
@@ -148,10 +144,7 @@ function pickNeighbour(
 export function InventoryView({ ingredients, inventory }: Props) {
   const [filters, setFilters] =
     useState<InventoryFilterState>(DEFAULT_INVENTORY_FILTERS);
-  // Pinned to "categories" while the list view is hidden. Cast keeps the
-  // literal type wide so the preserved `viewMode === "list"` branch below
-  // stays type-valid until we re-enable the toggle (see comment at top).
-  const viewMode = "categories" as InventoryViewMode;
+  const [viewMode, setViewMode] = useState<InventoryViewMode>("list");
   const [selectedIngredientId, setSelectedIngredientId] = useState<
     number | null
   >(null);
@@ -678,24 +671,22 @@ export function InventoryView({ ingredients, inventory }: Props) {
       >
         <div className="inventory-view-controls">
           <InventoryFilterBar value={filters} onChange={setFilters} />
-          {/* View-mode toggle intentionally hidden; see note at top of file. */}
+          <InventoryViewModeToggle value={viewMode} onChange={setViewMode} />
         </div>
-        {viewMode === "list" ? (
-          <div className="table-container inventory-table">
-            <table className="ingredients-table inventory-table--compact">
-              <InventoryTableBody
-                ingredients={filteredIngredients}
-                inventory={displayInventory}
-                selectedIngredientId={selectedIngredientId}
-                onSelectIngredient={(id) => handleSelectIngredient(id)}
-              />
-            </table>
+        {viewMode === "table" ? (
+          <>
+            <InventoryTableView
+              ingredients={filteredIngredients}
+              inventory={displayInventory}
+              selectedIngredientId={selectedIngredientId}
+              onSelectIngredient={(id) => handleSelectIngredient(id)}
+            />
             {!hasRows && (
               <p className="inventory-filter-empty" role="status">
                 No ingredients match your filters.
               </p>
             )}
-          </div>
+          </>
         ) : (
           <InventoryCategoryView
             ingredients={filteredIngredients}
