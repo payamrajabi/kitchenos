@@ -1,6 +1,7 @@
 "use client";
 
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
+import { PlanEntryDeleteButton } from "@/components/plan-entry-delete-button";
 import { PlanEntryServingsControl } from "@/components/plan-entry-servings-control";
 import { PlanSuggestionCycleControl } from "@/components/plan-suggestion-cycle-control";
 import { PlanSuggestionDismissButton } from "@/components/plan-suggestion-dismiss-button";
@@ -244,11 +245,17 @@ export function PlanMealSlot({
                     />
                   </>
                 ) : (
-                  <PlanEntryServingsControl
-                    entryId={entry.id}
-                    servingsProp={entry.servings}
-                    pendingParent={pending}
-                  />
+                  <>
+                    <PlanEntryDeleteButton
+                      entryId={entry.id}
+                      pendingParent={pending}
+                    />
+                    <PlanEntryServingsControl
+                      entryId={entry.id}
+                      servingsProp={entry.servings}
+                      pendingParent={pending}
+                    />
+                  </>
                 )}
               </div>
             );

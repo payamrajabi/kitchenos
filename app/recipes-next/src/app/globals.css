@@ -3641,7 +3641,9 @@ main.container:has(> .shop-view) {
   container-name: plan-thumb;
 }
 
-/* Servings: black circle (number only); hover expands to three equal square segments (− / count / +). */
+/* Servings: hidden by default; revealed when the meal card is hovered/focused.
+   The pill itself is a black circle (number only); hover expands it to three
+   equal square segments (− / count / +). */
 .plan-serving {
   --cell: min(26px, calc((100cqw - var(--space-12)) / 3));
   position: absolute;
@@ -3663,11 +3665,21 @@ main.container:has(> .shop-view) {
   font-weight: 700;
   letter-spacing: 0.02em;
   overflow: hidden;
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
   transition:
     width 0.16s ease,
     border-radius 0.16s ease,
-    box-shadow 0.16s ease;
+    box-shadow 0.16s ease,
+    opacity 0.12s ease;
+}
+
+.plan-board-card:hover .plan-serving,
+.plan-board-card:focus-within .plan-serving,
+.plan-serving:hover,
+.plan-serving:focus-within {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .plan-serving:hover,
@@ -3736,6 +3748,8 @@ main.container:has(> .shop-view) {
   .plan-serving {
     width: min(calc(3 * var(--cell)), calc(100cqw - var(--space-12)));
     border-radius: calc(var(--cell) / 2);
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .plan-serving-btn {
@@ -3807,6 +3821,59 @@ main.container:has(> .shop-view) {
   width: var(--cell);
   height: var(--cell);
   pointer-events: auto;
+}
+
+/* Quick delete for committed plan entries; hidden until the card is hovered/focused. */
+.plan-entry-delete {
+  --cell: min(26px, calc((100cqw - var(--space-12)) / 3));
+  position: absolute;
+  top: var(--space-6);
+  left: var(--space-6);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--cell);
+  height: var(--cell);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #0a0a0a;
+  color: #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    background-color 0.12s ease,
+    transform 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.plan-board-card:hover .plan-entry-delete,
+.plan-board-card:focus-within .plan-entry-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.plan-entry-delete:hover,
+.plan-entry-delete:focus-visible {
+  background-color: #1a1a1a;
+  outline: none;
+  transform: scale(1.06);
+}
+
+.plan-entry-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (hover: none) {
+  .plan-entry-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 /* Subtle "this isn't committed yet" treatment for suggestion cards. */
