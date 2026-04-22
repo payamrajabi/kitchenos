@@ -2,8 +2,9 @@
 
 import { PlanWeekBoard } from "@/components/plan-week-board";
 import type { MealPlanEntryRow } from "@/types/database";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { ensureWeekSuggestionsAction } from "@/app/actions/meal-plan";
 
 type RecipeOption = {
   id: number;
@@ -37,11 +38,38 @@ export function PlanWeekClient({
   ingredients,
 }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const boardRef = useRef<{ scrollToToday: () => void } | null>(null);
+  const hasAutoFilledRef = useRef(false);
 
   useEffect(() => {
     boardRef.current?.scrollToToday();
   }, [pathname]);
+
+  // Fill the 7-day rolling window with LLM suggestions once per page load.
+  // This used to run on the server inside PlanPage's render, but Next.js 16
+  // disallows invoking a Server Action (which implicitly/explicitly calls
+  // revalidatePath) from a server component's render cycle. Firing it from
+  // a client effect sidesteps the rule and only costs a brief flicker on
+  // the first visit while the edge function runs.
+  useEffect(() => {
+    if (hasAutoFilledRef.current) return;
+    hasAutoFilledRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await ensureWeekSuggestionsAction();
+        if (!cancelled && result.ok && result.filled > 0) {
+          router.refresh();
+        }
+      } catch {
+        // Silently ignore — /plan still renders without AI suggestions.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   return (
     <div className="plan-week-fit">

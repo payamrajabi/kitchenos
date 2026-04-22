@@ -11,7 +11,6 @@ import {
   loadLibraryRecipeIds,
   ownedOrLibraryOrClause,
 } from "@/lib/recipe-visibility";
-import { ensureWeekSuggestionsAction } from "@/app/actions/meal-plan";
 import { Suspense } from "react";
 import type { MealPlanEntryRow, MealPlanRow, RecipeRow } from "@/types/database";
 
@@ -59,10 +58,10 @@ export default async function PlanPage() {
   const libraryIds = await loadLibraryRecipeIds(supabase, user.id);
   const recipeOrClause = ownedOrLibraryOrClause(user.id, libraryIds);
 
-  // Fill any empty slots in the next 7 days with LLM suggestions. Cheap when
-  // there are no gaps; otherwise it adds ~1s to page load while the edge
-  // function runs. We await before reading entries so the new rows appear.
-  await ensureWeekSuggestionsAction();
+  // Note: the rolling 7-day auto-fill used to run here as a Server Action
+  // during render. Next.js 16 rejects that pattern (revalidatePath during
+  // render is unsupported), so PlanWeekClient now fires the same action
+  // from a client-side effect on mount instead.
 
   const [{ data: planRows }, { data: recipeRows }, { data: ingredientRows }] =
     await Promise.all([
