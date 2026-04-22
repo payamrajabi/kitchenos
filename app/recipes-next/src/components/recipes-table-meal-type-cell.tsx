@@ -30,6 +30,7 @@ export function RecipesTableMealTypeCell({
   // Keep cell in sync if the server refetches and sends a new value in.
   useEffect(() => {
     const fresh = normalizeMealTypesFromDb(initialMealTypes);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- legitimate prop-to-state sync; the server-truth initialMealTypes prop changes via router.refresh() and local editing state must re-mirror it.
     setValue((prev) => (mealTypesEqual(prev, fresh) ? prev : fresh));
   }, [initialMealTypes]);
 

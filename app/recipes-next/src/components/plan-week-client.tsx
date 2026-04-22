@@ -4,7 +4,7 @@ import { PlanWeekBoard } from "@/components/plan-week-board";
 import type { MealPlanEntryRow } from "@/types/database";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { ensureWeekSuggestionsAction } from "@/app/actions/meal-plan";
+import { ensureSuggestionChainAction } from "@/app/actions/meal-plan";
 
 type RecipeOption = {
   id: number;
@@ -58,7 +58,7 @@ export function PlanWeekClient({
     let cancelled = false;
     (async () => {
       try {
-        const result = await ensureWeekSuggestionsAction();
+        const result = await ensureSuggestionChainAction();
         if (!cancelled && result.ok && result.filled > 0) {
           router.refresh();
         }

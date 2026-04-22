@@ -58,6 +58,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // On mount, hydrate from storage + current system preference.
   useEffect(() => {
     const stored = readStoredPreference();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration of client state from localStorage; running on server is impossible so this must happen in an effect.
     setPreferenceState(stored);
     const next = stored === "system" ? readSystemResolved() : stored;
     setResolved(next);
