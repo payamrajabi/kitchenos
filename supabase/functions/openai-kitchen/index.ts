@@ -33,8 +33,10 @@ type WeeklySuggestionsBody = {
   model?: string;
   /** Gaps the server wants candidates for. */
   gaps: SuggestionGap[];
-  /** Recipes from the user's library, with their meal_types for routing. */
-  library_recipes: LibraryRecipeHint[];
+  /** Recipes the user owns. AI should prefer these first. */
+  own_recipes: LibraryRecipeHint[];
+  /** Community-published recipes visible to the user. Variety fallback only. */
+  community_recipes: LibraryRecipeHint[];
   /** Meals already placed in the look-around window (for no-repeat rule). */
   placed_meals: Array<{
     date: string;
@@ -156,6 +158,13 @@ Use 7 days from week_start. Respect dietary notes. Prefer variety.`,
 RULES (follow every one):
 ${body.rules_block}
 
+RECIPE SOURCE (STRICT):
+- You MUST only choose recipes that appear in own_recipes or community_recipes.
+- NEVER invent a dish or return a recipe_title that isn't in those lists.
+- Strongly prefer own_recipes. Use community_recipes ONLY when own_recipes cannot satisfy the no-repeat rule or has no meal_type match for the slot.
+- If no suitable recipe exists for a slot, return an empty candidates array for that slot (do not invent anything).
+- recipe_title MUST match a provided title EXACTLY, including capitalisation.
+
 OUTPUT FORMAT — return JSON only with this exact shape:
 {
   "slots": [
@@ -164,8 +173,8 @@ OUTPUT FORMAT — return JSON only with this exact shape:
       "slot_key": "breakfast|snack_am|lunch|snack_pm|dinner|dessert",
       "candidates": [
         {
-          "recipe_title": "exact title from library_recipes if using one, else null",
-          "label": "short human title to display on the card",
+          "recipe_title": "exact title from own_recipes or community_recipes",
+          "label": "short human title to display on the card (usually the recipe title)",
           "notes": "optional short note, or null"
         }
       ]
@@ -173,14 +182,15 @@ OUTPUT FORMAT — return JSON only with this exact shape:
   ]
 }
 
-For EACH gap in the input, return exactly ${perGap} candidate(s) ordered best-first. Strongly prefer titles from library_recipes (match EXACTLY, including capitalisation, if the recipe's meal_types fit the slot). Only propose label-only ideas (recipe_title=null) when no library recipe fits. Consider placed_meals when applying the no-repeat rule. Respect dietary notes and allergies. Prefer variety across the week.`,
+For EACH gap in the input, return up to ${perGap} candidate(s) ordered best-first. Consider placed_meals when applying the no-repeat rule. Respect dietary notes and allergies. Prefer variety across the week.`,
         },
         {
           role: "user",
           content: JSON.stringify(
             {
               gaps: body.gaps,
-              library_recipes: body.library_recipes,
+              own_recipes: body.own_recipes,
+              community_recipes: body.community_recipes,
               placed_meals: body.placed_meals,
               people_notes: body.people_notes ?? "",
               inventory_summary: body.inventory_summary ?? "",

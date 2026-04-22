@@ -19,10 +19,10 @@ export default async function RecipeDetailModalPage({
 }: Props) {
   const { id } = await params;
 
-  // Sibling static routes like `/recipes/draft` share this dynamic segment
-  // on client-side soft navigation. Recipe IDs are always positive integers,
-  // so anything else is definitely not a recipe — return null so the @modal
-  // slot stays empty and the underlying static page can render normally.
+  // Recipe IDs are always positive integers. Defensive bail-out for any
+  // non-numeric segment that ever gets routed here — the interceptor would
+  // otherwise freeze the underlying page. Sibling non-numeric routes (e.g.
+  // the draft review) deliberately live outside `/recipes/*` to avoid this.
   if (!/^\d+$/.test(id)) return null;
 
   const sp = (await searchParams) ?? {};

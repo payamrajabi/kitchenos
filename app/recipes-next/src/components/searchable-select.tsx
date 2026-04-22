@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { CaretDown } from "@phosphor-icons/react";
+import { useTopLayerPortalContainer } from "@/lib/top-layer-host";
 
 export type SelectOption = {
   value: string;
@@ -80,6 +81,12 @@ export function SearchableSelect({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Render the floating list into the active top-layer host (a native
+  // showModal-ed <dialog> when one is open) so the popover stacks above
+  // the dialog surface. Falls back to <body> for the normal page context.
+  // Required because the browser's top-layer cannot be beaten by z-index.
+  const portalContainer = useTopLayerPortalContainer();
 
   const selectedLabel = useMemo(() => {
     if (!value) return placeholder;
@@ -283,6 +290,7 @@ export function SearchableSelect({
         </div>
         {mounted &&
           listPos &&
+          portalContainer &&
           createPortal(
             <div
               ref={popoverRef}
@@ -315,7 +323,7 @@ export function SearchableSelect({
               </div>
               {listEl}
             </div>,
-            document.body,
+            portalContainer,
           )}
       </>
     );
@@ -349,6 +357,7 @@ export function SearchableSelect({
         </div>
         {mounted &&
           listPos &&
+          portalContainer &&
           createPortal(
             <div
               ref={popoverRef}
@@ -363,7 +372,7 @@ export function SearchableSelect({
             >
               {listEl}
             </div>,
-            document.body,
+            portalContainer,
           )}
       </>
     );

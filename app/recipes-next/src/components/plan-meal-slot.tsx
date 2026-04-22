@@ -1,8 +1,16 @@
 "use client";
 
+import {
+  acceptMealPlanSuggestionAction,
+  cycleMealPlanSuggestionAction,
+  dismissMealPlanSuggestionAction,
+  ensureSuggestionChainAction,
+  refillSuggestionPoolAction,
+} from "@/app/actions/meal-plan";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import { PlanEntryDeleteButton } from "@/components/plan-entry-delete-button";
 import { PlanEntryServingsControl } from "@/components/plan-entry-servings-control";
+import { PlanSuggestionAcceptButton } from "@/components/plan-suggestion-accept-button";
 import { PlanSuggestionCycleControl } from "@/components/plan-suggestion-cycle-control";
 import { PlanSuggestionDismissButton } from "@/components/plan-suggestion-dismiss-button";
 import { getPlanSlotTimeLabel, type PlanSlotKey } from "@/lib/meal-plan";
@@ -15,13 +23,33 @@ import {
   primaryImageUrl,
   recipeImageFocusYPercent,
 } from "@/lib/recipes";
-import type { MealPlanEntryRow, RecipeRow } from "@/types/database";
+import type {
+  MealPlanEntryRow,
+  RecipeRow,
+  SuggestionCandidate,
+} from "@/types/database";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  useRef,
   useState,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+
+/**
+ * Client-side override for a suggestion card. Lets us swap what the user sees
+ * BEFORE the server action finishes, so the Cycle button feels instant.
+ */
+type SuggestionOverride = {
+  recipeId: number | null;
+  label: string;
+  notes: string | null;
+  pool: SuggestionCandidate[];
+};
+
+/** When the local pool shrinks to this size or below, kick off a refill. */
+const POOL_REFILL_THRESHOLD = 2;
 
 type DayColumn = {
   date: string;
@@ -134,9 +162,170 @@ export function PlanMealSlot({
   const [cellDropActive, setCellDropActive] = useState(false);
   const [cardDropTargetId, setCardDropTargetId] = useState<number | null>(null);
 
+  // Per-entry optimistic overrides for suggestion cycling. When present, the
+  // card renders from this instead of the raw server row so the user sees the
+  // new pick immediately; the server action runs in the background and the
+  // DB catches up shortly after.
+  const [suggestionOverrides, setSuggestionOverrides] = useState<
+    Map<number, SuggestionOverride>
+  >(() => new Map());
+  // Entries currently waiting on the slow-path LLM refresh (empty pool).
+  const [cyclePending, setCyclePending] = useState<Set<number>>(
+    () => new Set(),
+  );
+  // Entries we've already kicked off a background refill for, so we don't
+  // spam the edge function on every click while one is already in flight.
+  const refillingRef = useRef<Set<number>>(new Set());
+
+  // Entries the user just accepted. Treated as committed meals locally,
+  // even before the server re-render catches up. (See handleAcceptSuggestion.)
+  const [acceptedSuggestionIds, setAcceptedSuggestionIds] = useState<
+    Set<number>
+  >(() => new Set());
+
+  // Entries the user just dismissed. Hidden locally so the card disappears
+  // instantly, without waiting for the server round-trip.
+  const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<
+    Set<number>
+  >(() => new Set());
+
+  const router = useRouter();
+
   const dragEnabled =
     typeof onDragStartCard === "function" && typeof onDropOnCell === "function";
   const isDragging = draggingId != null;
+
+  const getSuggestionPool = (entry: MealPlanEntryRow): SuggestionCandidate[] => {
+    const override = suggestionOverrides.get(entry.id);
+    if (override) return override.pool;
+    return Array.isArray(entry.suggestion_pool) ? entry.suggestion_pool : [];
+  };
+
+  const handleCycleSuggestion = (entry: MealPlanEntryRow) => {
+    if (cyclePending.has(entry.id)) return;
+    const pool = getSuggestionPool(entry);
+
+    if (pool.length > 0) {
+      // ── Fast path ────────────────────────────────────────────────────
+      // Swap the card on the screen first, then persist in the background.
+      const [next, ...rest] = pool;
+      setSuggestionOverrides((prev) => {
+        const copy = new Map(prev);
+        copy.set(entry.id, {
+          recipeId: next.recipe_id ?? null,
+          label: next.label,
+          notes: next.notes ?? null,
+          pool: rest,
+        });
+        return copy;
+      });
+
+      void (async () => {
+        // Fire-and-forget: the optimistic UI already shows the right thing.
+        await cycleMealPlanSuggestionAction(entry.id).catch(() => undefined);
+      })();
+
+      // Top the pool back up in the background if it's running low, so the
+      // NEXT click stays on the fast path.
+      if (
+        rest.length <= POOL_REFILL_THRESHOLD &&
+        !refillingRef.current.has(entry.id)
+      ) {
+        refillingRef.current.add(entry.id);
+        void (async () => {
+          try {
+            const result = await refillSuggestionPoolAction(entry.id);
+            if (result.ok && result.added.length > 0) {
+              setSuggestionOverrides((prev) => {
+                const copy = new Map(prev);
+                const current = copy.get(entry.id);
+                if (!current) return prev;
+                copy.set(entry.id, {
+                  ...current,
+                  pool: [...current.pool, ...result.added],
+                });
+                return copy;
+              });
+            }
+          } finally {
+            refillingRef.current.delete(entry.id);
+          }
+        })();
+      }
+      return;
+    }
+
+    // ── Slow path ────────────────────────────────────────────────────
+    // Pool is empty, so the server has to call the LLM. Show a spinner and
+    // refresh once the new row lands.
+    setCyclePending((prev) => {
+      const copy = new Set(prev);
+      copy.add(entry.id);
+      return copy;
+    });
+    void (async () => {
+      try {
+        const result = await cycleMealPlanSuggestionAction(entry.id);
+        if (result.ok) {
+          // The server updated the DB with a fresh active + pool. Drop any
+          // old override and let the server state win.
+          setSuggestionOverrides((prev) => {
+            if (!prev.has(entry.id)) return prev;
+            const copy = new Map(prev);
+            copy.delete(entry.id);
+            return copy;
+          });
+          router.refresh();
+        }
+      } finally {
+        setCyclePending((prev) => {
+          const copy = new Set(prev);
+          copy.delete(entry.id);
+          return copy;
+        });
+      }
+    })();
+  };
+
+  const handleAcceptSuggestion = (entry: MealPlanEntryRow) => {
+    // Flip the card to "committed" state locally. The next render treats it
+    // like any other real meal — no dim, no action row, no dashed chrome.
+    setAcceptedSuggestionIds((prev) => {
+      if (prev.has(entry.id)) return prev;
+      const copy = new Set(prev);
+      copy.add(entry.id);
+      return copy;
+    });
+    // Background: persist the accept, then run the chain to seed the same
+    // slot on the next day, then refresh so the new suggestion row appears
+    // in the calendar without a manual reload. The user already sees the
+    // instant "committed" flip above, so this all happens out-of-band.
+    void (async () => {
+      try {
+        await acceptMealPlanSuggestionAction(entry.id);
+        const chainResult = await ensureSuggestionChainAction();
+        if (chainResult.ok && chainResult.filled > 0) {
+          router.refresh();
+        }
+      } catch {
+        // Swallow: worst case the user sees their acceptance stick but the
+        // next-day suggestion appears on their next visit to /plan.
+      }
+    })();
+  };
+
+  const handleDismissSuggestion = (entry: MealPlanEntryRow) => {
+    // Hide the card locally so the slot looks empty right away. The server
+    // deletes the row and records a dismissal in the background; on the next
+    // page navigation the empty slot matches the local view.
+    setDismissedSuggestionIds((prev) => {
+      if (prev.has(entry.id)) return prev;
+      const copy = new Set(prev);
+      copy.add(entry.id);
+      return copy;
+    });
+    void dismissMealPlanSuggestionAction(entry.id).catch(() => undefined);
+  };
 
   const baseClass = [
     "plan-board-cell",
@@ -192,25 +381,45 @@ export function PlanMealSlot({
               : "plan-board-stack"
           }
         >
-          {cellEntries.map((entry) => {
-            const titleText = entry.label || "Recipe";
+          {cellEntries
+            .filter((entry) => !dismissedSuggestionIds.has(entry.id))
+            .map((entry) => {
+            // Treat locally-accepted suggestions as committed meals, even if
+            // the server row still has `is_suggestion = true` (the write is
+            // running in the background).
+            const isSuggestion =
+              entry.is_suggestion === true &&
+              !acceptedSuggestionIds.has(entry.id);
+            // Layer the client-side optimistic override (if any) on top of
+            // the server row so the card reflects what the user just picked.
+            const override = isSuggestion
+              ? suggestionOverrides.get(entry.id)
+              : undefined;
+            const displayEntry: MealPlanEntryRow = override
+              ? {
+                  ...entry,
+                  recipe_id: override.recipeId,
+                  label: override.label,
+                  notes: override.notes,
+                }
+              : entry;
+
+            const titleText = displayEntry.label || "Recipe";
             const resolvedRecipe = planEntryRecipeMatch(
               recipeById,
               recipeByNameLower,
-              entry,
+              displayEntry,
               titleText,
             );
             const recipeForImage = resolvedRecipe as RecipeRow | undefined;
             const navigationRecipeId =
               resolvedRecipe != null
                 ? coerceNumericId(resolvedRecipe.id)
-                : coerceNumericId(entry.recipe_id);
+                : coerceNumericId(displayEntry.recipe_id);
             const imgUrl =
               recipeForImage != null ? primaryImageUrl(recipeForImage) : null;
             const focusY =
               recipeForImage != null ? recipeImageFocusYPercent(recipeForImage) : 50;
-
-            const isSuggestion = entry.is_suggestion === true;
 
             const imageBody = (
               <div className="plan-board-card-thumb">
@@ -234,16 +443,25 @@ export function PlanMealSlot({
                   </span>
                 )}
                 {isSuggestion ? (
-                  <>
+                  <div
+                    className="plan-suggestion-actions"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
                     <PlanSuggestionDismissButton
-                      entryId={entry.id}
                       pendingParent={pending}
+                      onDismiss={() => handleDismissSuggestion(entry)}
                     />
                     <PlanSuggestionCycleControl
-                      entryId={entry.id}
                       pendingParent={pending}
+                      onCycle={() => handleCycleSuggestion(entry)}
+                      isSpinning={cyclePending.has(entry.id)}
                     />
-                  </>
+                    <PlanSuggestionAcceptButton
+                      pendingParent={pending}
+                      onAccept={() => handleAcceptSuggestion(entry)}
+                    />
+                  </div>
                 ) : (
                   <>
                     <PlanEntryDeleteButton
@@ -359,13 +577,13 @@ export function PlanMealSlot({
                     {imageBody}
                   </div>
                 )}
-                {!imgUrl || entry.notes ? (
+                {!imgUrl || displayEntry.notes ? (
                   <div className="plan-board-card-image-footer">
                     {!imgUrl ? (
                       <p className="plan-board-card-image-title">{titleText}</p>
                     ) : null}
-                    {entry.notes ? (
-                      <p className="plan-board-card-image-notes">{entry.notes}</p>
+                    {displayEntry.notes ? (
+                      <p className="plan-board-card-image-notes">{displayEntry.notes}</p>
                     ) : null}
                   </div>
                 ) : null}

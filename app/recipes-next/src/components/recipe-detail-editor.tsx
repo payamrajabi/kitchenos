@@ -29,6 +29,7 @@ import type {
   RecipeInstructionStepRow,
   RecipeRow,
 } from "@/types/database";
+import { RecipeAddFab } from "@/components/recipe-add-fab";
 import { RecipeMealTypesField } from "@/components/recipe-meal-types-field";
 import { mealTypesEqual, normalizeMealTypesFromDb } from "@/lib/recipe-meal-types";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -49,6 +50,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { useTopLayerPortalContainer } from "@/lib/top-layer-host";
 
 const emptySubscribe = () => () => {};
 
@@ -65,6 +67,12 @@ type Props = {
   recipeIngredientSections: RecipeIngredientSectionRow[];
   recipeInstructionSteps: RecipeInstructionStepRow[];
   availableIngredients: RecipeIngredientOption[];
+  /**
+   * Ingredient ids the viewer currently has stocked in their inventory.
+   * Everything referenced by the recipe but not in this list gets an
+   * "Out of stock" badge in view mode. Empty means "don't show badges".
+   */
+  stockedIngredientIds?: number[];
   autoGenerating?: boolean;
   // When true, the editor locks itself into view mode and never exposes any
   // owner-only UI (edit toggle, image upload, meal-types picker, delete, etc.).
@@ -98,6 +106,7 @@ export function RecipeDetailEditor({
   recipeIngredientSections,
   recipeInstructionSteps,
   availableIngredients,
+  stockedIngredientIds = [],
   autoGenerating = false,
   viewOnly = false,
   asideActionSlot = null,
@@ -113,6 +122,11 @@ export function RecipeDetailEditor({
   // means we're on the standalone page and should render no modal chrome.
   const modalCtx = useRecipeDetailDialog();
   const inModal = modalCtx != null;
+  // Portal target for the delete-recipe confirmation. When the editor is
+  // rendered inside the intercepted-route <dialog>, a portal into <body>
+  // would put the confirmation BEHIND the dialog's top layer. Routing
+  // through the top-layer host keeps it above the underlying modal.
+  const deleteConfirmPortalTarget = useTopLayerPortalContainer();
   const fileRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const replaceImageClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -781,6 +795,7 @@ export function RecipeDetailEditor({
         "recipe-detail",
         `recipe-detail--${isEditing ? "edit" : "view"}`,
         inModal ? "recipe-detail--in-modal" : "",
+        !viewOnly ? "has-recipe-ai-bar" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -920,6 +935,7 @@ export function RecipeDetailEditor({
         initialItems={recipeIngredients}
         initialSections={recipeIngredientSections}
         ingredientOptions={availableIngredients}
+        stockedIngredientIds={stockedIngredientIds}
       />
       </RecipeIngredientUnitDisplayProvider>
       <section className="section">
@@ -1189,14 +1205,25 @@ export function RecipeDetailEditor({
               {viewOnly ? (
                 asideActionSlot
               ) : (
-                <button
-                  type="button"
-                  className="recipe-detail-mode-btn"
-                  onClick={toggleEditing}
-                  aria-label="Edit recipe"
-                >
-                  Edit
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="recipe-detail-mode-btn"
+                    onClick={toggleEditing}
+                    aria-label="Edit recipe"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="recipe-detail-aside-delete"
+                    onClick={openDeleteModal}
+                    disabled={isPending}
+                    aria-label="Delete recipe"
+                  >
+                    Delete
+                  </button>
+                </>
               )}
             </div>
           ) : null}
@@ -1288,8 +1315,16 @@ export function RecipeDetailEditor({
           </div>
         </aside>
       </div>
+      {!viewOnly ? (
+        <RecipeAddFab
+          baseRecipeId={Number(initial.id)}
+          showManualButton={false}
+        />
+      ) : null}
     </article>
-    {deleteConfirmModal ? createPortal(deleteConfirmModal, document.body) : null}
+    {deleteConfirmModal && deleteConfirmPortalTarget
+      ? createPortal(deleteConfirmModal, deleteConfirmPortalTarget)
+      : null}
     </RecipeServingsScaleProvider>
     </RecipeEditModeProvider>
   );

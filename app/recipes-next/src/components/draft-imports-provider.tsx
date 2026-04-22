@@ -29,11 +29,17 @@ type DraftResult =
   | { ok: true; draft: DraftRecipeData }
   | { ok: false; error: string };
 
+export type StartImportOptions = {
+  /** Called after a successful import, before state settles (same tick as storage write). */
+  onReady?: (draftId: string) => void;
+};
+
 type DraftImportsContextType = {
   drafts: DraftImport[];
   startImport: (
     label: string,
     importFn: () => Promise<DraftResult>,
+    options?: StartImportOptions,
   ) => void;
   removeDraft: (id: string) => void;
   getDraftData: (id: string) => DraftRecipeData | null;
@@ -115,7 +121,11 @@ export function DraftImportsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startImport = useCallback(
-    (label: string, importFn: () => Promise<DraftResult>) => {
+    (
+      label: string,
+      importFn: () => Promise<DraftResult>,
+      options?: StartImportOptions,
+    ) => {
       const id = crypto.randomUUID();
       setDrafts((prev) => [{ id, status: "importing", label }, ...prev]);
 
@@ -143,6 +153,7 @@ export function DraftImportsProvider({ children }: { children: ReactNode }) {
                   : d,
               ),
             );
+            options?.onReady?.(id);
           } else {
             setDrafts((prev) =>
               prev.map((d) =>

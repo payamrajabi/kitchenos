@@ -15,6 +15,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Trash } from "@phosphor-icons/react";
+import { useTopLayerPortalContainer } from "@/lib/top-layer-host";
 
 const emptySubscribe = () => () => {};
 
@@ -38,6 +39,9 @@ export function IngredientDeleteButton({
   );
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  // Portal into the active top-layer host so this confirmation sits above
+  // any presenting native <dialog>. See `lib/top-layer-host.ts`.
+  const modalPortalTarget = useTopLayerPortalContainer();
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
   const [recipes, setRecipes] = useState<LinkedRecipe[]>([]);
@@ -241,7 +245,7 @@ export function IngredientDeleteButton({
   return (
     <>
       {trigger}
-      {modal ? createPortal(modal, document.body) : null}
+      {modal && modalPortalTarget ? createPortal(modal, modalPortalTarget) : null}
     </>
   );
 }

@@ -42,7 +42,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DotsSixVertical, DotsThree, Trash } from "@phosphor-icons/react";
+import { CheckCircle, Circle, DotsSixVertical, DotsThree, Trash } from "@phosphor-icons/react";
 import { pluralizeUnit, RECIPE_UNITS } from "@/lib/unit-mapping";
 import type { RecipeIngredientRow, RecipeIngredientSectionRow } from "@/types/database";
 import { useRouter } from "next/navigation";
@@ -57,13 +57,13 @@ import {
   useTransition,
   type CSSProperties,
   type Dispatch,
-  type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type Ref,
   type ReactNode,
   type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
+import { useTopLayerPortalContainer } from "@/lib/top-layer-host";
 
 const emptySubscribe = () => () => {};
 
@@ -264,10 +264,7 @@ function sortItemsForDisplay(
   });
 }
 
-/**
- * DndContext injects accessibility nodes that must not sit inside <table>.
- * Keep one context per table, wrapping the whole <table> (not each <tbody>).
- */
+/** One DndContext per ingredient list (flat or per-section). */
 function RecipeIngredientsTableDndFlat({
   dndId,
   items,
@@ -419,7 +416,7 @@ function RecipeIngredientItemRow({
   addIngredientInputId: string | null;
   prepared: boolean;
   onTogglePrepared: () => void;
-  rowRef?: Ref<HTMLTableRowElement>;
+  rowRef?: Ref<HTMLDivElement>;
   rowStyle?: CSSProperties;
   rowClassName?: string;
   dragHandleSlot?: ReactNode;
@@ -495,7 +492,7 @@ function RecipeIngredientItemRow({
   const displayName = item.ingredients?.name ?? "Untitled";
 
   const handleRowClick = useCallback(
-    (e: ReactMouseEvent<HTMLTableRowElement>) => {
+    (e: ReactMouseEvent<HTMLDivElement>) => {
       // Only honour tap-to-toggle in view mode. In edit mode, row clicks
       // shouldn't accidentally mark ingredients prepared while authoring.
       if (isEditing) return;
@@ -560,26 +557,40 @@ function RecipeIngredientItemRow({
   );
 
   return (
-    <tr
+    <div
       ref={rowRef}
       style={rowStyle}
       onClick={handleRowClick}
       className={["recipe-ingredient-row", prepared ? "recipe-ingredient-row--prepared" : "", rowClassName, !isEditing ? "recipe-ingredient-row--tap-toggle" : ""].filter(Boolean).join(" ")}
     >
-      <td className="recipe-ingredient-lead-cell">
+      <div className="recipe-ingredient-lead-cell">
         {isEditing && dragHandleSlot != null ? (
           dragHandleSlot
         ) : (
-          <input
-            type="checkbox"
-            className="recipe-ingredient-prep-checkbox"
-            checked={prepared}
-            onChange={onTogglePrepared}
+          <button
+            type="button"
+            className="recipe-ingredient-prep-toggle"
+            aria-pressed={prepared}
             aria-label={`Mark ${item.ingredients?.name ?? "ingredient"} as prepared`}
-          />
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePrepared();
+            }}
+          >
+            {prepared ? (
+              <CheckCircle
+                className="recipe-ingredient-prep-icon recipe-ingredient-prep-icon--done"
+                size={20}
+                weight="fill"
+                aria-hidden
+              />
+            ) : (
+              <Circle className="recipe-ingredient-prep-icon" size={20} weight="regular" aria-hidden />
+            )}
+          </button>
         )}
-      </td>
-      <td className="recipe-ingredient-name-cell">
+      </div>
+      <div className="recipe-ingredient-name-cell">
         {isEditing && naming ? (
           <IngredientSearchControl
             key={`${item.id}-${item.ingredient_id}`}
@@ -601,7 +612,7 @@ function RecipeIngredientItemRow({
             onClick={() => setNaming(true)}
           >
             <span className="recipe-ingredient-name">
-              {displayName}
+              <span className="recipe-ingredient-name-primary">{displayName}</span>
               {item.preparation ? (
                 <span className="recipe-ingredient-preparation">
                   , {item.preparation}
@@ -614,7 +625,7 @@ function RecipeIngredientItemRow({
           </button>
         ) : (
           <span className="recipe-ingredient-name recipe-ingredient-name--static">
-            {displayName}
+            <span className="recipe-ingredient-name-primary">{displayName}</span>
             {item.preparation ? (
               <span className="recipe-ingredient-preparation">
                 , {item.preparation}
@@ -625,8 +636,8 @@ function RecipeIngredientItemRow({
             ) : null}
           </span>
         )}
-      </td>
-      <td className="recipe-ingredient-value-cell">
+      </div>
+      <div className="recipe-ingredient-value-cell">
         <span className="recipe-ingredient-value-inner">
           {isEditing && editingAmount ? (
             <input
@@ -688,8 +699,8 @@ function RecipeIngredientItemRow({
             </span>
           )}
         </span>
-      </td>
-      <td className="recipe-ingredient-actions-cell">
+      </div>
+      <div className="recipe-ingredient-actions-cell">
         {isEditing ? (
           <IngredientRowActionsMenu
             disabled={disabled}
@@ -699,8 +710,8 @@ function RecipeIngredientItemRow({
             onRemove={() => onRemove(item.id)}
           />
         ) : null}
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
 
@@ -849,7 +860,7 @@ function IngredientLinesSortable({
 
   return (
     <SortableContext id={sortableListId} items={ids} strategy={verticalListSortingStrategy}>
-      <tbody>
+      <div className="recipe-ingredients-line-list">
         {items.map((item) => {
           const rowBusy =
             busyKey === `amount-${item.id}` ||
@@ -883,7 +894,7 @@ function IngredientLinesSortable({
             />
           );
         })}
-      </tbody>
+      </div>
     </SortableContext>
   );
 }
@@ -1072,12 +1083,12 @@ function IngredientAddTableRow({
   if (!isEditing) return null;
 
   return (
-    <tr className="recipe-ingredients-add-row">
-      <td
+    <div className="recipe-ingredients-add-row recipe-ingredient-row">
+      <div
         className="recipe-ingredient-lead-cell recipe-ingredients-add-placeholder-cell"
         aria-hidden="true"
       />
-      <td className="recipe-ingredient-name-cell recipe-ingredients-add-name-cell">
+      <div className="recipe-ingredient-name-cell recipe-ingredients-add-name-cell">
         <IngredientSearchControl
           key={`${sectionId ?? "flat"}-${fieldKey}`}
           knownIngredients={knownIngredients}
@@ -1089,14 +1100,14 @@ function IngredientAddTableRow({
           defaultQuery=""
           onPickSuggestion={pickSuggestion}
         />
-      </td>
-      <td className="recipe-ingredient-value-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
+      </div>
+      <div className="recipe-ingredient-value-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
         —
-      </td>
-      <td className="recipe-ingredient-actions-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
+      </div>
+      <div className="recipe-ingredient-actions-cell recipe-ingredients-add-placeholder-cell" aria-hidden="true">
         —
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
 
@@ -1129,6 +1140,10 @@ export function RecipeIngredientsEditor({
   const sectionDeleteTitleId = useId();
   const sectionDeleteCancelRef = useRef<HTMLButtonElement>(null);
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
+  // See `lib/top-layer-host.ts` — portal this confirmation into the active
+  // top-layer host so it stacks above the recipe-detail <dialog> when the
+  // ingredients editor is rendered inside the intercepted-route modal.
+  const sectionDeletePortalTarget = useTopLayerPortalContainer();
 
   const togglePrepared = useCallback((lineId: number) => {
     setPreparedIds((prev) => {
@@ -1449,10 +1464,10 @@ export function RecipeIngredientsEditor({
                 items={items}
                 onReorderFlat={reorderFlatLayout}
               >
-                <table className="ingredients-table recipe-ingredients-table">
-                  <caption className="visually-hidden">
-                    Ingredients: reorder, name, amount, unit, row menu.
-                  </caption>
+                <div
+                  className="ingredients-table recipe-ingredients-table recipe-ingredients-line-stack"
+                  aria-label="Ingredients: reorder, name, amount, unit, row menu."
+                >
                   <IngredientLinesSortable
                     recipeId={recipeId}
                     sortableListId={`recipe-${recipeId}-flat-all`}
@@ -1474,21 +1489,19 @@ export function RecipeIngredientsEditor({
                     preparedIds={preparedIds}
                     onTogglePrepared={togglePrepared}
                   />
-                  <tbody>
-                    <IngredientAddTableRow
-                      recipeId={recipeId}
-                      sectionId={null}
-                      label="Add ingredient"
-                      knownIngredients={knownIngredients}
-                      setKnownIngredients={setKnownIngredients}
-                      upsertLocalRow={upsertLocalRow}
-                      runAction={runAction}
-                      isPending={isPending}
-                      setError={setError}
-                      onLineAdded={setFocusAmountLineId}
-                    />
-                  </tbody>
-                </table>
+                  <IngredientAddTableRow
+                    recipeId={recipeId}
+                    sectionId={null}
+                    label="Add ingredient"
+                    knownIngredients={knownIngredients}
+                    setKnownIngredients={setKnownIngredients}
+                    upsertLocalRow={upsertLocalRow}
+                    runAction={runAction}
+                    isPending={isPending}
+                    setError={setError}
+                    onLineAdded={setFocusAmountLineId}
+                  />
+                </div>
               </RecipeIngredientsTableDndFlat>
             </div>
           </>
@@ -1516,10 +1529,10 @@ export function RecipeIngredientsEditor({
                       segmentItems={blockItems}
                       onReorderSegment={reorderSegment}
                     >
-                      <table className="ingredients-table recipe-ingredients-table">
-                        <caption className="visually-hidden">
-                          Ingredients: reorder, name, amount, unit, row menu.
-                        </caption>
+                      <div
+                        className="ingredients-table recipe-ingredients-table recipe-ingredients-line-stack"
+                        aria-label="Ingredients: reorder, name, amount, unit, row menu."
+                      >
                         <IngredientLinesSortable
                           recipeId={recipeId}
                           sortableListId={`grouped-${sec.id}`}
@@ -1541,21 +1554,19 @@ export function RecipeIngredientsEditor({
                           preparedIds={preparedIds}
                           onTogglePrepared={togglePrepared}
                         />
-                        <tbody>
-                          <IngredientAddTableRow
-                            recipeId={recipeId}
-                            sectionId={sec.id}
-                            label="Add ingredient"
-                            knownIngredients={knownIngredients}
-                            setKnownIngredients={setKnownIngredients}
-                            upsertLocalRow={upsertLocalRow}
-                            runAction={runAction}
-                            isPending={isPending}
-                            setError={setError}
-                            onLineAdded={setFocusAmountLineId}
-                          />
-                        </tbody>
-                      </table>
+                        <IngredientAddTableRow
+                          recipeId={recipeId}
+                          sectionId={sec.id}
+                          label="Add ingredient"
+                          knownIngredients={knownIngredients}
+                          setKnownIngredients={setKnownIngredients}
+                          upsertLocalRow={upsertLocalRow}
+                          runAction={runAction}
+                          isPending={isPending}
+                          setError={setError}
+                          onLineAdded={setFocusAmountLineId}
+                        />
+                      </div>
                     </RecipeIngredientsTableDndSection>
                   </div>
                 </section>
@@ -1577,10 +1588,10 @@ export function RecipeIngredientsEditor({
                     segmentItems={orphanItems}
                     onReorderSegment={reorderSegment}
                   >
-                    <table className="ingredients-table recipe-ingredients-table">
-                      <caption className="visually-hidden">
-                        Ingredients: reorder, name, amount, unit, row menu.
-                      </caption>
+                    <div
+                      className="ingredients-table recipe-ingredients-table recipe-ingredients-line-stack"
+                      aria-label="Ingredients: reorder, name, amount, unit, row menu."
+                    >
                       <IngredientLinesSortable
                         recipeId={recipeId}
                         sortableListId="orphan"
@@ -1602,7 +1613,7 @@ export function RecipeIngredientsEditor({
                         preparedIds={preparedIds}
                         onTogglePrepared={togglePrepared}
                       />
-                    </table>
+                    </div>
                   </RecipeIngredientsTableDndSection>
                 </div>
               </section>
@@ -1624,7 +1635,9 @@ export function RecipeIngredientsEditor({
         ) : null}
       </div>
     </section>
-    {sectionDeleteModal ? createPortal(sectionDeleteModal, document.body) : null}
+    {sectionDeleteModal && sectionDeletePortalTarget
+      ? createPortal(sectionDeleteModal, sectionDeletePortalTarget)
+      : null}
     </>
   );
 }

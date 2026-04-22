@@ -1,31 +1,26 @@
 "use client";
 
-import { dismissMealPlanSuggestionAction } from "@/app/actions/meal-plan";
-import { TrashSimple } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
-import {
-  useTransition,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
+import { X } from "@phosphor-icons/react";
+import { type MouseEvent as ReactMouseEvent } from "react";
 
 type Props = {
-  entryId: number;
   pendingParent: boolean;
+  onDismiss: () => void;
 };
 
-export function PlanSuggestionDismissButton({ entryId, pendingParent }: Props) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const busy = pendingParent || pending;
-
+/**
+ * Presentational "Remove this suggestion" button.
+ *
+ * Like the Cycle and Accept buttons, the parent (`PlanMealSlot`) owns the
+ * state so the card can be hidden optimistically on click, with the
+ * database delete happening in the background.
+ */
+export function PlanSuggestionDismissButton({ pendingParent, onDismiss }: Props) {
   const onClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (busy) return;
-    startTransition(async () => {
-      const result = await dismissMealPlanSuggestionAction(entryId);
-      if (result.ok) router.refresh();
-    });
+    if (pendingParent) return;
+    onDismiss();
   };
 
   return (
@@ -34,10 +29,10 @@ export function PlanSuggestionDismissButton({ entryId, pendingParent }: Props) {
       className="plan-suggestion-dismiss"
       aria-label="Remove this suggestion"
       title="Remove this suggestion"
-      disabled={busy}
+      disabled={pendingParent}
       onClick={onClick}
     >
-      <TrashSimple size={14} weight="bold" aria-hidden />
+      <X size={14} weight="bold" aria-hidden />
     </button>
   );
 }
