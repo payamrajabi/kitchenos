@@ -574,6 +574,10 @@ function SortableInstructionRow({
       ref={setNodeRef}
       style={rowStyle}
       onClick={handleRowClick}
+      // Voice mode looks up the currently spoken step by step_number and
+      // toggles the data-voice-focused attribute imperatively. See
+      // `recipe-voice-mode.tsx`.
+      data-recipe-step-number={item.step_number}
       className={[
         "recipe-instruction-row",
         isDragging ? "recipe-instruction-row--dragging" : "",

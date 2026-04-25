@@ -65,6 +65,7 @@ type RawIngredientJoin = {
   name: unknown;
   density_g_per_ml?: unknown;
   canonical_unit_weight_g?: unknown;
+  grocery_category?: unknown;
 };
 
 type RawRecipeIngredientRow = {
@@ -145,6 +146,10 @@ function normalizeRecipeIngredients(
             name: String(ingredient.name ?? ""),
             density_g_per_ml,
             canonical_unit_weight_g,
+            grocery_category:
+              ingredient.grocery_category == null
+                ? null
+                : String(ingredient.grocery_category),
           }
         : null,
     };
@@ -222,7 +227,7 @@ export async function loadOwnerRecipeDetail(
       supabase
         .from("recipe_ingredients")
         .select(
-          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml, canonical_unit_weight_g)",
+          "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml, canonical_unit_weight_g, grocery_category)",
         )
         .eq("recipe_id", id),
       supabase
@@ -349,7 +354,7 @@ export async function loadCommunityRecipeDetail(
     supabase
       .from("recipe_ingredients")
       .select(
-        "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml, canonical_unit_weight_g)",
+        "id, recipe_id, ingredient_id, section_id, line_sort_order, amount, unit, preparation, display, is_optional, created_at, ingredients(id, name, density_g_per_ml, canonical_unit_weight_g, grocery_category)",
       )
       .eq("recipe_id", id),
     supabase

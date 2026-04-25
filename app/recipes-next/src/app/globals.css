@@ -12473,3 +12473,208 @@ a.primary {
   color: var(--ink);
   text-align: left;
 }
+
+/* ================================================================== */
+/*  Voice mode — hands-free recipe walkthrough                        */
+/*  An entry FAB (Waveform) in the bottom-right corner of the recipe  */
+/*  detail. While active, two control FABs (mute, end) sit at the     */
+/*  bottom-center, with a status pill announcing speaking/listening.  */
+/*  Currently spoken ingredient/step rows pick up                     */
+/*  data-voice-focused="true" and get a soft tint + ring.             */
+/* ================================================================== */
+
+.recipe-voice-fab {
+  position: fixed;
+  right: max(env(safe-area-inset-right, 0px) + var(--space-16), var(--space-16));
+  bottom: max(env(safe-area-inset-bottom, 0px) + var(--space-16), var(--space-16));
+  z-index: 1000;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border: var(--space-1) solid var(--hair);
+  border-radius: 9999px;
+  background: var(--paper);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.recipe-voice-fab:hover {
+  background: var(--fog);
+  border-color: var(--ink);
+  transform: scale(1.04);
+}
+
+.recipe-voice-fab:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The remix bar (recipe-add-fab) takes over the bottom-right corner; hide
+   the voice FAB while remixing so the two don't collide. */
+.recipe-detail.has-recipe-ai-bar .recipe-voice-fab {
+  display: none;
+}
+
+/* Highlighted row state — applied imperatively when the agent says it's
+   currently walking through that ingredient or step. The same selectors
+   work for both the ingredients editor and the instructions editor. */
+[data-voice-focused="true"] {
+  position: relative;
+  background: var(--soft-tint);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 2px var(--ink);
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-voice-focused="true"] {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bottom-center control overlay                                     */
+/* ------------------------------------------------------------------ */
+
+.recipe-voice-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: max(env(safe-area-inset-bottom, 0px) + var(--space-16), var(--space-24));
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-12);
+  pointer-events: none;
+}
+
+.recipe-voice-overlay > * {
+  pointer-events: auto;
+}
+
+.recipe-voice-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
+  background: var(--paper);
+  color: var(--ink);
+  border: var(--space-1) solid var(--hair);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  user-select: none;
+}
+
+.recipe-voice-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--muted);
+  flex: 0 0 8px;
+}
+
+/* Pulsing dots, color-coded per state. The keyframes share a single name
+   so animation-name lookup is cheap; only the color changes per modifier. */
+@keyframes recipe-voice-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: 0.5; }
+}
+
+.recipe-voice-status[data-state="speaking"] .recipe-voice-status-dot {
+  background: #2563eb;
+  animation: recipe-voice-pulse 1.1s ease-in-out infinite;
+}
+
+.recipe-voice-status[data-state="listening"] .recipe-voice-status-dot {
+  background: #16a34a;
+  animation: recipe-voice-pulse 1.6s ease-in-out infinite;
+}
+
+.recipe-voice-status[data-state="connecting"] .recipe-voice-status-dot {
+  background: var(--muted);
+  animation: recipe-voice-pulse 0.9s ease-in-out infinite;
+}
+
+.recipe-voice-status[data-state="muted"] .recipe-voice-status-dot {
+  background: #b45309;
+}
+
+.recipe-voice-status[data-state="error"] {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.recipe-voice-status[data-state="error"] .recipe-voice-status-dot {
+  background: #b91c1c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recipe-voice-status-dot {
+    animation: none !important;
+  }
+}
+
+.recipe-voice-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+}
+
+.recipe-voice-control {
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border-radius: 9999px;
+  border: var(--space-1) solid var(--hair);
+  background: var(--paper);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.recipe-voice-control:hover {
+  background: var(--fog);
+  border-color: var(--ink);
+  transform: scale(1.04);
+}
+
+.recipe-voice-control:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.recipe-voice-control--mute[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.recipe-voice-control--end {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.recipe-voice-control--end:hover {
+  background: #2a2a2a;
+  border-color: #2a2a2a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recipe-voice-fab,
+  .recipe-voice-control {
+    transition: none;
+  }
+}

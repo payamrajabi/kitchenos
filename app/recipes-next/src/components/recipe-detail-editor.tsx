@@ -15,7 +15,11 @@ import { Minus, Plus } from "@phosphor-icons/react";
 import { RecipeDescriptionRichText } from "@/components/recipe-description-rich-text";
 import { useRecipeDetailDialog } from "@/components/recipe-detail-dialog";
 import { RecipeDetailOverlayChrome } from "@/components/recipe-detail-overlay-chrome";
-import { isSupabaseConfigured, recipeImagesBucket } from "@/lib/env";
+import {
+  isSupabaseConfigured,
+  isVoiceModeConfiguredClient,
+  recipeImagesBucket,
+} from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import { applyMarkdownLinkPaste } from "@/lib/recipe-description-links";
 import {
@@ -31,12 +35,17 @@ import type {
 } from "@/types/database";
 import { RecipeAddFab } from "@/components/recipe-add-fab";
 import { RecipeMealTypesField } from "@/components/recipe-meal-types-field";
+import { RecipeVoiceMode } from "@/components/recipe-voice-mode";
+import { RecipeVoiceFab } from "@/components/recipe-voice-fab";
+import { RecipeVoiceOverlay } from "@/components/recipe-voice-overlay";
+import { groupIngredientsForVoice } from "@/lib/voice/grouped-ingredients";
 import { mealTypesEqual, normalizeMealTypesFromDb } from "@/lib/recipe-meal-types";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -728,6 +737,28 @@ export function RecipeDetailEditor({
     !isEditing && baseServings && viewServings && viewServings > 0
       ? viewServings / baseServings
       : 1;
+
+  // Pre-compute the smart-grouped ingredient order for hands-free voice mode
+  // so the system prompt the agent runs against has them in pantry → fridge
+  // → produce → protein order. Cheap to recompute when servings or stocked
+  // status change.
+  const stockedIdSet = useMemo(
+    () => new Set(stockedIngredientIds),
+    [stockedIngredientIds],
+  );
+  const voiceGroupedIngredients = useMemo(
+    () =>
+      groupIngredientsForVoice({
+        recipeIngredients,
+        recipeIngredientSections,
+        stockedIds: stockedIdSet,
+      }),
+    [recipeIngredients, recipeIngredientSections, stockedIdSet],
+  );
+  // Voice mode only shows when the env opts in (so it stays hidden until the
+  // ElevenLabs agent is set up) and we're not in edit mode (cooking happens
+  // in view mode; editing is for authoring).
+  const voiceModeEnabled = !isEditing && isVoiceModeConfiguredClient();
   const decrementViewServings = useCallback(() => {
     setViewServings((cur) => {
       const n = cur ?? baseServings ?? VIEW_SERVINGS_MIN;
@@ -803,6 +834,14 @@ export function RecipeDetailEditor({
   return (
     <RecipeEditModeProvider mode={isEditing ? "edit" : "view"}>
     <RecipeServingsScaleProvider scale={servingsScale}>
+    <RecipeVoiceMode
+      recipe={initial}
+      groupedIngredients={voiceGroupedIngredients}
+      instructionSteps={recipeInstructionSteps}
+      servingsScale={servingsScale}
+      baseServings={baseServings}
+      enabled={voiceModeEnabled}
+    >
     <article
       className={[
         "recipe-detail",
@@ -1339,10 +1378,17 @@ export function RecipeDetailEditor({
           autoFocusOnMount
         />
       ) : null}
+      {voiceModeEnabled ? (
+        <>
+          <RecipeVoiceFab />
+          <RecipeVoiceOverlay />
+        </>
+      ) : null}
     </article>
     {deleteConfirmModal && deleteConfirmPortalTarget
       ? createPortal(deleteConfirmModal, deleteConfirmPortalTarget)
       : null}
+    </RecipeVoiceMode>
     </RecipeServingsScaleProvider>
     </RecipeEditModeProvider>
   );

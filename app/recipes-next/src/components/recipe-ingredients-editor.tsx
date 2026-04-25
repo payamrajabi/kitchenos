@@ -605,6 +605,10 @@ function RecipeIngredientItemRow({
       ref={rowRef}
       style={rowStyle}
       onClick={handleRowClick}
+      // Voice mode looks up the currently spoken ingredient by recipe_ingredients
+      // row id and toggles the data-voice-focused attribute imperatively. See
+      // `recipe-voice-mode.tsx`.
+      data-recipe-ingredient-id={item.id}
       className={["recipe-ingredient-row", prepared ? "recipe-ingredient-row--prepared" : "", rowClassName, !isEditing ? "recipe-ingredient-row--tap-toggle" : ""].filter(Boolean).join(" ")}
     >
       <div className="recipe-ingredient-lead-cell">

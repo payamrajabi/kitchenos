@@ -247,7 +247,11 @@ export type RecipeIngredientRow = {
   created_at?: string;
   ingredients?: Pick<
     IngredientRow,
-    "id" | "name" | "density_g_per_ml" | "canonical_unit_weight_g"
+    | "id"
+    | "name"
+    | "density_g_per_ml"
+    | "canonical_unit_weight_g"
+    | "grocery_category"
   > | null;
 };
 
