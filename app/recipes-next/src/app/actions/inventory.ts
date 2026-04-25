@@ -8,8 +8,6 @@ import {
 } from "@/lib/unit-mapping";
 import {
   defaultStorageLocationForNewInventoryRow,
-  DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
-  DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
 } from "@/lib/inventory-display";
 import type { IngredientRow } from "@/types/database";
 import type { InventoryTab } from "@/lib/inventory-filters";
@@ -28,16 +26,24 @@ import {
 
 const VALID_GROCERY_CATEGORIES = new Set<string>(INGREDIENT_GROCERY_CATEGORIES);
 
-const VALID_LOCATIONS = new Set([
+// Built-in storage locations the app understands for tab-based behaviours
+// (e.g. Pantry tab maps to Shallow/Deep Pantry, defaults for new rows). Users
+// can persist custom locations beyond these for individual rows.
+const BUILT_IN_LOCATIONS = new Set([
   "Fridge",
   "Freezer",
   "Shallow Pantry",
   "Deep Pantry",
+  "Other",
 ]);
 
 function storageLocationForTab(tab: string): string {
   if (tab === "Pantry") return "Shallow Pantry";
   return tab;
+}
+
+function normalizeStorageLocation(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim();
 }
 
 async function resolveInventoryRowId(
@@ -83,8 +89,6 @@ async function resolveInventoryRowId(
       storage_location,
       quantity: null,
       unit: null,
-      min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
-      max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
     })
     .select("id")
     .single();
@@ -184,7 +188,8 @@ export async function moveIngredientAction(
   if (!user) return { ok: false as const, error: "Sign in first." };
 
   const newLocation = storageLocationForTab(toTab);
-  if (!VALID_LOCATIONS.has(newLocation)) {
+  // Drag-between-tabs only ever lands on a built-in tab destination.
+  if (!BUILT_IN_LOCATIONS.has(newLocation)) {
     return { ok: false as const, error: "Invalid destination." };
   }
 
@@ -209,8 +214,6 @@ export async function moveIngredientAction(
       storage_location: newLocation,
       quantity: null,
       unit: null,
-      min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
-      max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
     });
     if (error) return { ok: false as const, error: error.message };
   }
@@ -392,9 +395,14 @@ export async function updateInventoryStorageLocationAction(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Sign in first." };
 
-  const loc = storageLocation.trim();
-  if (!VALID_LOCATIONS.has(loc)) {
-    return { ok: false as const, error: "Invalid storage location." };
+  const loc = normalizeStorageLocation(storageLocation);
+  // Free-form: accept any non-empty trimmed string. The DB no longer enforces
+  // a CHECK list — users can persist locations like "Cold Room" or "Cellar".
+  if (!loc) {
+    return { ok: false as const, error: "Storage location is required." };
+  }
+  if (loc.length > 64) {
+    return { ok: false as const, error: "Storage location is too long." };
   }
 
   const resolved = await resolveInventoryRowId(supabase, ingredientId, inventoryId);
@@ -423,9 +431,18 @@ export async function updateInventoryStockUnitAction(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "Sign in first." };
 
-  const u = normalizeIngredientUnitForStorage(unit);
-  if (u !== "" && !INGREDIENT_UNIT_VALUES.has(u)) {
-    return { ok: false as const, error: "Invalid stock unit." };
+  // Stock units are free-form: try to canonicalise to a known unit, but fall
+  // back to the user's typed value (e.g. "tub", "sleeve") so they can extend
+  // the list without an admin having to touch INGREDIENT_UNIT_VALUES.
+  const canonical = normalizeIngredientUnitForStorage(unit);
+  let u: string;
+  if (canonical && INGREDIENT_UNIT_VALUES.has(canonical)) {
+    u = canonical;
+  } else {
+    u = unit.replace(/\s+/g, " ").trim().toLowerCase();
+    if (u.length > 32) {
+      return { ok: false as const, error: "Stock unit is too long." };
+    }
   }
 
   const resolved = await resolveInventoryRowId(supabase, ingredientId, inventoryId);
@@ -520,8 +537,6 @@ export async function createIngredientForInventoryAction(rawName: string) {
       storage_location,
       quantity: null,
       unit: null,
-      min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
-      max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
     });
     if (invErr) return { ok: false as const, error: invErr.message };
   }
@@ -610,8 +625,6 @@ export async function addIngredientVariantAction(
     storage_location,
     quantity: null,
     unit: null,
-    min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
-    max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
   });
 
   void maybeAutofillNutrition(newIng.id);
@@ -645,10 +658,55 @@ export async function reorderVariantsAction(
   return { ok: true as const };
 }
 
+/**
+ * Bumps the user's on-hand stock for `ingredientId` by +1 unit. If the viewer
+ * has no `inventory_items` row for the ingredient yet, one is created in the
+ * default Pantry location (matching how other "quick stock" entry points
+ * behave). Used by the recipe detail view to let users resolve an "Out of
+ * stock" badge with a single tap.
+ */
+export async function incrementInventoryStockForIngredientAction(
+  ingredientId: number,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
+    return { ok: false as const, error: "Invalid ingredient." };
+  }
+
+  const resolved = await resolveInventoryRowId(supabase, ingredientId, "");
+  if (!resolved.ok) return resolved;
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from("inventory_items")
+    .select("quantity")
+    .eq("id", resolved.id)
+    .maybeSingle();
+  if (fetchErr) return { ok: false as const, error: fetchErr.message };
+
+  const current = coerceInventoryQtyColumn(existing?.quantity);
+  const next = current + 1;
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ quantity: next })
+    .eq("id", resolved.id);
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  revalidatePath("/shop");
+  revalidatePath("/recipes");
+  return { ok: true as const, quantity: next };
+}
+
 export async function updateInventoryQuantityFieldAction(
   ingredientId: number,
   inventoryId: number | "",
-  field: "quantity" | "min_quantity" | "max_quantity",
+  field: "quantity",
   value: unknown,
 ) {
   const supabase = await createClient();
@@ -663,28 +721,9 @@ export async function updateInventoryQuantityFieldAction(
   const resolved = await resolveInventoryRowId(supabase, ingredientId, inventoryId);
   if (!resolved.ok) return resolved;
 
-  const { data: existing, error: fetchErr } = await supabase
-    .from("inventory_items")
-    .select("min_quantity, max_quantity")
-    .eq("id", resolved.id)
-    .maybeSingle();
-
-  if (fetchErr) return { ok: false as const, error: fetchErr.message };
-
-  const existingMin = coerceInventoryQtyColumn(existing?.min_quantity);
-  const existingMax = coerceInventoryQtyColumn(existing?.max_quantity);
-
-  const nextVal = parsed.n;
-  if (field === "min_quantity" && nextVal > existingMax) {
-    return { ok: false as const, error: "Minimum cannot be greater than maximum." };
-  }
-  if (field === "max_quantity" && nextVal < existingMin) {
-    return { ok: false as const, error: "Maximum cannot be less than minimum." };
-  }
-
   const { error } = await supabase
     .from("inventory_items")
-    .update({ [field]: nextVal })
+    .update({ [field]: parsed.n })
     .eq("id", resolved.id);
 
   if (error) return { ok: false as const, error: error.message };

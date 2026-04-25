@@ -36,6 +36,13 @@ type Props = {
   bareInline?: boolean;
   /** Override the label shown on the closed trigger (e.g. for pluralization). */
   triggerLabel?: string;
+  /**
+   * When true, pressing Enter (or clicking the synthesized "Add …" row) with
+   * a typed query that doesn't match any option will call `onChange` with the
+   * trimmed query as a brand-new value. Used for free-form fields like stock
+   * unit and storage location, where users can extend the list themselves.
+   */
+  allowCreate?: boolean;
 };
 
 function collectScrollContainers(start: HTMLElement | null): HTMLElement[] {
@@ -64,6 +71,7 @@ export function SearchableSelect({
   defaultOpen = false,
   bareInline = false,
   triggerLabel: triggerLabelProp,
+  allowCreate = false,
 }: Props) {
   const [open, setOpen] = useState(() => Boolean(defaultOpen) && !disabled);
   const [query, setQuery] = useState("");
@@ -108,14 +116,28 @@ export function SearchableSelect({
     }
 
     const q = query.toLowerCase();
-    return options
+    const matches = options
       .filter(
         (o) =>
           o.label.toLowerCase().includes(q) ||
           o.value.toLowerCase().includes(q),
       )
       .sort(byRankThenLabel);
-  }, [options, query, placeholder]);
+
+    // Free-form mode: surface an "Add …" row when nothing exact matches.
+    if (allowCreate) {
+      const trimmed = query.trim();
+      const exact = options.some(
+        (o) =>
+          o.label.toLowerCase() === trimmed.toLowerCase() ||
+          o.value.toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (trimmed && !exact) {
+        matches.push({ value: trimmed, label: `Add “${trimmed}”` });
+      }
+    }
+    return matches;
+  }, [options, query, placeholder, allowCreate]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only gate for createPortal(document.body)
@@ -168,10 +190,16 @@ export function SearchableSelect({
   }, [open]);
 
   useEffect(() => {
-    if (open && inputRef.current) {
-      inputRef.current.focus({ preventScroll: true });
-    }
-  }, [open]);
+    if (!open) return;
+    // For bareInline mode the input lives inside a portal that mounts after
+    // listPos is computed, so we re-run this effect once the portal is in
+    // place. For the non-bare case the input is rendered immediately and
+    // listPos is irrelevant to focusing it.
+    if (bareInline && !listPos) return;
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+  }, [open, bareInline, listPos]);
 
   useEffect(() => {
     if (highlightIdx < 0 || !listRef.current) return;

@@ -12,6 +12,7 @@ import {
   updateRecipeIngredientAction,
   updateRecipeIngredientSectionAction,
 } from "@/app/actions/recipes";
+import { incrementInventoryStockForIngredientAction } from "@/app/actions/inventory";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import {
   IngredientSearchControl,
@@ -69,21 +70,36 @@ import { useTopLayerPortalContainer } from "@/lib/top-layer-host";
 
 const emptySubscribe = () => () => {};
 
-// Set of ingredient ids the viewer has in their inventory. Provided once at
-// the <RecipeIngredientsEditor> root so every leaf row can decide whether to
-// render an "Out of stock" badge without prop-drilling through three
-// intermediate components (SortableContext, drag wrapper, etc.).
-const StockedIngredientsContext = createContext<ReadonlySet<number>>(
-  new Set(),
+// Set of ingredient ids the viewer has in their inventory, plus a callback
+// to add +1 stock unit for one ingredient. Provided once at the
+// <RecipeIngredientsEditor> root so every leaf row can decide whether to
+// render an "Out of stock" badge — and act on a tap — without prop-drilling
+// through three intermediate components (SortableContext, drag wrapper, etc.).
+type StockedIngredientsContextValue = {
+  stocked: ReadonlySet<number>;
+  markStocked: ((ingredientId: number, label: string) => void) | null;
+  busyIngredientId: number | null;
+};
+
+const StockedIngredientsContext = createContext<StockedIngredientsContextValue>(
+  { stocked: new Set(), markStocked: null, busyIngredientId: null },
 );
 
 function useIsIngredientOutOfStock(ingredientId: number): boolean {
-  const stocked = useContext(StockedIngredientsContext);
+  const { stocked } = useContext(StockedIngredientsContext);
   // When the set is empty we treat every ingredient as "stocked" — it means
   // the viewer is signed out, or the loader had no data — and we hide the
   // badge entirely rather than scream "Out of stock" at everything.
   if (stocked.size === 0) return false;
   return !stocked.has(ingredientId);
+}
+
+function useMarkIngredientStocked(): {
+  markStocked: ((ingredientId: number, label: string) => void) | null;
+  busyIngredientId: number | null;
+} {
+  const { markStocked, busyIngredientId } = useContext(StockedIngredientsContext);
+  return { markStocked, busyIngredientId };
 }
 
 type Props = {
@@ -450,6 +466,8 @@ function RecipeIngredientItemRow({
   const servingsScale = useRecipeServingsScale();
   const { mode: unitDisplayMode } = useIngredientUnitDisplay();
   const isOutOfStock = useIsIngredientOutOfStock(item.ingredient_id);
+  const { markStocked, busyIngredientId } = useMarkIngredientStocked();
+  const isMarkingStocked = busyIngredientId === item.ingredient_id;
   const [amount, setAmount] = useState(item.amount ?? "");
   const authoredUnit = item.unit || DEFAULT_UNIT;
   // Only rescale in view mode — in edit mode the author is editing the stored
@@ -661,12 +679,19 @@ function RecipeIngredientItemRow({
               <span className="recipe-ingredient-optional-flag"> (optional)</span>
             ) : null}
             {isOutOfStock ? (
-              <span
+              <button
+                type="button"
                 className="recipe-ingredient-out-of-stock-badge"
-                title={`${displayName} is not in your inventory`}
+                title={`Add ${displayName} to your inventory (+1)`}
+                aria-label={`${displayName} is out of stock. Add one to inventory.`}
+                disabled={isMarkingStocked || markStocked == null}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markStocked?.(item.ingredient_id, displayName);
+                }}
               >
                 Out of stock
-              </span>
+              </button>
             ) : null}
           </span>
         )}
@@ -1163,10 +1188,22 @@ export function RecipeIngredientsEditor({
   const [knownIngredients, setKnownIngredients] = useState(() =>
     sortIngredientOptions(ingredientOptions),
   );
-  const stockedSet = useMemo(
-    () => new Set<number>(stockedIngredientIds ?? []),
-    [stockedIngredientIds],
-  );
+  // Ingredients the viewer has optimistically marked as stocked by tapping
+  // an "Out of stock" badge. Merged into the server-provided set so the
+  // badge disappears immediately; a `router.refresh()` after the server
+  // action pulls the real numbers back in (clearing this overlay naturally
+  // because the new prop will already include the id).
+  const [optimisticStockedIds, setOptimisticStockedIds] = useState<
+    ReadonlySet<number>
+  >(() => new Set());
+  const [stockingBusyIngredientId, setStockingBusyIngredientId] = useState<
+    number | null
+  >(null);
+  const stockedSet = useMemo(() => {
+    const next = new Set<number>(stockedIngredientIds ?? []);
+    for (const id of optimisticStockedIds) next.add(id);
+    return next;
+  }, [stockedIngredientIds, optimisticStockedIds]);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -1210,6 +1247,76 @@ export function RecipeIngredientsEditor({
   }, [ingredientOptions]);
 
   const useGroupedLayout = sections.length >= 2;
+
+  // Drop any optimistic "stocked" marks once the server-provided set catches
+  // up (i.e. the loader returned with the real inventory). Without this, a
+  // transient mismatch during `router.refresh()` could linger forever.
+  useEffect(() => {
+    setOptimisticStockedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const serverSet = new Set(stockedIngredientIds ?? []);
+      let changed = false;
+      const next = new Set<number>();
+      for (const id of prev) {
+        if (serverSet.has(id)) {
+          changed = true;
+          continue;
+        }
+        next.add(id);
+      }
+      return changed ? next : prev;
+    });
+  }, [stockedIngredientIds]);
+
+  const markIngredientStocked = useCallback(
+    (ingredientId: number, label: string) => {
+      if (!Number.isFinite(ingredientId) || ingredientId <= 0) return;
+      setError(null);
+      setStockingBusyIngredientId(ingredientId);
+      setOptimisticStockedIds((prev) => {
+        if (prev.has(ingredientId)) return prev;
+        const next = new Set(prev);
+        next.add(ingredientId);
+        return next;
+      });
+      startTransition(() => {
+        void (async () => {
+          try {
+            const result =
+              await incrementInventoryStockForIngredientAction(ingredientId);
+            if (!result.ok) {
+              setOptimisticStockedIds((prev) => {
+                if (!prev.has(ingredientId)) return prev;
+                const next = new Set(prev);
+                next.delete(ingredientId);
+                return next;
+              });
+              setError(
+                result.error ||
+                  `Could not add ${label} to your inventory.`,
+              );
+              return;
+            }
+            router.refresh();
+          } finally {
+            setStockingBusyIngredientId((current) =>
+              current === ingredientId ? null : current,
+            );
+          }
+        })();
+      });
+    },
+    [router],
+  );
+
+  const stockedContextValue = useMemo<StockedIngredientsContextValue>(
+    () => ({
+      stocked: stockedSet,
+      markStocked: markIngredientStocked,
+      busyIngredientId: stockingBusyIngredientId,
+    }),
+    [stockedSet, markIngredientStocked, stockingBusyIngredientId],
+  );
 
   const runAction = useCallback((nextBusyKey: string, fn: () => Promise<void>) => {
     setError(null);
@@ -1480,7 +1587,7 @@ export function RecipeIngredientsEditor({
   );
 
   return (
-    <StockedIngredientsContext.Provider value={stockedSet}>
+    <StockedIngredientsContext.Provider value={stockedContextValue}>
     <section className="section">
       <div className="recipe-ingredients-heading-row">
         <h3 className="recipe-ingredients-heading">Ingredients</h3>

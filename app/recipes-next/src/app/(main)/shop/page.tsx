@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from "@/lib/env";
 import { getShoppingListAction } from "@/app/actions/shop";
 import { ShoppingList } from "@/components/shopping-list";
+import { SendToInstacartButton } from "@/components/send-to-instacart-button";
 
 export default async function ShopPage() {
   if (!isSupabaseConfigured()) {
@@ -25,6 +26,7 @@ export default async function ShopPage() {
 
   return (
     <section className="grid shop-view">
+      {result.items.length > 0 ? <SendToInstacartButton /> : null}
       <ShoppingList items={result.items} />
     </section>
   );

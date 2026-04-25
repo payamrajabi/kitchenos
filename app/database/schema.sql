@@ -187,6 +187,31 @@ CREATE TABLE IF NOT EXISTS ingredient_portions (
 CREATE INDEX IF NOT EXISTS idx_ingredient_portions_ingredient
   ON ingredient_portions (ingredient_id);
 
+-- Ranked list of preferred products that can satisfy a generic ingredient.
+-- Lower `rank` = higher preference. Purely a preference list used by the
+-- inventory side sheet; does NOT create additional inventory rows.
+CREATE TABLE IF NOT EXISTS ingredient_products (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+  rank INTEGER NOT NULL DEFAULT 0,
+  name TEXT NOT NULL,
+  brand TEXT,
+  url TEXT,
+  barcode TEXT,
+  notes TEXT,
+  price REAL CHECK (price IS NULL OR price >= 0),
+  price_basis TEXT CHECK (price_basis IS NULL OR price_basis IN ('package', 'weight', 'unit')),
+  price_basis_amount REAL CHECK (price_basis_amount IS NULL OR price_basis_amount > 0),
+  price_basis_unit TEXT,
+  unit_size_amount REAL CHECK (unit_size_amount IS NULL OR unit_size_amount > 0),
+  unit_size_unit TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingredient_products_ingredient
+  ON ingredient_products (ingredient_id, rank);
+
 CREATE TABLE IF NOT EXISTS equipment (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -265,18 +290,10 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   owner_id TEXT,
   ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
-  storage_location TEXT NOT NULL CHECK (
-    storage_location IN (
-      'Fridge',
-      'Freezer',
-      'Shallow Pantry',
-      'Deep Pantry',
-      'Other'
-    )
-  ),
+  -- Free-form so the UI can offer custom locations beyond the built-ins
+  -- (Fridge / Freezer / Shallow Pantry / Deep Pantry / Other / "Cold Room"…).
+  storage_location TEXT NOT NULL,
   quantity REAL,
-  min_quantity REAL,
-  max_quantity REAL,
   unit TEXT,
   recipe_unit TEXT,
   notes TEXT,

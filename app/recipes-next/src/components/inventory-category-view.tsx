@@ -8,6 +8,7 @@ import {
 } from "@/lib/inventory-display";
 import { InventoryQtyControl } from "@/components/inventory-qty-control";
 import { INGREDIENT_TAXONOMY_SUBCATEGORIES } from "@/lib/ingredient-backbone-inference";
+import { useRecentAppliedSet } from "@/lib/receipt-import/recent-applied";
 
 const UNCATEGORISED_LABEL = "Uncategorised";
 
@@ -15,10 +16,15 @@ const SUBCATEGORY_ORDER_INDEX = new Map<string, number>(
   INGREDIENT_TAXONOMY_SUBCATEGORIES.map((c, i) => [c as string, i]),
 );
 
+type SectionItem = {
+  ingredient: IngredientRow;
+  isVariant: boolean;
+};
+
 type Section = {
   key: string;
   label: string;
-  items: IngredientRow[];
+  items: SectionItem[];
 };
 
 function bucketKey(ing: IngredientRow): string {
@@ -33,22 +39,51 @@ function sectionSortIndex(key: string): number {
 }
 
 function buildSections(ingredients: IngredientRow[]): Section[] {
-  const buckets = new Map<string, IngredientRow[]>();
+  // Index the visible ingredient set so we know whether a variant's parent
+  // is also present. Variants are bucketed alongside (and immediately after)
+  // their parent so the dense columnar layout still reads as a grouped list.
+  const byId = new Map<number, IngredientRow>();
+  for (const ing of ingredients) byId.set(ing.id, ing);
+
+  const variantsByParent = new Map<number, IngredientRow[]>();
+  for (const ing of ingredients) {
+    const parentId = ing.parent_ingredient_id ?? null;
+    if (parentId == null || !byId.has(parentId)) continue;
+    const arr = variantsByParent.get(parentId) ?? [];
+    arr.push(ing);
+    variantsByParent.set(parentId, arr);
+  }
+  for (const arr of variantsByParent.values()) {
+    arr.sort(
+      (a, b) => (a.variant_sort_order ?? 0) - (b.variant_sort_order ?? 0),
+    );
+  }
+
+  const buckets = new Map<string, SectionItem[][]>();
 
   for (const ing of ingredients) {
-    // Roots only — variants live under their parent and would clutter the
-    // dense view. Tapping a root opens the detail sheet where variants live.
-    if (ing.parent_ingredient_id) continue;
+    // Treat anything without a (visible) parent as a root for layout purposes.
+    const parentId = ing.parent_ingredient_id ?? null;
+    const isOrphanedVariant = parentId != null && !byId.has(parentId);
+    if (parentId != null && !isOrphanedVariant) continue;
+
     const key = bucketKey(ing);
+    const group: SectionItem[] = [{ ingredient: ing, isVariant: false }];
+    const variants = variantsByParent.get(ing.id) ?? [];
+    for (const v of variants) {
+      group.push({ ingredient: v, isVariant: true });
+    }
     const arr = buckets.get(key) ?? [];
-    arr.push(ing);
+    arr.push(group);
     buckets.set(key, arr);
   }
 
   const sections: Section[] = [];
-  for (const [key, items] of buckets.entries()) {
-    items.sort((a, b) => a.name.localeCompare(b.name));
-    sections.push({ key, label: key, items });
+  for (const [key, groups] of buckets.entries()) {
+    groups.sort((a, b) =>
+      a[0].ingredient.name.localeCompare(b[0].ingredient.name),
+    );
+    sections.push({ key, label: key, items: groups.flat() });
   }
 
   sections.sort((a, b) => {
@@ -68,6 +103,8 @@ function IngredientRowItem({
   unit,
   isEmpty,
   isSelected,
+  isVariant,
+  justApplied,
   onSelectIngredient,
 }: {
   ingredient: IngredientRow;
@@ -76,6 +113,8 @@ function IngredientRowItem({
   unit: string;
   isEmpty: boolean;
   isSelected: boolean;
+  isVariant: boolean;
+  justApplied: boolean;
   onSelectIngredient: (id: number) => void;
 }) {
   const nameRef = useRef<HTMLButtonElement | null>(null);
@@ -92,6 +131,8 @@ function IngredientRowItem({
       data-ingredient-id={ingredient.id}
       className={`inv-cat-row${isEmpty ? " inv-cat-row--empty" : ""}${
         isSelected ? " inv-cat-row--selected" : ""
+      }${isVariant ? " inv-cat-row--variant" : ""}${
+        justApplied ? " inv-cat-row--just-applied" : ""
       }`}
     >
       <button
@@ -127,6 +168,7 @@ export function InventoryCategoryView({
   onSelectIngredient: (id: number) => void;
 }) {
   const sections = useMemo(() => buildSections(ingredients), [ingredients]);
+  const recentlyApplied = useRecentAppliedSet();
 
   if (sections.length === 0) {
     return (
@@ -144,7 +186,7 @@ export function InventoryCategoryView({
             <span className="inv-cat-section-title">{section.label}</span>
           </h3>
           <ul className="inv-cat-section-list">
-            {section.items.map((ing) => {
+            {section.items.map(({ ingredient: ing, isVariant }) => {
               const invRow = getInventoryRowForIngredient(inventory, ing.id);
               const stock = getInventoryStockValuesUnified(ing, invRow);
               const qty =
@@ -159,6 +201,8 @@ export function InventoryCategoryView({
                   unit={stock.unit || ""}
                   isEmpty={isEmpty}
                   isSelected={ing.id === selectedIngredientId}
+                  isVariant={isVariant}
+                  justApplied={recentlyApplied.has(ing.id)}
                   onSelectIngredient={onSelectIngredient}
                 />
               );

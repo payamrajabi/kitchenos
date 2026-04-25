@@ -1,7 +1,14 @@
 "use client";
 
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ArrowSquareOut, DotsThree, PencilSimple, Trash, X } from "@phosphor-icons/react";
+import { Menu } from "@base-ui/react/menu";
+import {
+  ArrowSquareOut,
+  DotsThree,
+  PencilSimple,
+  ShuffleAngular,
+  Trash,
+  X,
+} from "@phosphor-icons/react";
 import { type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRecipeDetailDialog } from "@/components/recipe-detail-dialog";
@@ -13,6 +20,12 @@ type Props = {
   // the kebab menu should not offer Edit / Delete.
   onEdit?: (() => void) | null;
   onDelete?: (() => void) | null;
+  // When provided, a "Remix" entry is rendered in the kebab menu. Toggling
+  // it is what reveals the bottom refine bar on the recipe detail view.
+  onRemix?: (() => void) | null;
+  // Reflects whether remix mode is currently active so the menu label can
+  // flip between "Remix" and "Cancel remix".
+  isRemixing?: boolean;
   sourceUrl?: string | null;
   // When true the kebab menu is suppressed entirely — useful for a read-only
   // community context where there are no recipe-scoped actions.
@@ -37,15 +50,17 @@ export function RecipeDetailOverlayChrome({
   onClose,
   onEdit,
   onDelete,
+  onRemix,
+  isRemixing = false,
   sourceUrl,
   hideMenu = false,
   extraMenuItems = [],
 }: Props) {
   const trimmedSource = sourceUrl?.trim() || "";
-  const hasBuiltInActions = !!(onEdit || onDelete || trimmedSource);
+  const hasBuiltInActions = !!(onEdit || onDelete || onRemix || trimmedSource);
   const showMenu = !hideMenu && (hasBuiltInActions || extraMenuItems.length > 0);
 
-  // When the editor is rendered inside the recipe modal, Radix's default
+  // When the editor is rendered inside the recipe modal, Base UI's default
   // portal target (document.body) renders the menu underneath the native
   // <dialog> top-layer — so it opens but is invisible and unclickable.
   // We portal the menu into the active top-layer host so it stacks above
@@ -78,91 +93,90 @@ export function RecipeDetailOverlayChrome({
       </button>
 
       {showMenu ? (
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              className="recipe-detail-overlay-btn recipe-detail-overlay-menu-trigger"
-              aria-label="Recipe actions"
-            >
-              <DotsThree size={24} weight="bold" aria-hidden />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal container={topLayerHost ?? undefined}>
-            <DropdownMenu.Content
-              className="recipe-detail-overlay-menu"
-              align="end"
-              sideOffset={6}
-              collisionPadding={12}
-            >
-              {extraMenuItems.map((item) => (
-                <DropdownMenu.Item
-                  key={item.key}
-                  className={[
-                    "recipe-detail-overlay-menu-item",
-                    item.destructive
-                      ? "recipe-detail-overlay-menu-item--destructive"
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  disabled={item.disabled}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    item.onSelect();
-                  }}
-                >
-                  {item.label}
-                </DropdownMenu.Item>
-              ))}
+        <Menu.Root>
+          <Menu.Trigger
+            render={
+              <button
+                type="button"
+                className="recipe-detail-overlay-btn recipe-detail-overlay-menu-trigger"
+                aria-label="Recipe actions"
+              >
+                <DotsThree size={24} weight="bold" aria-hidden />
+              </button>
+            }
+          />
+          <Menu.Portal container={topLayerHost ?? undefined}>
+            <Menu.Positioner align="end" sideOffset={6} collisionPadding={12}>
+              <Menu.Popup className="recipe-detail-overlay-menu">
+                {extraMenuItems.map((item) => (
+                  <Menu.Item
+                    key={item.key}
+                    className={[
+                      "recipe-detail-overlay-menu-item",
+                      item.destructive
+                        ? "recipe-detail-overlay-menu-item--destructive"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    disabled={item.disabled}
+                    onClick={() => item.onSelect()}
+                  >
+                    {item.label}
+                  </Menu.Item>
+                ))}
 
-              {onEdit ? (
-                <DropdownMenu.Item
-                  className="recipe-detail-overlay-menu-item"
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    onEdit();
-                  }}
-                >
-                  <PencilSimple size={16} weight="regular" aria-hidden />
-                  <span>Edit</span>
-                </DropdownMenu.Item>
-              ) : null}
+                {onRemix ? (
+                  <Menu.Item
+                    className="recipe-detail-overlay-menu-item"
+                    onClick={() => onRemix()}
+                  >
+                    <ShuffleAngular size={16} weight="regular" aria-hidden />
+                    <span>{isRemixing ? "Cancel remix" : "Remix"}</span>
+                  </Menu.Item>
+                ) : null}
 
-              {trimmedSource ? (
-                <DropdownMenu.Item
-                  className="recipe-detail-overlay-menu-item"
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    if (typeof window !== "undefined") {
-                      window.open(trimmedSource, "_blank", "noopener,noreferrer");
-                    }
-                  }}
-                >
-                  <ArrowSquareOut size={16} weight="regular" aria-hidden />
-                  <span>Go to source</span>
-                </DropdownMenu.Item>
-              ) : null}
+                {onEdit ? (
+                  <Menu.Item
+                    className="recipe-detail-overlay-menu-item"
+                    onClick={() => onEdit()}
+                  >
+                    <PencilSimple size={16} weight="regular" aria-hidden />
+                    <span>Edit</span>
+                  </Menu.Item>
+                ) : null}
 
-              {onDelete && onEdit ? (
-                <DropdownMenu.Separator className="recipe-detail-overlay-menu-separator" />
-              ) : null}
+                {trimmedSource ? (
+                  <Menu.Item
+                    className="recipe-detail-overlay-menu-item"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.open(trimmedSource, "_blank", "noopener,noreferrer");
+                      }
+                    }}
+                  >
+                    <ArrowSquareOut size={16} weight="regular" aria-hidden />
+                    <span>Go to source</span>
+                  </Menu.Item>
+                ) : null}
 
-              {onDelete ? (
-                <DropdownMenu.Item
-                  className="recipe-detail-overlay-menu-item recipe-detail-overlay-menu-item--destructive"
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    onDelete();
-                  }}
-                >
-                  <Trash size={16} weight="regular" aria-hidden />
-                  <span>Delete recipe</span>
-                </DropdownMenu.Item>
-              ) : null}
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+                {onDelete && onEdit ? (
+                  <Menu.Separator className="recipe-detail-overlay-menu-separator" />
+                ) : null}
+
+                {onDelete ? (
+                  <Menu.Item
+                    className="recipe-detail-overlay-menu-item recipe-detail-overlay-menu-item--destructive"
+                    onClick={() => onDelete()}
+                  >
+                    <Trash size={16} weight="regular" aria-hidden />
+                    <span>Delete recipe</span>
+                  </Menu.Item>
+                ) : null}
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
       ) : null}
     </div>
   );

@@ -5,10 +5,6 @@ import {
   ingredientMatchesInventoryTab,
 } from "@/lib/inventory-filters";
 
-/** Applied when inserting a new `inventory_items` row (first stock row for an ingredient). */
-export const DEFAULT_NEW_INVENTORY_MIN_QUANTITY = 1;
-export const DEFAULT_NEW_INVENTORY_MAX_QUANTITY = 2;
-
 export function storageLocationMatchesInventoryTab(
   storageLocation: string,
   tab: InventoryTab,
@@ -91,22 +87,12 @@ export function getInventoryStockValues(
     invRow?.quantity !== null && invRow?.quantity !== undefined
       ? Number(invRow.quantity)
       : parseLeadingNumber(ingredient.current_stock);
-  const mn =
-    invRow?.min_quantity !== null && invRow?.min_quantity !== undefined
-      ? Number(invRow.min_quantity)
-      : parseLeadingNumber(ingredient.minimum_stock);
-  const mx =
-    invRow?.max_quantity !== null && invRow?.max_quantity !== undefined
-      ? Number(invRow.max_quantity)
-      : parseLeadingNumber(ingredient.maximum_stock);
   const unit = invRow?.unit != null && invRow.unit !== "" ? String(invRow.unit) : "";
   const recipeUnit = invRow?.recipe_unit != null && invRow.recipe_unit !== "" ? String(invRow.recipe_unit) : "";
   const storageLocation =
     invRow?.storage_location || defaultStorageLocationForNewInventoryRow(ingredient, tab);
   return {
     quantity: Number.isNaN(q) ? null : q,
-    min: Number.isNaN(mn) ? null : mn,
-    max: Number.isNaN(mx) ? null : mx,
     unit,
     recipeUnit,
     storageLocation,
@@ -148,8 +134,6 @@ export function getInventoryRowForIngredient(
 
 export type UnifiedInventoryStock = {
   quantity: number | null;
-  min: number | null;
-  max: number | null;
   unit: string;
   recipeUnit: string;
   storageLocation: string;
@@ -164,21 +148,11 @@ export function getInventoryStockValuesUnified(
     invRow?.quantity !== null && invRow?.quantity !== undefined
       ? Number(invRow.quantity)
       : parseLeadingNumber(ingredient.current_stock);
-  const mn =
-    invRow?.min_quantity !== null && invRow?.min_quantity !== undefined
-      ? Number(invRow.min_quantity)
-      : parseLeadingNumber(ingredient.minimum_stock);
-  const mx =
-    invRow?.max_quantity !== null && invRow?.max_quantity !== undefined
-      ? Number(invRow.max_quantity)
-      : parseLeadingNumber(ingredient.maximum_stock);
   const unit = invRow?.unit != null && invRow.unit !== "" ? String(invRow.unit) : "";
   const recipeUnit = invRow?.recipe_unit != null && invRow.recipe_unit !== "" ? String(invRow.recipe_unit) : "";
   const storageLocation = invRow?.storage_location || "";
   return {
     quantity: Number.isNaN(q) ? null : q,
-    min: Number.isNaN(mn) ? null : mn,
-    max: Number.isNaN(mx) ? null : mx,
     unit,
     recipeUnit,
     storageLocation,

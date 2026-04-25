@@ -9,7 +9,7 @@ Every floating UI element — popover, dropdown menu, combobox list, tooltip, to
 
 ## Why this rule exists
 
-The recipe detail view (and any future modal like it) is a native `<dialog>` opened via `showModal()`. The browser renders `showModal`-ed dialogs in a special **top layer** that sits above everything else in the document and that `z-index` cannot beat. Anything portaled into `<body>` with a default `createPortal` or Radix `Portal` will render **underneath** the dialog — the menu opens, the user just can't see it.
+The recipe detail view (and any future modal like it) is a native `<dialog>` opened via `showModal()`. The browser renders `showModal`-ed dialogs in a special **top layer** that sits above everything else in the document and that `z-index` cannot beat. Anything portaled into `<body>` with a default `createPortal`, Radix `Portal`, or Base UI `Portal` will render **underneath** the dialog — the menu opens, the user just can't see it.
 
 We solved this with a shared `top-layer host` tracker. Any popover that portals must use it.
 
@@ -27,6 +27,9 @@ createPortal(<Popover />, container);
 
 // Radix portal:
 <DropdownMenu.Portal container={useTopLayerHost() ?? undefined}>…</DropdownMenu.Portal>
+
+// Base UI portal:
+<Menu.Portal container={useTopLayerHost() ?? undefined}>…</Menu.Portal>
 ```
 
 `useTopLayerPortalContainer()` returns:
@@ -37,15 +40,15 @@ createPortal(<Popover />, container);
 This works for **every** kind of floating surface:
 
 - Searchable selects / comboboxes (`SearchableSelect`)
-- Dropdown menus (Radix `@radix-ui/react-dropdown-menu`)
-- Any future Popover, Tooltip, HoverCard, ContextMenu, Select (Radix or otherwise)
+- Dropdown menus (Base UI `@base-ui/react` — our current primitive library)
+- Any future Popover, Tooltip, HoverCard, ContextMenu, Select (Base UI, Radix, or otherwise)
 - Custom "modal card" confirmations that you portal into the DOM
 - Toast containers (see `AppToaster`)
 
 ## What to do
 
 1. **Never** call `createPortal(…, document.body)` directly for a floating UI surface. Route through `useTopLayerPortalContainer()` instead.
-2. **Never** leave a Radix `Portal` without a `container` prop for anything that can be rendered inside a modal surface. Pass `container={useTopLayerHost() ?? undefined}`.
+2. **Never** leave a Base UI or Radix `Portal` without a `container` prop for anything that can be rendered inside a modal surface. Pass `container={useTopLayerHost() ?? undefined}`.
 3. **Don't** try to fight the native dialog with `z-index`. It cannot be beaten. Always portal into the dialog instead.
 4. If you add a new modal-like container that participates in the top layer (another `<dialog>` + `showModal`, a `popover` attribute element, etc.), call `setTopLayerHost(el)` when it mounts and clear it on unmount, matching `RecipeDetailDialog`'s pattern. That way everything in the system stacks correctly above it automatically.
 5. If you add a new portal-based primitive, write a short comment pointing to this rule and to `lib/top-layer-host.ts`.
@@ -55,6 +58,7 @@ This works for **every** kind of floating surface:
 - `app/recipes-next/src/lib/top-layer-host.ts` — the store, the hook (`useTopLayerHost`), and the container helper (`useTopLayerPortalContainer`).
 - `app/recipes-next/src/components/recipe-detail-dialog.tsx` — the producer that registers the native `<dialog>` as the top-layer host.
 - `app/recipes-next/src/components/searchable-select.tsx` — example portal consumer using the hook.
-- `app/recipes-next/src/components/recipe-detail-overlay-chrome.tsx` — example Radix consumer using the hook.
+- `app/recipes-next/src/components/recipe-detail-overlay-chrome.tsx` — example Base UI Menu consumer using the hook.
+- `app/recipes-next/src/components/recipe-instructions-editor.tsx` — example Base UI Menu consumer for the per-step actions menu.
 - `app/recipes-next/src/components/app-toaster.tsx` — example toaster consumer.
 - `app/recipes-next/src/components/recipe-detail-editor.tsx` / `recipe-ingredients-editor.tsx` / `ingredient-delete-button.tsx` — nested confirmation modals consuming the hook.

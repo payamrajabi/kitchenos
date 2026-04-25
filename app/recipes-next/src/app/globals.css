@@ -2165,6 +2165,47 @@ textarea {
   text-align: center;
 }
 
+/* Action bar above the shopping list (Send-to-Instacart etc.). Lives inside
+   .shop-view so its margin sits above the first column of .shop-cat-view. */
+.shop-cta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-8);
+  margin: 0 0 var(--space-16);
+}
+
+.send-to-instacart-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.send-to-instacart-btn:hover,
+.send-to-instacart-btn:focus-visible {
+  background: var(--ink);
+  color: var(--paper);
+  outline: none;
+}
+
+.send-to-instacart-btn:disabled,
+.send-to-instacart-btn[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .shop-cat-view {
   column-width: 200px;
   column-gap: var(--space-24, 24px);
@@ -2488,6 +2529,873 @@ textarea {
   margin: 0;
   font-size: 12px;
   color: #6b1f1f;
+}
+
+/* Inventory: receipt import FAB — bottom-right, larger than the add FAB
+   because it triggers a full modal task (paste + upload + AI mapping). */
+.inventory-receipt-fab-wrap {
+  position: fixed;
+  z-index: 60;
+  bottom: calc(var(--space-12) + env(safe-area-inset-bottom, 0px));
+  right: calc(var(--space-12) + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+/* Persistent pill that appears next to the receipt FAB while there's a queue
+ * of parsed-but-unreviewed items (or active background parses). Tapping it
+ * reopens the dialog. */
+.inventory-receipt-pill {
+  /* Match the FAB's height so they visually sit together as a paired control. */
+  height: var(--space-48);
+  padding: 0 var(--space-20);
+  border-radius: 999px;
+  border: var(--space-1) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  cursor: pointer;
+  box-shadow: 0 var(--space-4) var(--space-16) rgb(0 0 0 / 0.18);
+  white-space: nowrap;
+}
+
+.inventory-receipt-pill:hover {
+  background: color-mix(in srgb, var(--ink) 6%, var(--paper));
+}
+
+.inventory-receipt-pill.is-busy {
+  border-style: dashed;
+}
+
+.inventory-receipt-pill-spinner {
+  animation: receipt-import-spin 800ms linear infinite;
+}
+
+@keyframes receipt-import-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.inventory-receipt-fab {
+  width: var(--space-48);
+  height: var(--space-48);
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 var(--space-4) var(--space-16) rgb(0 0 0 / 0.22);
+}
+
+.inventory-receipt-fab:hover {
+  filter: brightness(1.08);
+}
+
+.inventory-receipt-fab:focus-visible {
+  outline: var(--space-1) solid var(--ink);
+  outline-offset: var(--space-2);
+}
+
+.inventory-receipt-fab:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  pointer-events: none;
+}
+
+/* Receipt import modal — native <dialog>. Mobile: fills the viewport; ≥600px:
+   centered card. Mirrors the structure of .recipe-detail-dialog but scoped. */
+.receipt-import-dialog {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  width: 100dvw;
+  max-width: 100dvw;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.receipt-import-dialog[open] {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.receipt-import-dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+.receipt-import-dialog-surface {
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  width: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 0;
+  overflow: hidden;
+  animation: recipe-detail-dialog-slide-in 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (min-width: 600px) {
+  .receipt-import-dialog[open] {
+    align-items: center;
+    padding: var(--space-24);
+  }
+  .receipt-import-dialog-surface {
+    max-width: 720px;
+    /* Modal sizes to content. Caps at 840px (or viewport minus 24px top + 24px
+     * bottom margin — whichever is smaller) so it never touches the edges. A
+     * short queue gets a short dialog; a long queue gets a taller one. */
+    max-height: min(840px, calc(100dvh - var(--space-48)));
+    height: auto;
+    border: var(--space-1) solid var(--hair);
+    box-shadow: 0 var(--space-12) var(--space-40) rgb(0 0 0 / 0.25);
+  }
+}
+
+.receipt-import-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-20) var(--space-20) var(--space-12);
+  border-bottom: var(--space-1) solid var(--hair);
+}
+
+.receipt-import-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--space-16) var(--space-20);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.receipt-import-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-20);
+  border-top: var(--space-1) solid var(--hair);
+  background: var(--paper);
+}
+
+@media (min-width: 600px) {
+  .receipt-import-dialog-header {
+    padding: var(--space-20) var(--space-24) var(--space-12);
+  }
+  .receipt-import-dialog-body {
+    padding: var(--space-16) var(--space-24);
+  }
+  .receipt-import-dialog-footer {
+    padding: var(--space-12) var(--space-24);
+  }
+}
+
+.receipt-import-dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.receipt-import-dialog-close {
+  width: var(--space-32);
+  height: var(--space-32);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.receipt-import-dialog-close:hover {
+  background: var(--hair-soft, rgb(0 0 0 / 0.06));
+}
+
+.receipt-import-dialog-close:focus-visible {
+  outline: var(--space-1) solid var(--ink);
+  outline-offset: var(--space-2);
+}
+
+.receipt-import-error {
+  margin: 0;
+  padding: var(--space-8) var(--space-12);
+  font-size: 13px;
+  color: #6b1f1f;
+  background: #f9e7e7;
+  border: var(--space-1) solid #e3c0c0;
+}
+
+.receipt-import-help {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft, rgb(0 0 0 / 0.6));
+  line-height: 1.45;
+}
+
+.receipt-import-input-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding-bottom: var(--space-16);
+  border-bottom: var(--space-1) solid var(--hair);
+}
+
+.receipt-import-input-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+}
+
+.receipt-import-empty {
+  margin: var(--space-24) 0;
+  padding: var(--space-16);
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-soft, rgb(0 0 0 / 0.6));
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+  border: var(--space-1) dashed var(--hair);
+  border-radius: var(--space-8);
+}
+
+.receipt-import-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-soft, rgb(0 0 0 / 0.7));
+}
+
+.receipt-import-textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: var(--space-12);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  border: var(--space-1) solid var(--control-border-rest);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.receipt-import-textarea:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.receipt-import-file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.receipt-import-file-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-12);
+  height: var(--control-height);
+  font-size: 13px;
+  font-weight: 500;
+  border: var(--space-1) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.receipt-import-file-button input[type="file"] {
+  display: none;
+}
+
+.receipt-import-file-clear {
+  background: transparent;
+  border: none;
+  padding: 0 var(--space-8);
+  height: var(--control-height);
+  font-size: 12px;
+  text-decoration: underline;
+  color: var(--ink-soft, rgb(0 0 0 / 0.7));
+  cursor: pointer;
+}
+
+.receipt-import-primary,
+.receipt-import-secondary {
+  height: var(--control-height);
+  padding: 0 var(--space-16);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.receipt-import-primary {
+  border: var(--space-1) solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.receipt-import-secondary {
+  border: var(--space-1) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.receipt-import-primary:disabled,
+.receipt-import-secondary:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.receipt-import-review-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.receipt-import-subtitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.receipt-import-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Each row sits flush in the list with a hairline divider between neighbours.
+ * The divider belongs to the row itself (bottom border), so an expanded card
+ * can suppress the divider on its own row and "overshadow" the previous row's
+ * divider with a negative top margin. */
+.receipt-import-row {
+  position: relative;
+  border-bottom: var(--space-1) solid var(--hair);
+  background: var(--paper);
+}
+
+.receipt-import-row:last-child {
+  border-bottom: 0;
+}
+
+.receipt-import-row.is-ignored {
+  opacity: 0.55;
+}
+
+.receipt-import-row-compact {
+  padding: 0;
+}
+
+.receipt-import-row-compact.is-ignored .receipt-import-compact-product,
+.receipt-import-row-compact.is-ignored .receipt-import-compact-price,
+.receipt-import-row-compact.is-ignored .receipt-import-compact-mapped {
+  text-decoration: line-through;
+}
+
+/* The collapsed row is a grid of a clickable body (expand-row) and a mapped
+ * slot that either shows the pill button or the inline ingredient picker.
+ * Hover/focus treatments moved to the body so they only apply to the
+ * "expand" hitbox, not to the pill area. */
+.receipt-import-compact-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-4);
+}
+
+.receipt-import-compact-body {
+  display: flex;
+  align-items: center;
+  /* Grid child. Allow shrinking below intrinsic content width so long
+   * product titles ellipsize cleanly instead of overflowing into the row
+   * below. */
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  /* Belt-and-braces: clip anything that still overruns the flex track so a
+   * single long word can never paint over a neighbouring row. */
+  overflow: hidden;
+}
+
+.receipt-import-compact-body:hover {
+  background: var(--hair-soft, rgb(0 0 0 / 0.04));
+}
+
+.receipt-import-compact-body:focus-visible {
+  outline: var(--space-1) solid var(--ink);
+  outline-offset: calc(-1 * var(--space-1));
+}
+
+.receipt-import-compact-body:disabled {
+  cursor: wait;
+}
+
+/* Right-hand slot on the collapsed row. When not editing, renders the pill
+ * button; while editing, hosts the inline IngredientSearchControl. Width is
+ * capped so a long typed query doesn't push the product title around. */
+.receipt-import-compact-mapped-slot {
+  justify-self: end;
+  min-width: 160px;
+  max-width: 260px;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.receipt-import-row-compact.is-editing-map .receipt-import-compact-mapped-slot {
+  width: 260px;
+}
+
+/* Style the inline picker's input to match the pill it replaces (same
+ * height, subtle border, no chrome). The suggestion list inherits the
+ * existing recipe-ingredients-suggestions styling via the top-layer host. */
+.receipt-import-compact-mapped-slot .recipe-ingredients-add-cell-inner {
+  width: 100%;
+}
+
+.receipt-import-compact-mapped-slot .ss-input {
+  height: var(--space-32);
+  padding: 0 var(--space-8);
+  font-size: 13px;
+  border: var(--space-1) solid var(--hair);
+  border-radius: var(--space-4);
+}
+
+.receipt-import-compact-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Fill the body so the product/price children have a bounded track to
+   * ellipsize into, and allow shrinking below intrinsic width. */
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* The product title is now a single-line block whose truncation is handled
+ * at the parent level. Brand and name are inline spans so a long product
+ * string like "Rabbit River Farms Organic Free Range Egg Whites" ellipsizes
+ * ONCE at the end, not twice mid-word. */
+.receipt-import-compact-product {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.receipt-import-compact-brand,
+.receipt-import-compact-name {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.receipt-import-compact-price {
+  font-size: 13px;
+  color: var(--ink-soft, rgb(0 0 0 / 0.62));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.receipt-import-compact-risk {
+  font-size: 12px;
+  color: #8a5a00;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The mapped-ingredient pill is now an explicit button so it can open the
+ * inline picker without bubbling into the row-expand click target. Visually
+ * it reads the same as before — plain text, no border — until hover. */
+.receipt-import-compact-mapped {
+  display: inline-flex;
+  align-items: center;
+  max-width: 260px;
+  padding: var(--space-4) var(--space-8);
+  border: var(--space-1) solid transparent;
+  border-radius: var(--space-4);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.receipt-import-compact-mapped:hover,
+.receipt-import-compact-mapped:focus-visible {
+  border-color: var(--hair);
+  background: var(--paper);
+  outline: none;
+}
+
+.receipt-import-compact-mapped:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* New-ingredient highlight on the collapsed row — matches the Figma yellow
+ * callout so new additions are unmistakable in a long list. */
+.receipt-import-compact-mapped.is-new {
+  background: #fff3a3;
+}
+
+.receipt-import-compact-mapped.is-new:hover,
+.receipt-import-compact-mapped.is-new:focus-visible {
+  background: #ffeb70;
+  border-color: #d8b627;
+}
+
+/* ---- Expanded card ----------------------------------------------------- */
+
+.receipt-import-row-expanded {
+  border-bottom-color: transparent;
+  padding: var(--space-8) 0;
+}
+
+.receipt-import-row-expanded + .receipt-import-row {
+  border-top: 0;
+}
+
+.receipt-import-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border: var(--space-1) solid var(--hair);
+  border-radius: var(--space-8);
+  padding: var(--space-12);
+  box-shadow: 0 var(--space-2) var(--space-12) rgb(0 0 0 / 0.06);
+}
+
+.receipt-import-card-raw {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.45;
+  padding-bottom: var(--space-12);
+  border-bottom: var(--space-1) solid var(--hair);
+  word-break: break-word;
+}
+
+.receipt-import-review-flags {
+  display: flex;
+  gap: var(--space-8);
+  align-items: flex-start;
+  padding: var(--space-10) var(--space-12);
+  border-bottom: var(--space-1) solid var(--hair);
+  background: #fff8d8;
+  color: #6f4a00;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.receipt-import-review-flags-label {
+  flex: 0 0 auto;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.receipt-import-review-flags-list {
+  margin: 0;
+  padding-left: var(--space-16);
+}
+
+.receipt-import-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: var(--space-16) 0;
+  border-bottom: var(--space-1) solid var(--hair);
+}
+
+.receipt-import-card-section:last-child {
+  border-bottom: 0;
+}
+
+.receipt-import-card-section-nested {
+  padding-top: var(--space-12);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.receipt-import-card-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-12);
+}
+
+.receipt-import-card-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* The Figma uses an invisible label in the second column of quantity rows so
+ * the input aligns with its labeled siblings. */
+.receipt-import-field-label-ghost {
+  visibility: hidden;
+}
+
+.receipt-import-advanced {
+  border-top: var(--space-1) solid var(--hair);
+  margin-top: var(--space-4);
+}
+
+.receipt-import-advanced > summary {
+  list-style: none;
+}
+
+.receipt-import-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.receipt-import-advanced-summary {
+  cursor: pointer;
+  padding: var(--space-12) 0 var(--space-8);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-soft, rgb(0 0 0 / 0.62));
+}
+
+.receipt-import-advanced-summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: var(--space-8);
+  transition: transform 120ms ease;
+}
+
+.receipt-import-advanced[open] .receipt-import-advanced-summary::before {
+  transform: rotate(90deg);
+}
+
+.receipt-import-excluded-row {
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+  color: var(--ink-soft, rgb(0 0 0 / 0.62));
+}
+
+.receipt-import-excluded-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-4);
+}
+
+/* Pending parse placeholder — sits in the list while the LLM is still
+ * working on the latest paste. Replaced in-place by N row entries when the
+ * server action resolves. */
+.receipt-import-row-pending {
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+}
+
+.receipt-import-row-pending.is-error {
+  background: #fbecec;
+}
+
+.receipt-import-pending-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-4);
+}
+
+/* Stack Dismiss + Retry side by side on a failed batch placeholder. */
+.receipt-import-pending-actions {
+  display: inline-flex;
+  gap: var(--space-8);
+}
+
+.receipt-import-pending-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.receipt-import-pending-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.receipt-import-pending-preview {
+  font-size: 12px;
+  color: var(--ink-soft, rgb(0 0 0 / 0.62));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.receipt-import-pending-spinner {
+  color: var(--ink-soft, rgb(0 0 0 / 0.6));
+  animation: receipt-import-spin 800ms linear infinite;
+}
+
+/* Small inline action buttons used inside row footers (Done, Remove,
+ * Include, Dismiss). Quiet by default, ink on hover. */
+.receipt-import-row-action {
+  height: var(--space-28);
+  padding: 0 var(--space-12);
+  border: var(--space-1) solid var(--hair);
+  border-radius: var(--space-4);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.receipt-import-row-action:hover {
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+}
+
+.receipt-import-row-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.receipt-import-row-action-danger {
+  color: #8a1f1f;
+  border-color: #d8b4b4;
+}
+
+.receipt-import-row-action-danger:hover {
+  background: #fbecec;
+}
+
+.receipt-import-row-action-include {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.receipt-import-row-action-include:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Footer row inside an expanded card (Done / Remove). Sits flush at the
+ * bottom of the card with a hairline separator above. */
+.receipt-import-card-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding-top: var(--space-12);
+  border-top: var(--space-1) solid var(--hair);
+}
+
+.receipt-import-field .recipe-ingredients-add-cell-inner {
+  width: 100%;
+}
+
+.receipt-import-field .recipe-ingredients-suggestions {
+  z-index: 4;
+}
+
+.receipt-import-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.receipt-import-input,
+.receipt-import-select {
+  height: var(--control-height);
+  padding: 0 var(--space-12);
+  font: inherit;
+  font-size: 13px;
+  border: var(--space-1) solid var(--hair);
+  border-radius: var(--space-4);
+  background: var(--paper);
+  color: var(--ink);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.receipt-import-input:focus,
+.receipt-import-select:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.receipt-import-qty-group {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.receipt-import-input-qty {
+  flex: 1 1 auto;
+}
+
+.receipt-import-qty-group .receipt-import-select {
+  flex: 0 0 92px;
+}
+
+/* IngredientSearchControl renders its own input; match the receipt-import
+ * inputs so it sits flush with the rest of the form inside the card. */
+.receipt-import-card .receipt-import-field .ss-input {
+  border-radius: var(--space-4);
+  border-color: var(--hair);
 }
 
 .inventory-nutrition-cell {
@@ -9354,6 +10262,27 @@ a.primary {
   vertical-align: middle;
   line-height: 1.5;
   white-space: nowrap;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+
+.recipe-ingredient-out-of-stock-badge:hover:not(:disabled) {
+  background: var(--amber-border, #fcd34d);
+}
+
+.recipe-ingredient-out-of-stock-badge:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.recipe-ingredient-out-of-stock-badge:focus-visible {
+  outline: 2px solid var(--amber-text, #92400e);
+  outline-offset: 2px;
+}
+
+.recipe-ingredient-out-of-stock-badge:disabled {
+  cursor: progress;
+  opacity: 0.7;
 }
 
 /* When the row is marked as prepared, fade the badge alongside the name so
@@ -9789,6 +10718,21 @@ a.primary {
   color: var(--ink);
 }
 
+/* Variant rows sit beneath their parent in the dense list. A small indent
+   plus a muted name colour telegraphs "child of the row above" without
+   breaking the columnar rhythm. Hover/selected states are inherited from
+   the base `.inv-cat-row` rules. */
+.inv-cat-row--variant .inv-cat-row-name {
+  padding-left: var(--space-12, 12px);
+  color: var(--muted);
+}
+
+.inv-cat-row--variant:hover .inv-cat-row-name,
+.inv-cat-row--variant:focus-within .inv-cat-row-name,
+.inv-cat-row--variant.inv-cat-row--selected .inv-cat-row-name {
+  color: var(--ink);
+}
+
 /* Hide the "0" at rest on empty rows and collapse its width too so the
    name can use the entire column; reveal on hover alongside -/+ so the
    user can still increment from zero. */
@@ -9806,6 +10750,26 @@ a.primary {
   width: auto;
   min-width: 16px;
   opacity: 1;
+}
+
+/* Faint yellow flash for rows that were just touched by a receipt apply.
+ * Lives in memory only (see lib/receipt-import/recent-applied.ts) so a
+ * refresh clears it, matching the "this session only" spec.
+ *
+ * Re-uses the row's existing ::before hover-tint plate so the flash extends
+ * into the inset-8px padding and stays beneath the row text. Hover/select
+ * takes precedence via the rule below. */
+.inv-cat-row--just-applied::before {
+  background: #fff3a3;
+  opacity: 1;
+}
+
+/* When the user hovers / selects an already-applied row, fall back to the
+ * normal selection tint so the hover affordance still reads. */
+.inv-cat-row--just-applied:hover::before,
+.inv-cat-row--just-applied:focus-within::before,
+.inv-cat-row--just-applied.inv-cat-row--selected::before {
+  background: var(--soft-tint);
 }
 
 /* ===================================================================
@@ -9937,6 +10901,371 @@ a.primary {
   background-image: var(--hover-fill-overlay);
 }
 
+.detail-sheet-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4, 4px);
+  flex-shrink: 0;
+}
+
+.detail-sheet-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink, #222);
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.detail-sheet-icon-btn:hover,
+.detail-sheet-icon-btn[data-popup-open] {
+  background-image: var(--hover-fill-overlay);
+}
+
+.detail-sheet-menu-positioner {
+  /* Base UI positions the popup via this element. The inventory detail
+     sheet backdrop is z-index: 100 — the menu must beat it. */
+  z-index: 200;
+}
+
+.detail-sheet-menu {
+  background: var(--paper, #fff);
+  border: var(--space-1, 1px) solid var(--ink, #222);
+  padding: var(--space-4, 4px) 0;
+  min-width: 180px;
+  outline: none;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+.detail-sheet-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8, 8px);
+  width: 100%;
+  padding: var(--space-8, 8px) var(--space-12, 12px);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink, #222);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+}
+
+.detail-sheet-menu-item:focus,
+.detail-sheet-menu-item[data-highlighted] {
+  outline: none;
+  background-image: var(--hover-fill-overlay);
+}
+
+/* ---------- Move-to / Merge-with modals ---------- */
+
+/* These open from inside the inventory detail sheet, whose backdrop sits at
+   z-index: 100. The base .modal class is z-index: 50, so without this bump
+   the modal would render *behind* the open sheet. */
+.modal.organize-modal-shell {
+  z-index: 200;
+}
+
+.modal-card.organize-modal {
+  max-width: var(--space-832, 832px);
+  width: min(var(--space-832, 832px), 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-card.organize-modal--wide {
+  max-width: var(--space-1024, 1024px);
+  width: min(var(--space-1024, 1024px), 96vw);
+}
+
+.organize-modal-body {
+  padding: var(--space-24, 24px) var(--space-28, 28px) var(--space-28, 28px);
+  padding-right: calc(var(--space-28, 28px) + var(--space-24, 24px));
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.organize-modal-title {
+  margin: 0 0 var(--space-8, 8px);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.organize-modal-name {
+  font-style: italic;
+}
+
+.organize-modal-help {
+  margin: 0 0 var(--space-16, 16px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted, #666);
+}
+
+.organize-modal-error {
+  margin: var(--space-12, 12px) 0 0;
+  font-size: 13px;
+  color: #c0392b;
+}
+
+.organize-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8, 8px);
+  justify-content: flex-end;
+  margin-top: var(--space-20, 20px);
+}
+
+.organize-modal-cancel {
+  border: var(--space-1, 1px) solid var(--ink, #222);
+  background: var(--paper, #fff);
+  color: var(--ink, #222);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: var(--space-8, 8px) var(--space-16, 16px);
+  cursor: pointer;
+}
+
+.organize-modal-cancel:hover:not(:disabled) {
+  background-image: var(--hover-fill-overlay);
+}
+
+.organize-modal-confirm {
+  border: var(--space-2, 2px) solid var(--ink, #222);
+  background: var(--ink, #222);
+  color: var(--paper, #fff);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: var(--space-8, 8px) var(--space-16, 16px);
+  cursor: pointer;
+}
+
+.organize-modal-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- Picker (search + result list) ---- */
+
+.organize-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8, 8px);
+}
+
+.organize-picker-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: var(--space-1, 1px) solid var(--ink, #222);
+  border-radius: 0;
+  padding: var(--space-8, 8px) var(--space-12, 12px);
+  font: inherit;
+  font-size: 14px;
+}
+
+.organize-picker-input:focus {
+  outline: var(--space-1, 1px) solid var(--ink, #222);
+  outline-offset: 2px;
+}
+
+.organize-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: var(--space-1, 1px) solid var(--hair, #eee);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.organize-picker-empty {
+  padding: var(--space-12, 12px);
+  font-size: 13px;
+  color: var(--muted, #666);
+}
+
+.organize-picker-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-8, 8px) var(--space-12, 12px);
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: var(--space-1, 1px) solid var(--hair, #eee);
+}
+
+.organize-picker-row:last-child {
+  border-bottom: none;
+}
+
+.organize-picker-row:hover {
+  background-image: var(--hover-fill-overlay);
+}
+
+.organize-picker-row--selected {
+  background: var(--ink, #222);
+  color: var(--paper, #fff);
+}
+
+.organize-picker-row--selected:hover {
+  background-image: none;
+  filter: brightness(1.05);
+}
+
+.organize-picker-row-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.organize-picker-row-sub {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted, #666);
+}
+
+.organize-picker-row--selected .organize-picker-row-sub {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ---- Side-by-side merge picker ---- */
+
+.merge-side-by-side-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-12, 12px);
+  margin: 0 0 var(--space-12, 12px);
+  padding-left: 160px;
+}
+
+.merge-side-by-side-shortcut {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 4px);
+  align-items: flex-start;
+}
+
+.merge-side-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted, #666);
+}
+
+.merge-side-use-all {
+  border: var(--space-1, 1px) solid var(--ink, #222);
+  background: var(--paper, #fff);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: var(--space-4, 4px) var(--space-8, 8px);
+  cursor: pointer;
+}
+
+.merge-side-use-all:hover {
+  background-image: var(--hover-fill-overlay);
+}
+
+.merge-side-by-side {
+  display: flex;
+  flex-direction: column;
+  border: var(--space-1, 1px) solid var(--hair, #eee);
+}
+
+.merge-field-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 1fr;
+  gap: 0;
+  border-bottom: var(--space-1, 1px) solid var(--hair, #eee);
+}
+
+.merge-field-row:last-child {
+  border-bottom: none;
+}
+
+.merge-field-label {
+  padding: var(--space-8, 8px) var(--space-12, 12px);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted, #666);
+  background: var(--paper-soft, #fafafa);
+  display: flex;
+  align-items: center;
+}
+
+.merge-field-side {
+  padding: var(--space-8, 8px) var(--space-12, 12px);
+  border: none;
+  border-left: var(--space-1, 1px) solid var(--hair, #eee);
+  background: var(--paper, #fff);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink, #222);
+  word-break: break-word;
+}
+
+.merge-field-side:hover:not(:disabled) {
+  background-image: var(--hover-fill-overlay);
+}
+
+.merge-field-side--picked {
+  background: var(--ink, #222);
+  color: var(--paper, #fff);
+}
+
+.merge-field-side--picked:hover:not(:disabled) {
+  background-image: none;
+  filter: brightness(1.05);
+}
+
+.merge-field-side:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.merge-field-row--same .merge-field-label {
+  opacity: 0.6;
+}
+
+@media (max-width: 720px) {
+  .merge-field-row {
+    grid-template-columns: 1fr;
+  }
+  .merge-field-side {
+    border-left: none;
+    border-top: var(--space-1, 1px) solid var(--hair, #eee);
+  }
+  .merge-side-by-side-shortcuts {
+    padding-left: 0;
+  }
+}
+
 .detail-sheet-body {
   flex: 1;
   overflow-y: auto;
@@ -10032,6 +11361,12 @@ a.primary {
 
 .detail-sheet-macros .detail-sheet-value {
   font-variant-numeric: tabular-nums;
+}
+
+.detail-sheet-inherited-price {
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px dotted var(--ink-muted);
+  cursor: help;
 }
 
 .detail-sheet-value--editable {
@@ -10242,6 +11577,276 @@ a.primary {
   margin-top: var(--space-32, 32px);
   padding-top: var(--space-16, 16px);
   border-top: 1px solid #eee;
+}
+
+/* -----------------------------------------------------------------------
+   Preferred Products editor — ranked list of products that can satisfy a
+   given ingredient. Lives inside the inventory detail sheet.
+   ----------------------------------------------------------------------- */
+
+.ingredient-products-list {
+  list-style: none;
+  margin: 0 0 var(--space-8, 8px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 4px);
+}
+
+.ingredient-products-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--space-8, 8px);
+  padding: var(--space-8, 8px) 0;
+  border-bottom: 1px solid #f3f3f3;
+  font-size: 13px;
+}
+
+.ingredient-products-item--editing {
+  display: block;
+  padding: var(--space-8, 8px) 0;
+}
+
+.ingredient-products-rank {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding-top: 2px;
+  min-width: 18px;
+}
+
+.ingredient-products-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ingredient-products-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4, 4px);
+  min-width: 0;
+}
+
+.ingredient-products-name {
+  font-weight: 500;
+  color: var(--ink, #222);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ingredient-products-meta {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.ingredient-products-notes {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.ingredient-products-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-4, 4px);
+  flex-shrink: 0;
+}
+
+.ingredient-products-price {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #222);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ingredient-products-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ingredient-products-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.ingredient-products-action:hover:not(:disabled) {
+  color: var(--ink, #222);
+  background-image: var(--hover-fill-overlay);
+}
+
+.ingredient-products-action:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.ingredient-products-action--danger:hover:not(:disabled) {
+  color: #c0392b;
+}
+
+.ingredient-products-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4, 4px);
+  padding: var(--space-4, 4px) var(--space-8, 8px);
+  margin-top: var(--space-4, 4px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px dashed var(--hair, #ddd);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.ingredient-products-add-btn:hover:not(:disabled) {
+  color: var(--ink, #222);
+  border-color: var(--ink, #222);
+}
+
+.ingredient-products-add-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.ingredient-products-add {
+  padding: var(--space-8, 8px) 0;
+}
+
+.ingredient-products-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8, 8px);
+  padding: var(--space-12, 12px);
+  background: #fafafa;
+  border: 1px solid var(--hair, #eee);
+  border-radius: 4px;
+}
+
+.ingredient-products-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ingredient-products-field-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-8, 8px);
+}
+
+.ingredient-products-field--price {
+  width: 96px;
+}
+
+.ingredient-products-unit-size {
+  display: grid;
+  grid-template-columns: 1fr 100px;
+  gap: var(--space-8, 8px);
+}
+
+.ingredient-products-unit-size-unit {
+  font: inherit;
+  font-size: 13px;
+  background: var(--paper, #fff);
+  color: var(--ink, #222);
+  cursor: pointer;
+}
+
+.ingredient-products-field-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ingredient-products-input {
+  font: inherit;
+  font-size: 13px;
+  padding: var(--space-6, 6px) var(--space-8, 8px);
+  border: 1px solid var(--hair, #ddd);
+  border-radius: 3px;
+  background: var(--paper, #fff);
+  color: var(--ink, #222);
+  outline: none;
+}
+
+.ingredient-products-input:focus {
+  border-color: var(--ink, #222);
+}
+
+.ingredient-products-textarea {
+  resize: vertical;
+  min-height: 44px;
+  font-family: inherit;
+}
+
+.ingredient-products-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8, 8px);
+  margin-top: var(--space-4, 4px);
+}
+
+.ingredient-products-form-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4, 4px);
+  padding: var(--space-6, 6px) var(--space-10, 10px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--hair, #ddd);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.ingredient-products-form-cancel:hover:not(:disabled) {
+  color: var(--ink, #222);
+  border-color: var(--ink, #222);
+}
+
+.ingredient-products-form-submit {
+  padding: var(--space-6, 6px) var(--space-12, 12px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--ink, #222);
+  background: var(--ink, #222);
+  color: var(--paper, #fff);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.ingredient-products-form-submit:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.ingredient-products-form-submit:disabled,
+.ingredient-products-form-cancel:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 .detail-sheet-delete-btn {

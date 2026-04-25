@@ -21,8 +21,6 @@ import {
 } from "@/lib/ingredient-backbone-catalogue";
 import {
   defaultStorageLocationForNewInventoryRow,
-  DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
-  DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
 } from "@/lib/inventory-display";
 import type { IngredientRow } from "@/types/database";
 
@@ -52,8 +50,6 @@ async function ensureInventoryRow(
     storage_location,
     quantity: null,
     unit: null,
-    min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
-    max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
   });
 }
 

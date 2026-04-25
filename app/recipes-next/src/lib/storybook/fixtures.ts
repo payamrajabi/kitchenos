@@ -143,8 +143,6 @@ export function mockInventoryItem(
     ingredient_id: 1,
     storage_location: "Fridge",
     quantity: 1,
-    min_quantity: 0,
-    max_quantity: 4,
     unit: "each",
     recipe_unit: "tbsp",
     notes: null,

@@ -49,6 +49,7 @@ export function IngredientSearchControl({
   labelHidden,
   defaultQuery = "",
   autoFocus,
+  onQueryChange,
   onPickSuggestion,
   onCancel,
 }: {
@@ -60,6 +61,7 @@ export function IngredientSearchControl({
   labelHidden?: string;
   defaultQuery?: string;
   autoFocus?: boolean;
+  onQueryChange?: (query: string) => void;
   onPickSuggestion: (suggestion: IngredientSuggestion) => void;
   onCancel?: () => void;
 }) {
@@ -168,6 +170,8 @@ export function IngredientSearchControl({
   const pickSuggestion = useCallback(
     (suggestion: IngredientSuggestion) => {
       onPickSuggestion(suggestion);
+      setOpen(false);
+      setHighlightIdx(0);
     },
     [onPickSuggestion],
   );
@@ -234,6 +238,7 @@ export function IngredientSearchControl({
           onChange={(event) => {
             const next = event.target.value;
             setQuery(next);
+            onQueryChange?.(next);
             setHighlightIdx(0);
             setOpen(next.trim().length >= MIN_INGREDIENT_AUTOCOMPLETE_CHARS);
           }}

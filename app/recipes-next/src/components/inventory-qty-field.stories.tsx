@@ -14,19 +14,7 @@ export const Quantity: Story = {
   args: {
     ingredientId: 1,
     inventoryId: 10,
-    field: "quantity",
     initialValue: 3,
     ariaLabel: "Current quantity",
-  },
-};
-
-export const MinMax: Story = {
-  args: {
-    ingredientId: 1,
-    inventoryId: 10,
-    field: "min_quantity",
-    initialValue: 1,
-    ariaLabel: "Minimum stock",
-    maxBound: 10,
   },
 };

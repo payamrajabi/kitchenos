@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, useCallback } from "react";
-import type { IngredientRow, InventoryItemRow, IngredientNutrientRow, IngredientPortionRow } from "@/types/database";
+import type { IngredientRow, InventoryItemRow, IngredientNutrientRow, IngredientPortionRow, IngredientProductRow } from "@/types/database";
+import { listIngredientProductsAction } from "@/app/actions/ingredient-products";
 import { createClient } from "@/lib/supabase/client";
 import { nutritionPer100gForDisplay } from "@/lib/inventory-nutrition-display";
 import { NUTRITION_SOURCE_LLM_ESTIMATE } from "@/lib/nutrition/types";
@@ -20,18 +21,24 @@ import {
   INGREDIENT_UNIT_VALUES,
   RECIPE_UNITS,
 } from "@/lib/unit-mapping";
-import { STOCK_UNIT_OPTIONS, STOCK_UNIT_VALUES } from "@/lib/stock-units";
+import { STOCK_UNIT_OPTIONS } from "@/lib/stock-units";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import { IngredientDeleteButton } from "@/components/ingredient-delete-button";
+import { IngredientOrganizeMenu } from "@/components/ingredient-organize-menu";
+import { IngredientProductsEditor } from "@/components/ingredient-products-editor";
 import { ArrowsClockwise, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
+// Built-in storage locations everyone gets. Users can extend by typing a
+// new value into the searchable select; the row will persist whatever they
+// enter (DB no longer enforces a CHECK list).
 const STORAGE_LOCATION_OPTIONS: SelectOption[] = [
   { value: "Fridge", label: "Fridge" },
   { value: "Freezer", label: "Freezer" },
   { value: "Shallow Pantry", label: "Shallow Pantry" },
   { value: "Deep Pantry", label: "Deep Pantry" },
+  { value: "Other", label: "Other" },
 ];
 
 function fmt(v: number | null | undefined): string {
@@ -60,21 +67,15 @@ function EditableRow({ label, children }: { label: string; children: React.React
 function EditableQty({
   ingredientId,
   inventoryId,
-  field,
   initialValue,
   ariaLabel,
   suffix,
-  minBound,
-  maxBound,
 }: {
   ingredientId: number;
   inventoryId: number | "";
-  field: "quantity" | "min_quantity" | "max_quantity";
   initialValue: number | null;
   ariaLabel: string;
   suffix?: string | null;
-  minBound?: number | null;
-  maxBound?: number | null;
 }) {
   const resolvedInventoryId = useMemo(
     () => normalizeInventoryId(inventoryId),
@@ -100,23 +101,13 @@ function EditableQty({
         setText(toText(initialValue));
         return;
       }
-      if (field === "min_quantity" && maxBound != null && parsed > maxBound) {
-        toast.error("Minimum cannot be greater than maximum.");
-        setText(toText(initialValue));
-        return;
-      }
-      if (field === "max_quantity" && minBound != null && parsed < minBound) {
-        toast.error("Maximum cannot be less than minimum.");
-        setText(toText(initialValue));
-        return;
-      }
       const prev = initialValue == null ? null : Math.trunc(Number(initialValue));
       if (prev !== null && parsed === prev) return;
       startTransition(async () => {
         const r = await updateInventoryQuantityFieldAction(
           ingredientId,
           resolvedInventoryId,
-          field,
+          "quantity",
           parsed,
         );
         if (!r.ok) {
@@ -125,7 +116,7 @@ function EditableQty({
         }
       });
     },
-    [ingredientId, resolvedInventoryId, field, initialValue, minBound, maxBound],
+    [ingredientId, resolvedInventoryId, initialValue],
   );
 
   return (
@@ -163,19 +154,23 @@ function EditableStockUnit({
 }) {
   const resolvedInventoryId = normalizeInventoryId(inventoryId);
   const [isPending, startTransition] = useTransition();
-  const normalized = canonicalIngredientUnit(value);
+  // Try to canonicalise (e.g. "tablespoon" → "tbsp") for display, but keep the
+  // raw saved value when the user has typed something we don't know about
+  // (e.g. "tub", "sleeve") so the field reflects exactly what's persisted.
+  const canonical = canonicalIngredientUnit(value);
+  const displayValue = canonical || (value ?? "").trim();
   const options: SelectOption[] = useMemo(() => {
-    const v = normalized.trim();
-    if (v && !STOCK_UNIT_VALUES.has(v)) {
+    const v = displayValue.trim();
+    if (v && !STOCK_UNIT_OPTIONS.some((o) => o.value === v)) {
       return [{ value: v, label: v }, ...STOCK_UNIT_OPTIONS];
     }
     return STOCK_UNIT_OPTIONS;
-  }, [normalized]);
+  }, [displayValue]);
   return (
     <SearchableSelect
       className="detail-sheet-select"
       options={options}
-      value={normalized}
+      value={displayValue}
       onChange={(next) => {
         startTransition(async () => {
           const r = await updateInventoryStockUnitAction(
@@ -190,6 +185,7 @@ function EditableStockUnit({
       aria-label="Stock unit"
       bareInline
       placeholder="—"
+      allowCreate
     />
   );
 }
@@ -254,10 +250,19 @@ function EditableStorageLocation({
 }) {
   const resolvedInventoryId = normalizeInventoryId(inventoryId);
   const [isPending, startTransition] = useTransition();
+  // If the user has saved a custom location not in our defaults, surface it
+  // at the top of the list so the dropdown still shows the current value.
+  const options: SelectOption[] = useMemo(() => {
+    const v = (value ?? "").trim();
+    if (v && !STORAGE_LOCATION_OPTIONS.some((o) => o.value === v)) {
+      return [{ value: v, label: v }, ...STORAGE_LOCATION_OPTIONS];
+    }
+    return STORAGE_LOCATION_OPTIONS;
+  }, [value]);
   return (
     <SearchableSelect
       className="detail-sheet-select"
-      options={STORAGE_LOCATION_OPTIONS}
+      options={options}
       value={value || ""}
       onChange={(next) => {
         startTransition(async () => {
@@ -272,6 +277,7 @@ function EditableStorageLocation({
       disabled={isPending}
       aria-label="Storage location"
       bareInline
+      allowCreate
       placeholder="—"
     />
   );
@@ -415,13 +421,19 @@ export function InventoryDetailSheet({
   const router = useRouter();
   const [nutrients, setNutrients] = useState<IngredientNutrientRow[]>([]);
   const [portions, setPortions] = useState<IngredientPortionRow[]>([]);
+  const [products, setProducts] = useState<IngredientProductRow[]>([]);
   const [isCalcPending, startCalcTransition] = useTransition();
+
+  const refreshProducts = useCallback(async () => {
+    const rows = await listIngredientProductsAction(ingredient.id);
+    setProducts(rows);
+  }, [ingredient.id]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       const supabase = createClient();
-      const [nutRes, portRes] = await Promise.all([
+      const [nutRes, portRes, productsRows] = await Promise.all([
         supabase
           .from("ingredient_nutrients")
           .select("*")
@@ -432,10 +444,12 @@ export function InventoryDetailSheet({
           .select("*")
           .eq("ingredient_id", ingredient.id)
           .order("is_default", { ascending: false }),
+        listIngredientProductsAction(ingredient.id),
       ]);
       if (cancelled) return;
       setNutrients((nutRes.data ?? []) as IngredientNutrientRow[]);
       setPortions((portRes.data ?? []) as IngredientPortionRow[]);
+      setProducts(productsRows);
     }
     load();
     return () => { cancelled = true; };
@@ -466,12 +480,9 @@ export function InventoryDetailSheet({
 
   const inventoryId = inventoryItem?.id ?? "";
   const unit = inventoryItem?.unit ?? "";
+  const savedRecipeUnit = inventoryItem?.recipe_unit ?? "";
   const currentQty =
     inventoryItem?.quantity != null ? Number(inventoryItem.quantity) : null;
-  const currentMin =
-    inventoryItem?.min_quantity != null ? Number(inventoryItem.min_quantity) : null;
-  const currentMax =
-    inventoryItem?.max_quantity != null ? Number(inventoryItem.max_quantity) : null;
 
   return (
     <div className="detail-sheet-backdrop" onClick={onClose}>
@@ -483,14 +494,17 @@ export function InventoryDetailSheet({
       >
         <header className="detail-sheet-header">
           <EditableTitle ingredientId={ingredient.id} name={ingredient.name} />
-          <button
-            type="button"
-            className="detail-sheet-close"
-            onClick={onClose}
-            aria-label="Close detail sheet"
-          >
-            <X size={20} weight="bold" aria-hidden />
-          </button>
+          <div className="detail-sheet-header-actions">
+            <IngredientOrganizeMenu ingredient={ingredient} />
+            <button
+              type="button"
+              className="detail-sheet-close"
+              onClick={onClose}
+              aria-label="Close detail sheet"
+            >
+              <X size={20} weight="bold" aria-hidden />
+            </button>
+          </div>
         </header>
 
         <div className="detail-sheet-body">
@@ -501,7 +515,6 @@ export function InventoryDetailSheet({
                 <EditableQty
                   ingredientId={ingredient.id}
                   inventoryId={inventoryId}
-                  field="quantity"
                   initialValue={currentQty}
                   ariaLabel="Current stock"
                   suffix={unit || null}
@@ -514,32 +527,12 @@ export function InventoryDetailSheet({
                   value={unit}
                 />
               </EditableRow>
-              <EditableRow label="Min Quantity">
-                <EditableQty
-                  ingredientId={ingredient.id}
-                  inventoryId={inventoryId}
-                  field="min_quantity"
-                  initialValue={currentMin}
-                  ariaLabel="Minimum quantity"
-                  maxBound={currentMax}
-                />
-              </EditableRow>
-              <EditableRow label="Max Quantity">
-                <EditableQty
-                  ingredientId={ingredient.id}
-                  inventoryId={inventoryId}
-                  field="max_quantity"
-                  initialValue={currentMax}
-                  ariaLabel="Maximum quantity"
-                  minBound={currentMin}
-                />
-              </EditableRow>
               <EditableRow label="Recipe Unit">
                 <EditableRecipeUnit
                   ingredientId={ingredient.id}
                   inventoryId={inventoryId}
                   stockUnit={unit}
-                  savedRecipeUnit={inventoryItem?.recipe_unit ?? ""}
+                  savedRecipeUnit={savedRecipeUnit}
                 />
               </EditableRow>
               <EditableRow label="Storage Location">
@@ -557,10 +550,18 @@ export function InventoryDetailSheet({
             <dl className="detail-sheet-dl">
               <DetailRow label="Category" value={ingredient.grocery_category || ingredient.category || "—"} />
               <DetailRow label="Food Type" value={ingredient.food_type || "generic"} />
-              <DetailRow label="Brand" value={ingredient.brand_or_manufacturer || "—"} />
-              <DetailRow label="Barcode" value={ingredient.barcode || "—"} />
               {ingredient.notes ? <DetailRow label="Notes" value={ingredient.notes} /> : null}
             </dl>
+          </section>
+
+          <section className="detail-sheet-section">
+            <h3 className="detail-sheet-section-title">Preferred Products</h3>
+            <IngredientProductsEditor
+              ingredientId={ingredient.id}
+              ingredientName={ingredient.name}
+              products={products}
+              onProductsChange={refreshProducts}
+            />
           </section>
 
           <section className="detail-sheet-section">

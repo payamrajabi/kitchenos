@@ -142,6 +142,9 @@ export function RecipeDetailEditor({
   const [isImageDragOver, setIsImageDragOver] = useState(false);
   const [focusY, setFocusY] = useState(() => recipeImageFocusYPercent(initial));
   const [cropMode, setCropMode] = useState(false);
+  // Remix mode: the bottom refine bar is hidden by default and only mounts
+  // once the user explicitly opts into a remix via the kebab menu.
+  const [isRemixing, setIsRemixing] = useState(false);
   const [name, setName] = useState(() => str(initial.name));
   const [headnote, setHeadnote] = useState(() => str(initial.headnote));
   const [description, setDescription] = useState(() => str(initial.description));
@@ -381,12 +384,22 @@ export function RecipeDetailEditor({
       const r = await deleteRecipeAction(initial.id);
       if (r.ok) {
         setDeleteModalOpen(false);
-        router.push("/recipes");
+        if (modalCtx) {
+          // When the recipe is open as an intercepted modal (from Plan,
+          // Recipes, Community, etc.), closing the modal uses router.back()
+          // and returns the user to exactly the tab they came from, rather
+          // than stranding them on the now-404 recipe URL.
+          modalCtx.close();
+        } else {
+          // Standalone full-page view (deep link): no history to pop, so
+          // land on the recipe list.
+          router.push("/recipes");
+        }
         return;
       }
       setDeleteError(r.error ?? "Could not delete recipe.");
     });
-  }, [initial.id, router]);
+  }, [initial.id, modalCtx, router]);
 
   useEffect(() => {
     if (!deleteModalOpen) return;
@@ -795,7 +808,7 @@ export function RecipeDetailEditor({
         "recipe-detail",
         `recipe-detail--${isEditing ? "edit" : "view"}`,
         inModal ? "recipe-detail--in-modal" : "",
-        !viewOnly ? "has-recipe-ai-bar" : "",
+        !viewOnly && isRemixing ? "has-recipe-ai-bar" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -805,6 +818,10 @@ export function RecipeDetailEditor({
           onClose={() => modalCtx?.close()}
           onEdit={viewOnly ? null : toggleEditing}
           onDelete={viewOnly ? null : openDeleteModal}
+          onRemix={
+            viewOnly ? null : () => setIsRemixing((prev) => !prev)
+          }
+          isRemixing={isRemixing}
           sourceUrl={initial.source_url}
           extraMenuItems={overlayExtraMenuItems}
         />
@@ -1315,10 +1332,11 @@ export function RecipeDetailEditor({
           </div>
         </aside>
       </div>
-      {!viewOnly ? (
+      {!viewOnly && isRemixing ? (
         <RecipeAddFab
           baseRecipeId={Number(initial.id)}
           showManualButton={false}
+          autoFocusOnMount
         />
       ) : null}
     </article>

@@ -7,8 +7,6 @@ import { planDateKeyInTZ, addDaysToDateString } from "@/lib/dates";
 import { getUserTimeZone } from "@/lib/timezone-server";
 import {
   defaultStorageLocationForNewInventoryRow,
-  DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
-  DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
 } from "@/lib/inventory-display";
 import type { IngredientRow } from "@/types/database";
 import type { InventoryTab } from "@/lib/inventory-filters";
@@ -371,8 +369,6 @@ export async function checkOffShoppingItemAction(
       storage_location,
       quantity: Math.round(quantity * 100) / 100,
       unit: normalizedUnit || null,
-      min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
-      max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
     });
 
     if (error) return { ok: false, error: error.message };

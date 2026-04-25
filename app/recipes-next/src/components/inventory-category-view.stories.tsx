@@ -18,6 +18,8 @@ type SeedRow = {
   name: string;
   subcategory: string | null;
   qty?: number;
+  parentId?: number;
+  variantSortOrder?: number;
 };
 
 function build(rows: SeedRow[]): {
@@ -29,6 +31,8 @@ function build(rows: SeedRow[]): {
       id: r.id,
       name: r.name,
       taxonomy_subcategory: r.subcategory,
+      parent_ingredient_id: r.parentId ?? null,
+      variant_sort_order: r.variantSortOrder ?? 0,
     }),
   );
   const inventory = rows.map((r) =>
@@ -79,6 +83,68 @@ const SEED: SeedRow[] = [
 export const Default: Story = {
   args: {
     ...build(SEED),
+    selectedIngredientId: null,
+    onSelectIngredient: () => {},
+  },
+};
+
+const WITH_VARIANTS: SeedRow[] = [
+  { id: 1, name: "Butter", subcategory: "Oils & Fats", qty: 1 },
+  {
+    id: 2,
+    name: "Unsalted Butter",
+    subcategory: "Oils & Fats",
+    qty: 2,
+    parentId: 1,
+    variantSortOrder: 0,
+  },
+  {
+    id: 3,
+    name: "Salted Butter",
+    subcategory: "Oils & Fats",
+    parentId: 1,
+    variantSortOrder: 1,
+  },
+  { id: 10, name: "Olive Oil", subcategory: "Oils & Fats", qty: 1 },
+  {
+    id: 11,
+    name: "Extra Virgin Olive Oil",
+    subcategory: "Oils & Fats",
+    qty: 1,
+    parentId: 10,
+    variantSortOrder: 0,
+  },
+  { id: 20, name: "Onion", subcategory: "Alliums", qty: 3 },
+  {
+    id: 21,
+    name: "Red Onion",
+    subcategory: "Alliums",
+    qty: 1,
+    parentId: 20,
+    variantSortOrder: 0,
+  },
+  {
+    id: 22,
+    name: "Yellow Onion",
+    subcategory: "Alliums",
+    parentId: 20,
+    variantSortOrder: 1,
+  },
+  {
+    id: 23,
+    name: "White Onion",
+    subcategory: "Alliums",
+    qty: 2,
+    parentId: 20,
+    variantSortOrder: 2,
+  },
+  { id: 30, name: "Garlic", subcategory: "Alliums", qty: 2 },
+];
+
+export const WithVariants: Story = {
+  name: "With variants",
+  args: {
+    ...build(WITH_VARIANTS),
     selectedIngredientId: null,
     onSelectIngredient: () => {},
   },

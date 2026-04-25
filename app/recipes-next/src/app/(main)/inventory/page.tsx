@@ -5,6 +5,9 @@ import { ensureIngredientGroceryCategoriesInDb } from "@/lib/ensure-ingredient-g
 import { sortIngredientsForInventoryDisplay } from "@/lib/inventory-display";
 import { InventoryAddFab } from "@/components/inventory-add-fab";
 import { InventoryView } from "@/components/inventory-view";
+import { ReceiptImportFab } from "@/components/receipt-import-fab";
+
+export const dynamic = "force-dynamic";
 
 export default async function InventoryPage() {
   if (!isSupabaseConfigured()) {
@@ -51,6 +54,11 @@ export default async function InventoryPage() {
   const withGrocery = await ensureIngredientGroceryCategoriesInDb(supabase, ingList);
   const sortedIng = sortIngredientsForInventoryDisplay(withGrocery);
 
+  const receiptFabIngredients = sortedIng.map((i) => ({
+    id: i.id,
+    name: i.name,
+  }));
+
   if (!sortedIng.length) {
     return (
       <section className="grid inventory-page ingredients-view is-empty">
@@ -61,6 +69,7 @@ export default async function InventoryPage() {
           </p>
         </div>
         <InventoryAddFab />
+        <ReceiptImportFab ingredients={receiptFabIngredients} />
       </section>
     );
   }
@@ -69,6 +78,7 @@ export default async function InventoryPage() {
     <section className="grid inventory-page ingredients-view">
       <InventoryView ingredients={sortedIng} inventory={invList} />
       <InventoryAddFab />
+      <ReceiptImportFab ingredients={receiptFabIngredients} />
     </section>
   );
 }

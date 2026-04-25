@@ -26,7 +26,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Menu } from "@base-ui/react/menu";
 import { CheckCircle, Circle, DotsSixVertical, DotsThree, Play, Stop, Timer } from "@phosphor-icons/react";
 import type { RecipeInstructionStepRow } from "@/types/database";
 import {
@@ -387,91 +387,91 @@ function InstructionActionsMenu({
   }, [editValue, item.id, item.timer_seconds_low, item.timer_seconds_high, onTimerChange]);
 
   return (
-    <DropdownMenu.Root
+    <Menu.Root
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (!nextOpen) setEditingTimer(false);
       }}
     >
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          className="instruction-actions-trigger"
-          disabled={disabled}
-          aria-label={`More options for step ${displayIndex}`}
-        >
-          <DotsThree className="instruction-actions-icon" size={16} weight="bold" aria-hidden />
-        </button>
-      </DropdownMenu.Trigger>
-
-      <DropdownMenu.Portal container={topLayerHost ?? undefined}>
-        <DropdownMenu.Content
-          className="instruction-actions-panel"
-          align="end"
-          sideOffset={4}
-          onCloseAutoFocus={(e) => e.preventDefault()}
-        >
-          {editingTimer ? (
-            <div className="instruction-actions-timer-edit" onKeyDown={(e) => e.stopPropagation()}>
-              <label className="instruction-actions-timer-label">
-                Timer (min or range, e.g. 30-35)
-                <input
-                  type="text"
-                  className="instruction-actions-timer-input"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      commitTimer();
-                      setOpen(false);
-                    }
-                    if (e.key === "Escape") {
-                      setEditValue(timerToDisplayString(item.timer_seconds_low, item.timer_seconds_high));
-                      setEditingTimer(false);
-                    }
-                  }}
-                  autoFocus
-                  aria-label="Timer minutes or range"
-                />
-              </label>
-              <button
-                type="button"
-                className="instruction-actions-timer-save"
-                onClick={() => {
-                  commitTimer();
-                  setOpen(false);
-                }}
-              >
-                Save
-              </button>
-            </div>
-          ) : (
-            <DropdownMenu.Item
-              className="instruction-actions-menu-option"
-              onSelect={(e) => {
-                e.preventDefault();
-                setEditingTimer(true);
-              }}
-            >
-              <Timer size={14} aria-hidden />
-              {hasTimer(item) ? "Edit timer" : "Add timer"}
-            </DropdownMenu.Item>
-          )}
-
-          <DropdownMenu.Separator className="instruction-actions-separator" />
-
-          <DropdownMenu.Item
-            className="instruction-actions-menu-remove"
+      <Menu.Trigger
+        render={
+          <button
+            type="button"
+            className="instruction-actions-trigger"
             disabled={disabled}
-            onSelect={() => onRemove(item.id)}
+            aria-label={`More options for step ${displayIndex}`}
           >
-            Remove step
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+            <DotsThree className="instruction-actions-icon" size={16} weight="bold" aria-hidden />
+          </button>
+        }
+      />
+
+      <Menu.Portal container={topLayerHost ?? undefined}>
+        <Menu.Positioner align="end" sideOffset={4}>
+          <Menu.Popup
+            className="instruction-actions-panel"
+            finalFocus={false}
+          >
+            {editingTimer ? (
+              <div className="instruction-actions-timer-edit" onKeyDown={(e) => e.stopPropagation()}>
+                <label className="instruction-actions-timer-label">
+                  Timer (min or range, e.g. 30-35)
+                  <input
+                    type="text"
+                    className="instruction-actions-timer-input"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitTimer();
+                        setOpen(false);
+                      }
+                      if (e.key === "Escape") {
+                        setEditValue(timerToDisplayString(item.timer_seconds_low, item.timer_seconds_high));
+                        setEditingTimer(false);
+                      }
+                    }}
+                    autoFocus
+                    aria-label="Timer minutes or range"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="instruction-actions-timer-save"
+                  onClick={() => {
+                    commitTimer();
+                    setOpen(false);
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            ) : (
+              <Menu.Item
+                className="instruction-actions-menu-option"
+                closeOnClick={false}
+                onClick={() => setEditingTimer(true)}
+              >
+                <Timer size={14} aria-hidden />
+                {hasTimer(item) ? "Edit timer" : "Add timer"}
+              </Menu.Item>
+            )}
+
+            <Menu.Separator className="instruction-actions-separator" />
+
+            <Menu.Item
+              className="instruction-actions-menu-remove"
+              disabled={disabled}
+              onClick={() => onRemove(item.id)}
+            >
+              Remove step
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }
 
@@ -548,7 +548,7 @@ function SortableInstructionRow({
       const target = e.target as HTMLElement;
       if (
         target.closest(
-          "textarea, button, input, [role=menu], [data-radix-collection-item]",
+          "textarea, button, input, [role=menu], [role=menuitem]",
         )
       )
         return;

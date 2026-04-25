@@ -2,8 +2,6 @@
 
 import {
   defaultStorageLocationForNewInventoryRow,
-  DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
-  DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
 } from "@/lib/inventory-display";
 import { inferGroceryCategoryFromName } from "@/lib/ingredient-grocery-category";
 import {
@@ -400,8 +398,6 @@ async function ensureInventoryRowForIngredient(
     storage_location,
     quantity: null,
     unit: null,
-    min_quantity: DEFAULT_NEW_INVENTORY_MIN_QUANTITY,
-    max_quantity: DEFAULT_NEW_INVENTORY_MAX_QUANTITY,
   });
 
   if (error) {

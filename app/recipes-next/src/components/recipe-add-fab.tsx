@@ -64,8 +64,9 @@ function looksLikeUrl(value: string): boolean {
 const FALLBACK_MAX_INPUT_HEIGHT = 256;
 const VIEWPORT_TOP_GUTTER = 128;
 // Extra headroom added above the bar so the progressive blur has room to
-// fade out cleanly into the page content above it.
-const BLUR_EXTRA_TOP = 128;
+// fade out cleanly into the page content above it. Kept small so the fade
+// feels like a hairline above the pill rather than a big white slab.
+const BLUR_EXTRA_TOP = 48;
 // Anything taller than this counts as "multi-line" and drops the buttons
 // into a footer row below the text. Single-line height ≈ 36px, so a little
 // headroom avoids flicker from sub-pixel measurements.
@@ -80,11 +81,14 @@ type RecipeAddFabProps = {
   baseRecipeId?: number;
   /** Gallery: show “blank recipe” pencil. Recipe detail: hide (refine uses the bar only). */
   showManualButton?: boolean;
+  /** When true, focus the textarea once the bar mounts (used by "Remix" entry point). */
+  autoFocusOnMount?: boolean;
 };
 
 export function RecipeAddFab({
   baseRecipeId,
   showManualButton = true,
+  autoFocusOnMount = false,
 }: RecipeAddFabProps = {}) {
   const router = useRouter();
   const { startImport, getDraftData } = useDraftImports();
@@ -112,7 +116,9 @@ export function RecipeAddFab({
   // bottom-right. userExpanded is set when the user explicitly taps the
   // FAB, which forces the full bar open until they scroll back to the top.
   const [isScrolledPast, setIsScrolledPast] = useState(false);
-  const [userExpanded, setUserExpanded] = useState(false);
+  // Start "expanded" when the bar was auto-opened (e.g. via the Remix menu)
+  // so it never mounts into the collapsed-FAB state on a pre-scrolled recipe.
+  const [userExpanded, setUserExpanded] = useState(autoFocusOnMount);
 
   // Avoid infinite oscillation when a layout switch changes the textarea's
   // effective width, which in turn changes scrollHeight measurements.
@@ -156,6 +162,17 @@ export function RecipeAddFab({
   useEffect(() => {
     autoResize();
   }, [text, autoResize]);
+
+  // When the bar is opened from a user gesture (Remix menu), drop focus into
+  // the textarea so they can start typing immediately. A tick of delay lets
+  // the mount/layout settle on mobile before the keyboard slides up.
+  useEffect(() => {
+    if (!autoFocusOnMount) return;
+    const id = window.setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [autoFocusOnMount]);
 
   // After the layout mode flips, the textarea's effective width changes, so
   // re-measure the height at the new width. Guard the flag so this call

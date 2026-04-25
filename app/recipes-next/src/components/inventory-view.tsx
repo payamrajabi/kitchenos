@@ -181,8 +181,6 @@ export function InventoryView({ ingredients, inventory }: Props) {
           ingredient_id: id,
           quantity: qty,
           unit: null,
-          min_quantity: null,
-          max_quantity: null,
           storage_location: null,
           recipe_unit: null,
         } as unknown as InventoryItemRow);

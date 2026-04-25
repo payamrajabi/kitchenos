@@ -64,6 +64,8 @@ export type UserRecipeLibraryRow = {
 
 export type FoodType = "generic" | "branded" | "custom";
 
+export type ProductPriceBasis = "package" | "weight" | "unit";
+
 export type IngredientRow = {
   id: number;
   name: string;
@@ -189,6 +191,36 @@ export type IngredientPortionRow = {
   created_at?: string;
 };
 
+/**
+ * A preferred product that can satisfy a generic ingredient.
+ * Ranked list (lower `rank` = higher preference). Acts like a personal
+ * shopping shortlist — it does NOT show up as a separate inventory row.
+ */
+export type IngredientProductRow = {
+  id: number;
+  ingredient_id: number;
+  rank: number;
+  name: string;
+  brand: string | null;
+  url: string | null;
+  barcode: string | null;
+  notes: string | null;
+  /** Per-product price. The parent ingredient inherits from the top-ranked product. */
+  price: number | null;
+  /** How to interpret `price`: package by default, or by weight/unit. */
+  price_basis?: ProductPriceBasis | null;
+  /** Amount for the price basis, e.g. 1 for "$8.99/lb". */
+  price_basis_amount?: number | null;
+  /** Unit for the price basis, e.g. "lb", "kg", "g", "oz", or "ea". */
+  price_basis_unit?: string | null;
+  /** Package size amount, paired with `unit_size_unit` (e.g. 500 + "g"). */
+  unit_size_amount: number | null;
+  /** Package size unit, one of INGREDIENT_UNITS (e.g. "g", "l", "oz", "count"). */
+  unit_size_unit: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type RecipeIngredientSectionRow = {
   id: string;
   recipe_id: number;
@@ -240,8 +272,6 @@ export type InventoryItemRow = {
   ingredient_id: number;
   storage_location: string;
   quantity: number | null;
-  min_quantity: number | null;
-  max_quantity: number | null;
   unit: string | null;
   recipe_unit: string | null;
   notes: string | null;
