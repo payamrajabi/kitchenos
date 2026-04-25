@@ -12,8 +12,10 @@ import {
   updateInventoryStockUnitAction,
   updateInventoryStorageLocationAction,
   updateIngredientNameAction,
+  updateIngredientTaxonomySubcategoryAction,
   updateRecipeUnitAction,
 } from "@/app/actions/inventory";
+import { INGREDIENT_TAXONOMY_SUBCATEGORIES } from "@/lib/ingredient-backbone-inference";
 import { normalizeInventoryId } from "@/lib/inventory-display";
 import {
   canonicalIngredientUnit,
@@ -283,6 +285,47 @@ function EditableStorageLocation({
   );
 }
 
+function EditableSubcategory({
+  ingredientId,
+  value,
+}: {
+  ingredientId: number;
+  value: string;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const options: SelectOption[] = useMemo(() => {
+    const base = INGREDIENT_TAXONOMY_SUBCATEGORIES.map((s) => ({
+      value: s,
+      label: s,
+    }));
+    const v = (value ?? "").trim();
+    if (v && !base.some((o) => o.value === v)) {
+      return [{ value: v, label: v }, ...base];
+    }
+    return base;
+  }, [value]);
+  return (
+    <SearchableSelect
+      className="detail-sheet-select"
+      options={options}
+      value={value || ""}
+      onChange={(next) => {
+        startTransition(async () => {
+          const r = await updateIngredientTaxonomySubcategoryAction(
+            ingredientId,
+            next,
+          );
+          if (!r.ok) toast.error(r.error);
+        });
+      }}
+      disabled={isPending}
+      aria-label="Subcategory"
+      bareInline
+      placeholder="Uncategorised"
+    />
+  );
+}
+
 function EditableTitle({
   ingredientId,
   name,
@@ -548,6 +591,12 @@ export function InventoryDetailSheet({
           <section className="detail-sheet-section">
             <h3 className="detail-sheet-section-title">Ingredient Details</h3>
             <dl className="detail-sheet-dl">
+              <EditableRow label="Subcategory">
+                <EditableSubcategory
+                  ingredientId={ingredient.id}
+                  value={ingredient.taxonomy_subcategory ?? ""}
+                />
+              </EditableRow>
               <DetailRow label="Category" value={ingredient.grocery_category || ingredient.category || "—"} />
               <DetailRow label="Food Type" value={ingredient.food_type || "generic"} />
               {ingredient.notes ? <DetailRow label="Notes" value={ingredient.notes} /> : null}

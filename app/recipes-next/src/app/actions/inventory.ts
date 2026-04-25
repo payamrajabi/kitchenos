@@ -18,13 +18,20 @@ import {
   inferGroceryCategoryFromName,
 } from "@/lib/ingredient-grocery-category";
 import { toTitleCaseAP } from "@/lib/ingredient-resolution/normalize";
-import { buildBackboneInsertFieldsFromName } from "@/lib/ingredient-backbone-inference";
+import {
+  buildBackboneInsertFieldsFromName,
+  INGREDIENT_TAXONOMY_SUBCATEGORIES,
+} from "@/lib/ingredient-backbone-inference";
 import {
   findBackboneMatchForName,
   ingredientFieldsFromCatalogue,
 } from "@/lib/ingredient-backbone-catalogue";
 
 const VALID_GROCERY_CATEGORIES = new Set<string>(INGREDIENT_GROCERY_CATEGORIES);
+
+const VALID_TAXONOMY_SUBCATEGORIES = new Set<string>(
+  INGREDIENT_TAXONOMY_SUBCATEGORIES,
+);
 
 // Built-in storage locations the app understands for tab-based behaviours
 // (e.g. Pantry tab maps to Shallow/Deep Pantry, defaults for new rows). Users
@@ -314,6 +321,34 @@ export async function updateIngredientNameAction(
   void maybeAutofillNutrition(ingredientId);
 
   revalidatePath("/inventory");
+  return { ok: true as const };
+}
+
+export async function updateIngredientTaxonomySubcategoryAction(
+  ingredientId: number,
+  subcategory: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Sign in first." };
+
+  const trimmed = (subcategory ?? "").trim();
+  // Empty string clears the field back to "Uncategorised".
+  if (trimmed && !VALID_TAXONOMY_SUBCATEGORIES.has(trimmed)) {
+    return { ok: false as const, error: "Unknown subcategory." };
+  }
+
+  const { error } = await supabase
+    .from("ingredients")
+    .update({ taxonomy_subcategory: trimmed || null })
+    .eq("id", ingredientId);
+
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/inventory");
+  revalidatePath("/shop");
   return { ok: true as const };
 }
 
