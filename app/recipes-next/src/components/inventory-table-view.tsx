@@ -26,11 +26,14 @@ import { STOCK_UNIT_OPTIONS, STOCK_UNIT_VALUES } from "@/lib/stock-units";
 import {
   updateInventoryStorageLocationAction,
   updateInventoryStockUnitAction,
+  updateIngredientTaxonomySubcategoryAction,
   updateRecipeUnitAction,
 } from "@/app/actions/inventory";
+import { INGREDIENT_TAXONOMY_SUBCATEGORIES } from "@/lib/ingredient-backbone-inference";
 
 type SortKey =
   | "name"
+  | "subcategory"
   | "category"
   | "storage_location"
   | "stock_unit"
@@ -48,6 +51,7 @@ type Props = {
 type Row = {
   ingredient: IngredientRow;
   name: string;
+  subcategory: string;
   category: string;
   storageLocation: string;
   stockUnit: string;
@@ -57,6 +61,7 @@ type Row = {
 
 const COLUMNS: Array<{ key: SortKey; label: string }> = [
   { key: "name", label: "Ingredient" },
+  { key: "subcategory", label: "Subcategory" },
   { key: "category", label: "Category" },
   { key: "storage_location", label: "Storage Location" },
   { key: "stock_unit", label: "Stock Unit" },
@@ -93,6 +98,56 @@ function CellGuard({ children }: { children: React.ReactNode }) {
     >
       {children}
     </div>
+  );
+}
+
+function SubcategoryCell({
+  ingredientId,
+  value,
+}: {
+  ingredientId: number;
+  value: string;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const options: SelectOption[] = useMemo(() => {
+    const base = INGREDIENT_TAXONOMY_SUBCATEGORIES.map((s) => ({
+      value: s,
+      label: s,
+    }));
+    const v = (value ?? "").trim();
+    if (v && !base.some((o) => o.value === v)) {
+      return [{ value: v, label: v }, ...base];
+    }
+    return base;
+  }, [value]);
+
+  const handleChange = useCallback(
+    (next: string) => {
+      startTransition(async () => {
+        const r = await updateIngredientTaxonomySubcategoryAction(
+          ingredientId,
+          next,
+        );
+        if (!r.ok) toast.error(r.error);
+        else router.refresh();
+      });
+    },
+    [ingredientId, router],
+  );
+
+  return (
+    <SearchableSelect
+      className="inventory-subcategory-select"
+      options={options}
+      value={value || ""}
+      onChange={handleChange}
+      disabled={isPending}
+      aria-label="Subcategory"
+      bareInline
+      placeholder="—"
+    />
   );
 }
 
@@ -268,6 +323,7 @@ export function InventoryTableView({
       return {
         ingredient: ing,
         name: ing.name || "",
+        subcategory: ing.taxonomy_subcategory?.trim() || "",
         category,
         storageLocation: stock.storageLocation || "",
         stockUnit: stock.unit || "",
@@ -284,6 +340,8 @@ export function InventoryTableView({
         switch (sortKey) {
           case "name":
             return compareStrings(a.name, b.name, sortDir);
+          case "subcategory":
+            return compareStrings(a.subcategory, b.subcategory, sortDir);
           case "category":
             return compareStrings(a.category, b.category, sortDir);
           case "storage_location":
@@ -373,6 +431,14 @@ export function InventoryTableView({
               >
                 <td className="inventory-ingredient-name">
                   <span className="inventory-name-text">{row.name}</span>
+                </td>
+                <td>
+                  <CellGuard>
+                    <SubcategoryCell
+                      ingredientId={row.ingredient.id}
+                      value={row.subcategory}
+                    />
+                  </CellGuard>
                 </td>
                 <td>
                   <CellGuard>

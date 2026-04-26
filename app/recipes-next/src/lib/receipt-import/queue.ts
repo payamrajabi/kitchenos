@@ -341,6 +341,28 @@ export function includeExcludedRow(id: string) {
   );
 }
 
+/**
+ * Move a row into the excluded list. Sets a manual excludedReason on the
+ * underlying ParsedRow so it shows up in the "Excluded" section, where the
+ * user can still hit "Include" to bring it back.
+ */
+export function excludeRow(id: string, reason = "Manually excluded") {
+  setEntries(
+    entries.map((e) => {
+      if (e.kind !== "row" || e.id !== id) return e;
+      return {
+        ...e,
+        state: {
+          ...e.state,
+          action: "ignore",
+          expanded: false,
+          row: { ...e.state.row, excludedReason: reason },
+        },
+      };
+    }),
+  );
+}
+
 export function clearAll() {
   setEntries([]);
 }

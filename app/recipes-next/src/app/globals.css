@@ -2921,6 +2921,52 @@ textarea {
 
 .receipt-import-row-compact {
   padding: 0;
+  position: relative;
+}
+
+/* Floating "exclude" affordance on the collapsed row. Hidden until the row
+ * is hovered/focused so the list stays calm; sits at the far left so it
+ * doesn't fight with the mapped-ingredient pill on the right edge. */
+.receipt-import-compact-exclude {
+  position: absolute;
+  left: calc(-1 * var(--space-24));
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-20);
+  height: var(--space-20);
+  padding: 0;
+  border: var(--space-1) solid var(--hair);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  z-index: 1;
+}
+
+.receipt-import-row-compact:hover .receipt-import-compact-exclude,
+.receipt-import-row-compact:focus-within .receipt-import-compact-exclude,
+.receipt-import-compact-exclude:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.receipt-import-compact-exclude:hover,
+.receipt-import-compact-exclude:focus-visible {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  outline: none;
+}
+
+.receipt-import-compact-exclude:disabled {
+  cursor: not-allowed;
+  opacity: 0;
 }
 
 .receipt-import-row-compact.is-ignored .receipt-import-compact-product,
@@ -12677,4 +12723,113 @@ a.primary {
   .recipe-voice-control {
     transition: none;
   }
+}
+
+/* ----- Receipt log page ------------------------------------------------ */
+
+/* Match the inventory page: full-width table, no outer frame, the page itself
+ * scrolls so the sticky <thead> can latch under the topbar. */
+.grid.receipt-log-page {
+  display: block;
+}
+
+.receipt-log-table-wrap.table-container {
+  border: none;
+  overflow: visible;
+}
+
+.receipt-log-table.ingredients-table {
+  table-layout: auto;
+  min-width: 0;
+}
+
+.receipt-log-table.ingredients-table th {
+  top: var(--topbar-sticky-offset);
+  z-index: 35;
+}
+
+.receipt-log-cell-raw,
+.receipt-log-cell-notes {
+  white-space: normal;
+  max-width: var(--space-320);
+}
+
+/* Section divider: one full-width row per receipt, showing the date the
+ * receipt was logged plus a quick summary. Sits above the rows it groups. */
+.receipt-log-divider > td {
+  background: #fafafa;
+  padding: var(--space-12) var(--space-12);
+  border-top: var(--space-1) solid var(--ink);
+  border-bottom: var(--space-1) solid var(--ink);
+  white-space: normal;
+}
+
+.receipt-log-divider:first-child > td {
+  border-top: none;
+}
+
+.receipt-log-divider-inner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-16);
+  flex-wrap: wrap;
+}
+
+.receipt-log-divider-date {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.receipt-log-divider-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.receipt-log-status {
+  display: inline-block;
+  padding: 2px var(--space-6);
+  border: var(--space-1) solid var(--rule);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.receipt-log-status--applied {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.receipt-log-status--created {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.receipt-log-status--ignored,
+.receipt-log-status--excluded {
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.receipt-log-row--excluded,
+.receipt-log-row--ignored {
+  color: var(--muted);
+}
+
+.receipt-log-notes-excluded {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.receipt-log-notes-flags {
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-16);
+  font-size: 11px;
+  color: var(--muted);
 }

@@ -215,6 +215,13 @@ export function AppHeader() {
                     >
                       Family members
                     </Link>
+                    <Link
+                      href="/receipt-log"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Receipt log
+                    </Link>
                     <button type="button" role="menuitem" onClick={signOut}>
                       Sign out
                     </button>

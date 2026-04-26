@@ -376,3 +376,45 @@ export type EquipmentRow = {
   category: string | null;
   has_item?: boolean;
 };
+
+export type ReceiptImportItemStatus =
+  | "applied"
+  | "created"
+  | "ignored"
+  | "excluded";
+
+export type ReceiptImportRow = {
+  id: number;
+  owner_id: string | null;
+  raw_text: string | null;
+  item_count: number;
+  applied_count: number;
+  excluded_count: number;
+  created_at: string;
+};
+
+export type ReceiptImportItemRow = {
+  id: number;
+  import_id: number;
+  owner_id: string | null;
+  raw_line: string;
+  status: ReceiptImportItemStatus;
+  excluded_reason: string | null;
+  ingredient_id: number | null;
+  ingredient_name: string | null;
+  product_name: string | null;
+  product_brand: string | null;
+  quantity_delta: number | null;
+  unit: string | null;
+  unit_size_amount: number | null;
+  unit_size_unit: string | null;
+  price: number | null;
+  price_basis: ProductPriceBasis | null;
+  price_basis_amount: number | null;
+  price_basis_unit: string | null;
+  purchase_quantity: number | null;
+  purchase_unit: string | null;
+  confidence: "high" | "medium" | "low" | null;
+  review_flags: string[] | null;
+  created_at: string;
+};

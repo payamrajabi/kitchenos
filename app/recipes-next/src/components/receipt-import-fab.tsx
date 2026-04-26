@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import {
   applyReceiptReviewAction,
   importReceiptAction,
+  type ReceiptLogItem,
   type ReviewDecision,
 } from "@/app/actions/receipt-import";
 import { getTopLayerHost, setTopLayerHost } from "@/lib/top-layer-host";
@@ -32,6 +33,7 @@ import {
   retryBatch,
   dismissRow,
   dispatchParse,
+  excludeRow,
   includeExcludedRow,
   patchRow,
   setApplying,
@@ -233,6 +235,39 @@ export function ReceiptImportFab({ ingredients }: Props) {
       (e): e is QueueRowEntry => e.kind === "row",
     );
 
+    // Snapshot every row (including excluded) for the receipt log so the
+    // saved record matches exactly what the user saw before applying.
+    const logItems: ReceiptLogItem[] = rowEntries.map(({ state: r }) => {
+      const num = (s: string) => {
+        const t = s.trim();
+        if (!t) return null;
+        const n = Number(t);
+        return Number.isFinite(n) ? n : null;
+      };
+      const priceVal = num(r.price);
+      return {
+        rawLine: r.row.rawLine,
+        excludedReason: r.row.excludedReason,
+        productName: r.productName.trim() || null,
+        productBrand: r.productBrand.trim() || null,
+        quantityDelta: num(r.quantity),
+        unit: r.unit || null,
+        unitSizeAmount: num(r.unitSizeAmount),
+        unitSizeUnit: r.unitSizeUnit || null,
+        price: priceVal,
+        priceBasis: priceVal == null ? null : (r.priceBasis || "package"),
+        priceBasisAmount: num(r.priceBasisAmount),
+        priceBasisUnit: r.priceBasisUnit || null,
+        purchaseQuantity: num(r.purchaseQuantity),
+        purchaseUnit: r.purchaseUnit || null,
+        confidence: r.row.confidence ?? null,
+        reviewFlags: reviewFlagsForRow(r),
+      };
+    });
+    const logRawText = rowEntries
+      .map((e) => e.state.row.rawLine)
+      .join("\n");
+
     for (const { state: r } of rowEntries) {
       if (r.action === "ignore" || r.row.excludedReason) {
         decisions.push({ action: "ignore", rawLine: r.row.rawLine });
@@ -325,7 +360,10 @@ export function ReceiptImportFab({ ingredients }: Props) {
     setApplying(true);
     void (async () => {
       try {
-        const result = await applyReceiptReviewAction(decisions);
+        const result = await applyReceiptReviewAction(decisions, {
+          rawText: logRawText,
+          items: logItems,
+        });
         if (!result.ok) {
           toast.error(result.error);
           return;
@@ -759,6 +797,19 @@ function RowItem({ entry, busy, ingredients }: RowItemProps) {
           ignored ? " is-ignored" : ""
         }${isEditingMap ? " is-editing-map" : ""}`}
       >
+        <button
+          type="button"
+          className="receipt-import-compact-exclude"
+          onClick={(e) => {
+            e.stopPropagation();
+            excludeRow(entry.id);
+          }}
+          disabled={busy}
+          aria-label={`Exclude ${compactProductTitle(r)}`}
+          title="Exclude"
+        >
+          <X size={12} weight="bold" aria-hidden />
+        </button>
         <div className="receipt-import-compact-card">
           <button
             type="button"

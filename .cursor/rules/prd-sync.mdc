@@ -1,0 +1,86 @@
+---
+description: When making product-impacting changes, update PRD.md in the same response so the doc never drifts from reality.
+alwaysApply: true
+---
+
+# PRD synchronization (kitchenOS)
+
+`PRD.md` at the repo root is the source of truth for what kitchenOS does. If a code change alters product behavior, the PRD must be updated **in the same response as the code change** — not a follow-up, not "I'll do it later." If the code and the PRD disagree, the PR is incomplete.
+
+## When this rule applies
+
+A change is **product-impacting** if any of these are true:
+
+- New / removed / renamed user-reachable route or page
+- New / removed / changed server action that the UI calls
+- New, removed, or behavior-changing UI affordance (button, input, FAB, modal, menu item, etc.)
+- New / removed / renamed env var that gates a user-facing feature
+- DB schema, RLS policy, or trigger change (this also fires `supabase-sql-migrations.mdc` — both rules apply together)
+- New / changed AI prompt, model, or temperature that affects output the user sees
+- Default value, validation rule, soft-delete, or tombstone semantics change
+- Auth / sign-in / sign-up / sign-out / session flow change
+- A `§21` partial gets finished, or a new partial gets shipped, or new drift is discovered
+
+## When this rule does NOT apply
+
+Skip the PRD update for:
+
+- Refactors that don't change behavior (renames, helper extraction, file moves)
+- Type-only or comment-only changes
+- Test-only changes
+- Lint, format, or styling-only changes (no new states or affordances)
+- Dependency bumps that don't change behavior
+- Bug fixes that **restore** PRD-described behavior (the doc already says it works; the code now matches)
+- Pure performance improvements with no user-visible change
+
+When in doubt, lean toward updating. A two-sentence PRD edit is cheaper than drift.
+
+## What to do (in the same response as the code change)
+
+1. **Identify the smallest set of sections** affected. Most changes touch one section. Cross-cutting changes (e.g. an AI model swap) touch the area section + `§16 AI features`.
+2. **Propose a minimal diff** to `PRD.md`. Edit only what the change touched. Don't rewrite whole sections, don't restructure headings, don't move things around.
+3. **Always check `§21 WIP, partial features, and known drift`**:
+   - Shipping a partial → add a short item to `§21` describing what's done and what isn't.
+   - Finishing a partial → remove or shorten the matching `§21` item, and update the main section to describe the now-finished behavior.
+   - Discovering new drift → add a `§21` note even if you can't fix it in this PR.
+4. **Stay in plain English.** Describe the *product surface*, not the implementation. Match the existing tone — short sentences, no code unless it's a contract (env var name, table name, route).
+5. **If the user explicitly says "no PRD update" or "PRD only later"**, honor that and proceed. The rule asks; the user decides.
+
+## Section map (rough)
+
+Use this to find the right section quickly. When a change spans multiple, edit each one minimally.
+
+- `§4 / §18` — App shell, nav, theme, top-layer pattern, design system, primitives
+- `§5` — Auth, RLS, ownership, session
+- `§6` — Ingredients catalog, taxonomy, backbone, resolution, density, nutrition
+- `§7` — Inventory / pantry
+- `§8` — Recipes (incl. import, draft review, voice entry, library, tombstone)
+- `§9` — Meal Plan (incl. AI suggestion chain)
+- `§10` — Shopping List
+- `§11` — Instacart handoff
+- `§12` — Receipts
+- `§13` — People + Equipment
+- `§14` — Community & sharing
+- `§15` — Voice cooking mode
+- `§16` — AI features index (update whenever any LLM call is added or changed)
+- `§17` — Admin & internal tools
+- `§19` — Storage, environments, env vars, deployment, scripts
+- `§20` — Database tables overview
+- `§21` — WIP / partials / drift (always check)
+- `§22` — Glossary (update if you introduce a new product-level term)
+
+## Examples
+
+**Triggers update:** "Add a 'Mark all as bought' button on `/shop`." → Edit `§10` to describe the new affordance.
+
+**Triggers update:** "Switch the receipt parser from `gpt-4o` to `gpt-4o-mini`." → Edit `§12` (current behavior) and `§16` (the AI index table).
+
+**Triggers update:** "Add `INSTACART_RETAILER_FILTER` env var that filters Instacart line items." → Edit `§11` and `§19`.
+
+**Triggers update:** "Finish the receipt log delete-and-reapply flow." → Edit `§12` to describe the new behavior; remove the matching items from `§21.1`.
+
+**Skips update:** "Extract a `formatPrice` helper from the products editor." → Refactor only. No PRD touch.
+
+**Skips update:** "Fix typo in `plan-toolbar.tsx`." → No behavior change. No PRD touch.
+
+**Skips update:** "Bump `@phosphor-icons/react` to the latest minor." → Dependency bump, no behavior change.

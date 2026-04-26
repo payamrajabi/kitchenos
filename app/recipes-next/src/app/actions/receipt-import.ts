@@ -6,6 +6,7 @@ import type {
   IngredientProductRow,
   IngredientRow,
   ProductPriceBasis,
+  ReceiptImportItemStatus,
 } from "@/types/database";
 import {
   parseReceiptContent,
@@ -490,6 +491,30 @@ export async function importReceiptAction(
 /*  Apply the user's decisions for review rows                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * A receipt-log row payload. The client sends one of these for EVERY parsed
+ * line (including excluded ones) when applying, so the receipt log captures
+ * the full picture — not just the rows that landed in inventory.
+ */
+export type ReceiptLogItem = {
+  rawLine: string;
+  excludedReason: string | null;
+  productName: string | null;
+  productBrand: string | null;
+  quantityDelta: number | null;
+  unit: string | null;
+  unitSizeAmount: number | null;
+  unitSizeUnit: string | null;
+  price: number | null;
+  priceBasis: ProductPriceBasis | null;
+  priceBasisAmount: number | null;
+  priceBasisUnit: string | null;
+  purchaseQuantity: number | null;
+  purchaseUnit: string | null;
+  confidence: "high" | "medium" | "low" | null;
+  reviewFlags: string[];
+};
+
 export type ReviewDecision =
   | {
       action: "ignore";
@@ -594,6 +619,7 @@ async function findOrCreateIngredientByName(
 
 export async function applyReceiptReviewAction(
   decisions: ReviewDecision[],
+  logPayload?: { rawText: string | null; items: ReceiptLogItem[] },
 ): Promise<ApplyReceiptReviewResult> {
   const supabase = await createClient();
   const {
@@ -608,8 +634,26 @@ export async function applyReceiptReviewAction(
   const applied: AppliedSummary[] = [];
   const errors: { rawLine: string; error: string }[] = [];
 
+  // Track the final outcome per raw line so we can persist a complete
+  // receipt log entry once all decisions have been processed.
+  const outcomeByLine = new Map<
+    string,
+    {
+      status: ReceiptImportItemStatus;
+      ingredientId: number | null;
+      ingredientName: string | null;
+    }
+  >();
+
   for (const decision of decisions) {
-    if (decision.action === "ignore") continue;
+    if (decision.action === "ignore") {
+      outcomeByLine.set(decision.rawLine, {
+        status: "ignored",
+        ingredientId: null,
+        ingredientName: null,
+      });
+      continue;
+    }
 
     let ingredientId: number | null = null;
     let ingredientName = "";
@@ -682,12 +726,78 @@ export async function applyReceiptReviewAction(
       productBrand: decision.productBrand,
       price: decision.price,
     });
+
+    outcomeByLine.set(decision.rawLine, {
+      status: decision.action === "create" ? "created" : "applied",
+      ingredientId,
+      ingredientName,
+    });
   }
 
   if (applied.length > 0) {
     revalidatePath("/inventory");
     revalidatePath("/shop");
     revalidatePath("/recipes");
+  }
+
+  // Persist the receipt log: one parent row + one item per parsed line, even
+  // for excluded ones, so the /receipt-log page can replay the whole import.
+  if (logPayload && logPayload.items.length > 0) {
+    try {
+      const items = logPayload.items;
+      const appliedCount = items.filter((it) => {
+        const o = outcomeByLine.get(it.rawLine);
+        return o?.status === "applied" || o?.status === "created";
+      }).length;
+      const excludedCount = items.filter((it) => it.excludedReason).length;
+
+      const { data: importInsert, error: importErr } = await supabase
+        .from("receipt_imports")
+        .insert({
+          raw_text: logPayload.rawText,
+          item_count: items.length,
+          applied_count: appliedCount,
+          excluded_count: excludedCount,
+        })
+        .select("id")
+        .single();
+
+      if (!importErr && importInsert) {
+        const importId = (importInsert as { id: number }).id;
+        const itemRows = items.map((it) => {
+          const outcome = outcomeByLine.get(it.rawLine);
+          const status: ReceiptImportItemStatus = it.excludedReason
+            ? "excluded"
+            : (outcome?.status ?? "ignored");
+          return {
+            import_id: importId,
+            raw_line: it.rawLine,
+            status,
+            excluded_reason: it.excludedReason,
+            ingredient_id: outcome?.ingredientId ?? null,
+            ingredient_name: outcome?.ingredientName ?? null,
+            product_name: it.productName,
+            product_brand: it.productBrand,
+            quantity_delta: it.quantityDelta,
+            unit: it.unit,
+            unit_size_amount: it.unitSizeAmount,
+            unit_size_unit: it.unitSizeUnit,
+            price: it.price,
+            price_basis: it.priceBasis,
+            price_basis_amount: it.priceBasisAmount,
+            price_basis_unit: it.priceBasisUnit,
+            purchase_quantity: it.purchaseQuantity,
+            purchase_unit: it.purchaseUnit,
+            confidence: it.confidence,
+            review_flags: it.reviewFlags,
+          };
+        });
+        await supabase.from("receipt_import_items").insert(itemRows);
+        revalidatePath("/receipt-log");
+      }
+    } catch {
+      // Logging is best-effort: never block an apply on log failure.
+    }
   }
 
   return { ok: true, applied, errors };
