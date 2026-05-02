@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -37,6 +37,7 @@ function primaryTabState(pathname: string, href: string) {
 
 export function AppHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const { preference: themePreference, setPreference: setThemePreference } =
     useTheme();
 
@@ -68,7 +69,9 @@ export function AppHeader() {
   const signOut = useCallback(async () => {
     setMenuOpen(false);
     await createClient().auth.signOut();
-  }, []);
+    router.replace("/plan");
+    router.refresh();
+  }, [router]);
 
   const initial = user?.email?.[0]?.toUpperCase() ?? "?";
 

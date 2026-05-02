@@ -152,6 +152,7 @@ Session refresh on every request happens in `src/proxy.ts` (this project uses Ne
 ### 5.2 Sign-in methods
 - **Email + password only** through `AuthModal` (sign-in and sign-up tabs).
 - The `/auth/callback` route handles Supabase code exchanges (e.g. email confirmation links). On success it redirects to `?next=` or `/plan`. On failure it sends the user to `/plan?auth=error`.
+- After a successful in-app sign-in (or sign-up that returns an immediate session), the modal closes, the app navigates to `/plan`, and the page is re-rendered so the signed-in account is visible without a manual refresh. Sign-out from the account menu does the same — it navigates back to `/plan` and re-renders the page so the signed-out state shows immediately.
 - **No** magic-link, Google, or other OAuth in the kitchenOS web UI today (the iOS app does have email + Google).
 
 ### 5.3 Accounts model
@@ -324,13 +325,51 @@ Inventory is one route: `/inventory`. It loads the entire ingredients catalog an
 
 A toggle in the header switches between them. The view mode is **client state only** — it’s not persisted in the URL or in user prefs. Same for the storage filter.
 
-### 7.4 The inventory FAB
-A floating action button in the bottom-right opens an inline panel where the user types a single ingredient name, hits Enter, and the system:
-1. Checks if that name already exists (case-insensitive).
-2. If yes, ensures an inventory row exists in a default storage location.
-3. If no, creates a new ingredient (title-cased), applying backbone defaults / regex inference, then ensures an inventory row.
+When a storage location filter is active, **variants are filtered independently of their parent**. A parent ingredient (like "Milk") shows whenever the parent itself or any of its variants live in the active location, but only the variants that actually live in that location are listed underneath it. So filtering by **Fridge** with Soy Milk in the fridge and Coconut Milk in the shallow pantry shows the "Milk" header with Soy Milk under it, and hides Coconut Milk until the **Pantry** filter is selected.
 
-There is **also** a Receipt FAB on the inventory page — see **§12**.
+### 7.4 The inventory FAB
+A single floating action button (a "+" circle, ~48 px) sits in the **bottom-right** of `/inventory`. Tapping it opens a small menu with three entry points, top to bottom:
+
+1. **Add ingredient** — opens a modal textarea. The user lists ingredient names (one per line, comma-separated, voice-dictated, or any combination). Tapping **Review** dispatches an LLM enrichment pass in the background and immediately closes the input dialog — same fire-and-forget shape as Update inventory below. A pill next to the FAB shows "Classifying ingredients…" while the parse runs, then flips to "Review new ingredients (N)" when it lands. Tapping the pill opens the **review dialog** with one row per parsed name. For each row the LLM proposes:
+   - A clean Title-Case ingredient name (deduped against the existing catalog and aliases — surfaced as an "existing" match when one is found instead of creating a duplicate).
+   - A **grocery category** (Produce, Dairy & Eggs, Pantry, Frozen, …).
+   - A **culinary subcategory** (Alliums, Roots & Tubers, Leafy Greens, Plant Milks, …).
+   - A **parent ingredient** when one obviously fits — e.g. "Russet Potato" and "Sweet Potato" both nest under an existing "Potato"; "Lacinato Kale" nests under "Kale". Defaults to no parent when the new ingredient isn't a clear variety of an existing root.
+   - A **storage location** for the inventory row: Fridge, Freezer, Shallow Pantry, Deep Pantry, Counter, or Other. Counter-stored produce (tomatoes, garlic, bananas) is filed as Shallow Pantry behind the scenes so it shows up in the inventory Pantry tab, with a "counter" hint stored on the ingredient.
+   - The compact row shows the proposed name, storage location, and a one-line AI summary ("Produce · Roots & Tubers · ↳ Potato"). Expanding the row reveals dropdowns for every classification field plus an ingredient picker that lets the user re-map the row to a different existing ingredient or rename the new one.
+   - Rows the LLM marks as filler (e.g. "uh ok that's it") default to **Skipped** with an Include button.
+   - **Apply (N)** creates each new ingredient with the confirmed metadata and an empty inventory row at the chosen storage location. Existing-ingredient rows just ensure an inventory row exists at that location. **Stock levels are not changed** — this is the "I want this on my list" flow.
+   - **Discard all** clears the queue without writing anything.
+   - When `OPENAI_API_KEY` is missing the parse falls back to the rule-based classifier (`buildBackboneInsertFieldsFromName` + `inferGroceryCategoryFromName`) so the review still surfaces sensible defaults.
+2. **Update inventory** — opens a modal textarea for a free-text **stocktake**. The user reads off what they currently have on hand (e.g. *"18 eggs, half a gallon of oat milk, two pounds of ground beef"*). Tapping **Review** dispatches an LLM parse in the background and **immediately closes the input dialog** — the user is free to keep using the inventory page. A pill next to the FAB shows "Reading stocktake…" while the parse runs, then flips to "Review stocktake (N)" when it lands (with a toast nudge). Tapping the pill opens the **review dialog** with one row per parsed phrase, mirroring the receipt log review step:
+   - Each row shows the original phrase, the matched ingredient (or proposed new name), and the parsed quantity + unit. When the user named a brand in their dictation, the row also shows the captured `brand — product` summary.
+   - The compact row's "X" button skips the row; tapping the row body expands an editor with an ingredient picker, quantity input, unit dropdown, and an **Advanced "Brand & product (optional)"** section for the captured preferred-product fields (brand, product name, pack size). Leaving brand and product blank means "stock-only update" — no preferred product is written.
+   - Phrases the LLM couldn't pin any quantity OR container to (e.g. *"some chicken thighs"*) default to **Skipped** and appear in their own section with an Include button.
+   - A footer block — **"Zero out anything I didn't mention in"** — exposes three checkboxes for **Fridge**, **Freezer**, and **Pantry**. Ticking any of them turns Apply into a destructive sweep: every inventory row in the chosen location whose ingredient wasn't mentioned in the stocktake gets quantity = 0. (See **§7.4.1** for the full semantics.)
+   - **Apply (N)** runs the apply server action with **overwrite** semantics — each matched ingredient's on-hand quantity becomes the stated number, not added to it. Unmatched names create a new ingredient. When a row carries a brand AND product name, an entry is also upserted into `ingredient_products` at rank 0 (top of the list) — same helper the receipt importer uses. The dialog closes; a busy "Applying stocktake…" pill sits next to the FAB until the apply resolves; the affected rows flash with the same "recently applied" highlight the receipt importer uses.
+   - **Discard all** clears the queue (and the location checkboxes) without writing anything.
+
+The parser is opinionated about three things, all designed to handle voice transcription gracefully:
+- **Misspelling tolerance**: phonetic / single-character typos like *"clamata olives" → "Kalamata Olives"* or *"shitake → "Shiitake"* are matched against existing inventory rather than treated as new ingredients. Implemented via prompt rules plus a deterministic post-pass (token-window match against inventory aliases, then a 1-edit-distance fuzzy fallback) so the LLM being too literal on a bad day still produces the right match.
+- **Container nouns count as quantity 1**: *"one bottle of organic lemon juice"* parses to `quantity = 1, unit = "bottle"`. We'd rather have a slightly-imprecise stock bump (1 bottle, may be half-full) than skip the item. The user can refine the number in the review step.
+- **Brand extraction is opt-in via dictation**: the LLM only fills `productName` + `productBrand` when the user actually named a brand. *"organic lemon juice"* leaves both blank and the apply step won't write a preferred product; *"Spice World minced garlic"* fills them in. A user can also clear or edit those fields in the review step before applying.
+3. **Log receipt** — opens the existing receipt-import dialog described in **§12**.
+
+The same FAB area renders the receipt review pill ("3 to review", "Reading receipt…", "Applying…") to the left of the FAB whenever the receipt importer has work in flight.
+
+The "Update inventory" flow is intentionally distinct from "Log receipt" along one axis: **overwrite vs. add**. A receipt is additive (buying a dozen eggs on top of an existing dozen → 24); a stocktake is authoritative (you said there are 18 eggs in the fridge → 18, regardless of what was there before).
+
+### 7.4.1 Stocktake zero-out semantics
+The three location checkboxes ("Fridge", "Freezer", "Pantry") at the bottom of the review step are an **opt-in destructive sweep**. They map to storage locations as follows:
+- **Fridge** → `storage_location = "Fridge"`.
+- **Freezer** → `storage_location = "Freezer"`.
+- **Pantry** → `storage_location IN ("Shallow Pantry", "Deep Pantry")`.
+
+When at least one checkbox is ticked, after applying the user's `set` decisions the server action sweeps the matching `inventory_items` rows and sets `quantity = 0` for any whose `ingredient_id` was **not mentioned anywhere in the stocktake** — both `set` decisions and `ignore` decisions count as "mentioned" (so a phrase the user explicitly skipped doesn't get zeroed behind their back). Rows already at 0 or null are left alone.
+
+This is intentionally **keyed on `ingredient_id`, not on the location of the matched row**. So if you have butter in both your fridge and your freezer and you mention "two sticks of butter" anywhere, *both* butter rows are excluded from the zero-out. This first-pass approximation is intentional — see **§21.2** for the multi-location caveats.
+
+There is **no undo** for the zero-out. The review dialog shows a one-line warning to the user when any checkbox is ticked.
 
 ### 7.5 The detail sheet
 Tapping an ingredient name opens a side sheet (an `<aside>` with a backdrop, *not* a `showModal` dialog). It loads the ingredient’s nutrients, portions, and preferred products from Supabase and lets the user edit:
@@ -405,6 +444,7 @@ A recipe has three layers:
 
 3. **Instruction steps** (`recipe_instruction_steps`):
    - One row per step, with `step_number` (1-based), an optional short `heading` (≤60 chars), the `text` body, and an optional timer range (`timer_seconds_low`, `timer_seconds_high`).
+   - On **import** (URL / paste / images / remix), the parser keeps each step's `text` **verbatim from the source** — quantities, temperatures, and cook times are preserved word-for-word — and only generates the short `heading` as a 2–5 word summary. The parser may split a single source paragraph into multiple steps when it clearly describes multiple actions, and may drop obvious editorial filler, but it does not paraphrase cooking content.
    - The flat `recipes.instructions` text column is kept in sync (a numbered export of the steps) for back-compat and the legacy UI.
 
 ### 8.2 Routes and rendering
@@ -812,6 +852,8 @@ A condensed list of every place we call an LLM, and what for.
 | Receipt cleanup | `gpt-4o-mini` | `lib/receipt-import/clean-receipt.ts` | Tidy unstructured receipt pastes. Skipped if input already looks structured. |
 | Receipt parse | `gpt-4o` | `lib/receipt-import/parse-receipt.ts` | Convert receipt text into structured line items with confidence and review flags. |
 | Receipt enrichment | `gpt-4o` + web_search tool | `lib/receipt-import/enrich-with-web-search.ts` | Fill in brand and pack size for packaged products. Capped at 20 rows. |
+| Inventory stocktake parse | `gpt-4o-mini` | `lib/inventory-bulk/parse-inventory-update.ts` | Convert a free-text or voice-dictated stocktake into structured rows — matched against existing inventory with misspelling/typo tolerance, container nouns interpreted as quantity 1, and optional brand + product extraction when the user names a specific brand. Followed by a deterministic + 1-edit fuzzy fallback to catch matches the LLM missed. Long stocktakes are split into 12-line chunks parsed in parallel (up to 6 chunks, 90s budget each) — same shape as the receipt parser. |
+| Add-ingredient enrichment | `gpt-4o-mini` | `lib/inventory-bulk/parse-add-ingredients.ts` | For each name pasted into the "Add ingredient" dialog, propose a clean Title-Case ingredient name, a grocery category, a culinary subcategory, an existing parent ingredient (when the new name reads as "<variety> <parent>"), and a storage location. Sends the user's existing catalog (id, name, aliases) and the subset of root ingredients (id, name, subcategory) so the model can dedupe and pick a parent. Falls back to the rule-based backbone classifier when the API key is missing or the call fails so the review still has sensible defaults. |
 | Ingredient nutrition assist | OpenAI | `lib/nutrition/llm-ingredient-assist.ts` | Refine the search query before USDA / CNF. |
 | Ingredient nutrition estimate | OpenAI | `lib/nutrition/llm-nutrition-estimate.ts` | Last-resort per-100g estimate when no official match. Marked low confidence and `needs_review`. |
 | Voice cook | ElevenLabs Conversational AI | `recipe-voice-mode.tsx` + `lib/voice/*` | Real-time spoken cooking guidance with five client tools. |
@@ -823,6 +865,8 @@ If `OPENAI_API_KEY` is missing, every flow above degrades gracefully:
 - Receipt: cleanup skipped; if the parse fails, the user gets an error.
 - Nutrition: official-only matching, no estimate.
 - Backbone admin: panels show errors.
+- Inventory stocktake: the "Update inventory" entry point fires the parse, the review dialog opens with an inline error explaining the key is required, and nothing is applied.
+- Add-ingredient enrichment: the review queue still populates, but every row uses rule-based defaults (`buildBackboneInsertFieldsFromName` + `inferGroceryCategoryFromName`) instead of the LLM's classification, and parent suggestions are skipped.
 
 ---
 
@@ -1039,6 +1083,14 @@ This section is **the honest list**. Anything not yet finished, not yet wired up
 - **Variants in the table view**: the table component does not show variants. Variant expand/DnD lives only in the (Storybook-only) `InventoryTableBody` component.
 - **No min/max thresholds / low-stock view** today.
 - **`InventoryTableBody`** is in Storybook only; the real table view is `InventoryTableView`.
+- **"Update inventory" stocktake is text-only first pass** (see §7.4). There is no in-app voice capture yet — the user is expected to dictate via a system tool like Super Whisper and paste the transcript into the dialog. Native voice mode for the stocktake is the next step.
+- **Stocktake decisions ignore which storage location was matched**: each `set` decision overwrites the *first* `inventory_items` row found for the matched ingredient (created in default Pantry if missing). If butter has rows in both Fridge and Freezer and the user says "I have a stick of butter", whichever row is returned first wins — the other isn't touched. There's no review-row-level "which location is this for?" picker today.
+- **Stocktake unit overwrite is opt-out only**: the apply step writes whatever unit the review row carries (so saying "1 bottle" of an ingredient previously tracked in `g` flips the stock unit to `bottle`). The review step lets the user blank or correct the unit, but there's no explicit "keep my existing unit" toggle. Worth knowing if a fuzzy match slips through.
+- **Brand fuzzy-detection is not robust**: the LLM extracts `productBrand` only when it recognises a brand from common patterns. Niche or local brands may be misread as part of the product description (e.g. *"one jar of Joe Beef hot sauce"* → brand might land in productName instead of productBrand). The Advanced section in the review row lets the user fix it.
+- **Zero-out is keyed on ingredient, not on the matched row's location**: see **§7.4.1**. Mentioning butter once excludes *all* butter rows from the zero-out, even ones in a location the user wasn't actually scanning. Acceptable for first pass, but means a "I just inventoried my fridge" sweep can't surgically zero only the fridge butter row when the freezer butter row also exists.
+- **Stocktake review queue is in-memory only**: unlike the receipt review queue (which mirrors to `sessionStorage`), navigating away from `/inventory` mid-parse loses the queue. Re-dictation is cheap, but worth knowing.
+- **No "stocktake log"**: where receipts persist a `receipt_imports` row + `receipt_import_items` rows for audit, stocktakes write nothing to a history table. Once applied (or zeroed-out), there's no record of *what* was dictated, only the resulting inventory state.
+- **Old `createIngredientForInventoryAction`** server action is still in `app/actions/inventory.ts` but no longer called from any UI now that the inline-add FAB has been replaced by the consolidated FAB. It should be removed in a follow-up cleanup.
 
 ### 21.3 Plan
 - **`PlanToolbar`** (with “AI suggest week”) is fully implemented but **not mounted** in the live plan page.

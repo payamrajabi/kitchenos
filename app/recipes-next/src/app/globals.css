@@ -2433,21 +2433,27 @@ textarea {
   width: 28%;
 }
 
-/* Inventory: fixed add control — 36×36, 12px from viewport (plus safe area) */
-.inventory-add-fab-wrap {
+/* Inventory: consolidated bottom-right action FAB. Single floating "+"
+   button that fans into a vertical menu (Add ingredient / Update inventory /
+   Log receipt). Sits flush right with the review-queue pill on its left so
+   the user can still see "3 to review" while idle. */
+.inventory-actions-fab-wrap {
   position: fixed;
   z-index: 60;
   bottom: calc(var(--space-12) + env(safe-area-inset-bottom, 0px));
-  left: calc(var(--space-12) + env(safe-area-inset-left, 0px));
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  right: calc(var(--space-12) + env(safe-area-inset-right, 0px));
+  display: grid;
+  /* Two columns: pill on the left, FAB on the right. Menu floats above the
+     FAB column, anchored bottom-right. */
+  grid-template-columns: auto auto;
+  align-items: end;
   gap: var(--space-8);
 }
 
-.inventory-add-fab {
-  width: var(--space-36);
-  height: var(--space-36);
+.inventory-actions-fab {
+  grid-column: 2;
+  width: var(--space-48);
+  height: var(--space-48);
   flex-shrink: 0;
   padding: 0;
   border: none;
@@ -2458,95 +2464,76 @@ textarea {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 var(--space-2) var(--space-8) rgb(0 0 0 / 0.18);
+  box-shadow: 0 var(--space-4) var(--space-16) rgb(0 0 0 / 0.22);
+  transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.inventory-add-fab:hover {
+.inventory-actions-fab:hover {
   filter: brightness(1.08);
 }
 
-.inventory-add-fab:focus-visible {
+.inventory-actions-fab:focus-visible {
   outline: var(--space-1) solid var(--ink);
   outline-offset: var(--space-2);
 }
 
-.inventory-add-fab:disabled {
-  opacity: 0.55;
-  cursor: wait;
-  pointer-events: none;
+.inventory-actions-fab.is-open {
+  transform: rotate(45deg);
 }
 
-.inventory-add-fab-panel {
-  min-width: min(100vw - var(--space-48), 280px);
-  padding: var(--space-12);
+.inventory-actions-fab-menu {
+  grid-column: 1 / span 2;
+  /* Menu sits above the FAB row in the wrap. Right-aligned so the bottom
+     edge lines up with the FAB above the safe-area inset. */
+  justify-self: end;
+  margin-bottom: var(--space-8);
   background: var(--paper);
   border: var(--space-1) solid var(--hair);
-  box-shadow: 0 var(--space-4) var(--space-24) rgb(0 0 0 / 0.12);
+  box-shadow: 0 var(--space-12) var(--space-32) rgb(0 0 0 / 0.18);
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-8);
+  flex-direction: column;
+  min-width: 200px;
+  animation: inventory-actions-fab-menu-in 140ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.inventory-add-fab-input {
-  flex: 1 1 140px;
-  min-width: 0;
-  height: var(--control-height);
-  padding: 0 var(--control-padding-x);
+@keyframes inventory-actions-fab-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-4));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inventory-actions-fab-menu-item {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: var(--space-1) solid var(--hair);
+  padding: var(--space-12) var(--space-16);
+  text-align: left;
   font: inherit;
   font-size: 14px;
-  border: var(--space-1) solid var(--control-border-rest);
-  border-radius: 0;
-  background: var(--paper);
   color: var(--ink);
-}
-
-.inventory-add-fab-input:focus {
-  outline: none;
-  border-color: var(--ink);
-}
-
-.inventory-add-fab-submit {
-  height: var(--control-height);
-  padding: 0 var(--space-16);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  border: var(--space-1) solid var(--ink);
-  border-radius: 0;
-  background: var(--ink);
-  color: var(--paper);
   cursor: pointer;
 }
 
-.inventory-add-fab-submit:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.inventory-actions-fab-menu-item:last-child {
+  border-bottom: 0;
 }
 
-.inventory-add-fab-error {
-  width: 100%;
-  margin: 0;
-  font-size: 12px;
-  color: #6b1f1f;
+.inventory-actions-fab-menu-item:hover,
+.inventory-actions-fab-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--ink) 6%, var(--paper));
+  outline: none;
 }
 
-/* Inventory: receipt import FAB — bottom-right, larger than the add FAB
-   because it triggers a full modal task (paste + upload + AI mapping). */
-.inventory-receipt-fab-wrap {
-  position: fixed;
-  z-index: 60;
-  bottom: calc(var(--space-12) + env(safe-area-inset-bottom, 0px));
-  right: calc(var(--space-12) + env(safe-area-inset-right, 0px));
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-8);
-}
-
-/* Persistent pill that appears next to the receipt FAB while there's a queue
- * of parsed-but-unreviewed items (or active background parses). Tapping it
- * reopens the dialog. */
+/* Persistent pill that appears next to the FAB while there's a queue of
+ * parsed-but-unreviewed receipt items, an in-flight receipt apply, or a
+ * background bulk-update job. Tapping it reopens the receipt review queue
+ * (and is disabled when the pill is just a passive status indicator). */
 .inventory-receipt-pill {
   /* Match the FAB's height so they visually sit together as a paired control. */
   height: var(--space-48);
@@ -2582,37 +2569,6 @@ textarea {
   to {
     transform: rotate(360deg);
   }
-}
-
-.inventory-receipt-fab {
-  width: var(--space-48);
-  height: var(--space-48);
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--paper);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 var(--space-4) var(--space-16) rgb(0 0 0 / 0.22);
-}
-
-.inventory-receipt-fab:hover {
-  filter: brightness(1.08);
-}
-
-.inventory-receipt-fab:focus-visible {
-  outline: var(--space-1) solid var(--ink);
-  outline-offset: var(--space-2);
-}
-
-.inventory-receipt-fab:disabled {
-  opacity: 0.55;
-  cursor: wait;
-  pointer-events: none;
 }
 
 /* Receipt import modal — native <dialog>. Mobile: fills the viewport; ≥600px:
@@ -2784,6 +2740,65 @@ textarea {
   background: color-mix(in srgb, var(--ink) 3%, var(--paper));
   border: var(--space-1) dashed var(--hair);
   border-radius: var(--space-8);
+}
+
+/* Stocktake review: "zero out anything I didn't mention" footer block.
+ * Visually grouped with a subtle separator above so the destructive nature
+ * of the toggles reads clearly against the rest of the review. */
+.stocktake-zero-out {
+  margin-top: var(--space-8);
+  padding-top: var(--space-16);
+  border-top: var(--space-1) solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.stocktake-zero-out-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-8);
+}
+
+@media (max-width: 480px) {
+  .stocktake-zero-out-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stocktake-zero-out-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  border: var(--space-1) solid var(--hair);
+  background: var(--paper);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+}
+
+.stocktake-zero-out-option:hover {
+  background: color-mix(in srgb, var(--ink) 4%, var(--paper));
+}
+
+.stocktake-zero-out-option input[type="checkbox"] {
+  width: var(--space-16);
+  height: var(--space-16);
+  margin: 0;
+  cursor: pointer;
+}
+
+.stocktake-zero-out-option:has(input:checked) {
+  border-color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, var(--paper));
+}
+
+.stocktake-zero-out-warn {
+  margin: 0;
+  font-size: 12px;
+  color: #6b1f1f;
 }
 
 .receipt-import-field-label {

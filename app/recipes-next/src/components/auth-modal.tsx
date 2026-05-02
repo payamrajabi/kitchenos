@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 type Mode = "signin" | "signup";
@@ -16,6 +17,7 @@ export function AuthModal({
   onClose: () => void;
   onModeChange: (m: Mode) => void;
 }) {
+  const router = useRouter();
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -39,12 +41,16 @@ export function AuthModal({
           if (error) throw error;
           setMessage("Signed in.");
           onClose();
+          router.replace("/plan");
+          router.refresh();
         } else {
           const { data, error } = await supabase.auth.signUp({ email, password });
           if (error) throw error;
           if (data?.session) {
             setMessage("Signed in — your account is ready.");
             onClose();
+            router.replace("/plan");
+            router.refresh();
           } else {
             setMessage(
               "Account created — open the confirmation link in your email, then sign in.",
@@ -60,7 +66,7 @@ export function AuthModal({
         setPending(false);
       }
     },
-    [mode, onClose],
+    [mode, onClose, router],
   );
 
   if (!open) return null;

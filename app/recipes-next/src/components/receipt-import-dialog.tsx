@@ -9,7 +9,7 @@ import {
   type MouseEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { CircleNotch, Plus, Receipt, X } from "@phosphor-icons/react";
+import { CircleNotch, Plus, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 import {
@@ -38,7 +38,6 @@ import {
   patchRow,
   setApplying,
   summarizeQueue,
-  useIsApplying,
   useReceiptQueue,
   type QueueBatchEntry,
   type QueueRowEntry,
@@ -46,9 +45,16 @@ import {
 } from "@/lib/receipt-import/queue";
 import { markApplied } from "@/lib/receipt-import/recent-applied";
 
+/** Which pane the dialog is showing. null = closed. */
+export type ReceiptImportMode = "input" | "queue" | null;
+
 type Props = {
   /** Inventory ingredients available for assignment in the review step. */
   ingredients: { id: number; name: string }[];
+  /** Current dialog mode, controlled externally so the inventory FAB can
+   * open the input pane while the review pill keeps opening the queue. */
+  mode: ReceiptImportMode;
+  onModeChange: (next: ReceiptImportMode) => void;
 };
 
 function formatMoney(raw: string): string {
@@ -132,19 +138,14 @@ function mappedIngredientLabel(
   );
 }
 
-/** Which pane the dialog is showing. null = closed. */
-type DialogMode = "input" | "queue" | null;
-
-export function ReceiptImportFab({ ingredients }: Props) {
+export function ReceiptImportDialog({ ingredients, mode, onModeChange }: Props) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const [mode, setMode] = useState<DialogMode>(null);
   const [pastedText, setPastedText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const entries = useReceiptQueue();
-  const applying = useIsApplying();
   const summary = useMemo(() => summarizeQueue(entries), [entries]);
 
   // Open/close the native <dialog> and register as the top-layer host so any
@@ -183,16 +184,16 @@ export function ReceiptImportFab({ ingredients }: Props) {
     if (!el) return;
     const onCancel = (e: Event) => {
       e.preventDefault();
-      setMode(null);
+      onModeChange(null);
     };
     el.addEventListener("cancel", onCancel);
     return () => el.removeEventListener("cancel", onCancel);
-  }, []);
+  }, [onModeChange]);
 
   const closeModal = useCallback(() => {
-    setMode(null);
+    onModeChange(null);
     setError(null);
-  }, []);
+  }, [onModeChange]);
 
   const onBackdropClick = useCallback(
     (event: MouseEvent<HTMLDialogElement>) => {
@@ -217,15 +218,15 @@ export function ReceiptImportFab({ ingredients }: Props) {
     setPastedText("");
     // Closing the dialog mirrors the user's mental model: hit Import, get out
     // of the way, come back via the FAB pill when there's something to review.
-    setMode(null);
-  }, [pastedText]);
+    onModeChange(null);
+  }, [pastedText, onModeChange]);
 
   const handleCancelAll = useCallback(() => {
     clearAll();
     setPastedText("");
     setError(null);
-    setMode(null);
-  }, []);
+    onModeChange(null);
+  }, [onModeChange]);
 
   const handleApply = useCallback(() => {
     const decisions: ReviewDecision[] = [];
@@ -356,7 +357,7 @@ export function ReceiptImportFab({ ingredients }: Props) {
     // pill surfaces an "Applying…" spinner next to the FAB until the server
     // action resolves; on success we flash the affected inventory rows.
     setError(null);
-    setMode(null);
+    onModeChange(null);
     setApplying(true);
     void (async () => {
       try {
@@ -394,7 +395,7 @@ export function ReceiptImportFab({ ingredients }: Props) {
         setApplying(false);
       }
     })();
-  }, [entries, router]);
+  }, [entries, router, onModeChange]);
 
   const reviewRows = useMemo(
     () =>
@@ -431,68 +432,8 @@ export function ReceiptImportFab({ ingredients }: Props) {
     [entries],
   );
 
-  // Pill visibility & label: "Applying…" wins over "Reading" wins over
-  // "N to review". All three are mutually informative states.
-  const fabBadge = (() => {
-    if (applying) {
-      return { label: "Applying…", busy: true, clickable: false };
-    }
-    if (summary.pendingBatches > 0 && summary.totalRows === 0) {
-      return { label: "Reading receipt…", busy: true, clickable: true };
-    }
-    if (summary.activeRows > 0) {
-      return {
-        label: `${summary.activeRows} to review`,
-        busy: summary.pendingBatches > 0,
-        clickable: true,
-      };
-    }
-    return null;
-  })();
-
   return (
     <>
-      <div className="inventory-receipt-fab-wrap">
-        {fabBadge ? (
-          <button
-            type="button"
-            className={`inventory-receipt-pill${fabBadge.busy ? " is-busy" : ""}`}
-            onClick={() => {
-              if (!fabBadge.clickable) return;
-              setError(null);
-              setMode("queue");
-            }}
-            disabled={!fabBadge.clickable}
-            aria-label={
-              fabBadge.busy
-                ? fabBadge.label
-                : `${summary.activeRows} items waiting to review`
-            }
-          >
-            {fabBadge.busy ? (
-              <CircleNotch
-                size={16}
-                weight="bold"
-                className="inventory-receipt-pill-spinner"
-                aria-hidden
-              />
-            ) : null}
-            <span>{fabBadge.label}</span>
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="inventory-receipt-fab"
-          aria-label="Log a receipt"
-          onClick={() => {
-            setError(null);
-            setMode("input");
-          }}
-        >
-          <Receipt size={22} weight="regular" color="var(--paper)" aria-hidden />
-        </button>
-      </div>
-
       <dialog
         ref={dialogRef}
         className="receipt-import-dialog"

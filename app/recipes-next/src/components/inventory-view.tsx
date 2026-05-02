@@ -256,22 +256,26 @@ export function InventoryView({ ingredients, inventory }: Props) {
       }
     }
 
-    const groupVisible = (root: IngredientRow): boolean => {
-      const variants = variantsByParent.get(root.id) ?? [];
-      const ids = [root.id, ...variants.map((v) => v.id)];
-      return ids.some((id) => locationsByIngredient.get(id)?.has(activeKey));
-    };
+    const ingredientMatches = (ing: IngredientRow): boolean =>
+      locationsByIngredient.get(ing.id)?.has(activeKey) ?? false;
 
+    // A parent group is visible whenever the parent itself or any of its
+    // variants live in the active location. Variants are filtered
+    // independently so e.g. "Coconut Milk → Shallow Pantry" stays hidden
+    // when Fridge is active even if its parent "Milk" survives.
     const includedRootIds = new Set<number>();
     for (const ing of ingredients) {
-      if (!ing.parent_ingredient_id && groupVisible(ing)) {
-        includedRootIds.add(ing.id);
-      }
+      if (ing.parent_ingredient_id) continue;
+      const variants = variantsByParent.get(ing.id) ?? [];
+      const groupVisible =
+        ingredientMatches(ing) || variants.some(ingredientMatches);
+      if (groupVisible) includedRootIds.add(ing.id);
     }
 
     return ingredients.filter((ing) => {
       if (!ing.parent_ingredient_id) return includedRootIds.has(ing.id);
-      return includedRootIds.has(ing.parent_ingredient_id);
+      if (!includedRootIds.has(ing.parent_ingredient_id)) return false;
+      return ingredientMatches(ing);
     });
   }, [ingredients, filters, locationsByIngredient]);
 
