@@ -28,7 +28,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Menu } from "@base-ui/react/menu";
 import { CheckCircle, Circle, DotsSixVertical, DotsThree, Play, Stop, Timer } from "@phosphor-icons/react";
-import type { RecipeInstructionStepRow } from "@/types/database";
+import type { RecipeIngredientRow, RecipeInstructionStepRow } from "@/types/database";
 import {
   addOnTimerEvent,
   startTimer,
@@ -37,6 +37,9 @@ import {
 } from "@/lib/step-timer-store";
 import { useStepTimers } from "@/lib/use-step-timers";
 import { useIsRecipeEditing } from "@/components/recipe-edit-mode";
+import { useRecipeServingsScale } from "@/components/recipe-servings-scale";
+import { displayAmountForUnit } from "@/lib/ingredient-gram-conversion";
+import { pluralizeUnit } from "@/lib/unit-mapping";
 import { useTopLayerHost } from "@/lib/top-layer-host";
 import { useRouter } from "next/navigation";
 import {
@@ -57,7 +60,80 @@ type Props = {
   recipeId: number;
   recipeName: string;
   initialSteps: RecipeInstructionStepRow[];
+  /**
+   * Recipe ingredients used to render the per-step "ingredients used" sub-list
+   * underneath each instruction step. Optional so the editor still works in
+   * isolated contexts (e.g. Storybook).
+   */
+  recipeIngredients?: RecipeIngredientRow[];
 };
+
+/**
+ * Local-only check state for per-step ingredient ticks. Lives in memory only —
+ * not persisted, not connected to the main ingredient list. Keyed by
+ * `${stepId}:${recipeIngredientLineId}` so the same ingredient can be ticked
+ * independently in each step it appears in.
+ */
+type StepIngredientCheckKey = `${number}:${number}`;
+
+function stepIngredientKey(stepId: number, lineId: number): StepIngredientCheckKey {
+  return `${stepId}:${lineId}`;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * True when an ingredient name appears in a step's text/heading. Matches whole
+ * words (case-insensitive) and tolerates simple plurals like "lemon" / "lemons".
+ */
+function ingredientMentionedInStep(name: string, haystack: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  const re = new RegExp(`\\b${escapeRegExp(trimmed)}(?:s|es)?\\b`, "i");
+  return re.test(haystack);
+}
+
+function ingredientDisplayName(line: RecipeIngredientRow): string {
+  const joined = line.ingredients?.name?.trim();
+  if (joined) return joined;
+  const fallback = line.display?.trim();
+  return fallback ?? "";
+}
+
+/** Render the inline "(1 cup)" amount label for a step ingredient pill. */
+function formatStepIngredientAmount(
+  amount: string | null | undefined,
+  unit: string | null | undefined,
+  scale: number,
+): string {
+  const scaled = displayAmountForUnit(amount, unit, scale);
+  if (!scaled) return "";
+  if (!unit) return scaled;
+  return `${scaled} ${pluralizeUnit(unit, scaled)}`.trim();
+}
+
+function buildStepIngredientsMap(
+  steps: RecipeInstructionStepRow[],
+  ingredients: RecipeIngredientRow[],
+): Map<number, RecipeIngredientRow[]> {
+  const map = new Map<number, RecipeIngredientRow[]>();
+  if (!ingredients.length) return map;
+  for (const step of steps) {
+    const haystack = `${step.heading ?? ""} ${step.text ?? ""}`;
+    const matches: RecipeIngredientRow[] = [];
+    for (const line of ingredients) {
+      const name = ingredientDisplayName(line);
+      if (!name) continue;
+      if (ingredientMentionedInStep(name, haystack)) {
+        matches.push(line);
+      }
+    }
+    if (matches.length > 0) map.set(step.id, matches);
+  }
+  return map;
+}
 
 const instructionRowCollisionDetection: CollisionDetection = (args) => {
   const pointerHit = pointerWithin(args);
@@ -475,6 +551,84 @@ function InstructionActionsMenu({
   );
 }
 
+function StepIngredientsSublist({
+  stepId,
+  ingredients,
+  checked,
+  onToggle,
+}: {
+  stepId: number;
+  ingredients: RecipeIngredientRow[];
+  checked: ReadonlySet<StepIngredientCheckKey>;
+  onToggle: (stepId: number, lineId: number) => void;
+}) {
+  const scale = useRecipeServingsScale();
+  if (ingredients.length === 0) return null;
+  return (
+    <ul className="recipe-instruction-step-ingredients" aria-label="Ingredients used in this step">
+      {ingredients.map((line) => {
+        const name = ingredientDisplayName(line);
+        const amount = formatStepIngredientAmount(line.amount, line.unit, scale);
+        const isChecked = checked.has(stepIngredientKey(stepId, line.id));
+        const labelText = [
+          name,
+          line.preparation ? `, ${line.preparation}` : "",
+          amount ? ` (${amount})` : "",
+        ]
+          .filter(Boolean)
+          .join("");
+        return (
+          <li key={line.id} className="recipe-instruction-step-ingredient-item">
+            <button
+              type="button"
+              className={[
+                "recipe-instruction-step-ingredient",
+                isChecked ? "recipe-instruction-step-ingredient--checked" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              aria-pressed={isChecked}
+              aria-label={`Mark "${labelText}" used in this step`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle(stepId, line.id);
+              }}
+            >
+              <span className="recipe-instruction-step-ingredient-icon" aria-hidden>
+                {isChecked ? (
+                  <CheckCircle size={16} weight="fill" />
+                ) : (
+                  <Circle size={16} weight="regular" />
+                )}
+              </span>
+              <span className="recipe-instruction-step-ingredient-label">
+                <span className="recipe-instruction-step-ingredient-name">{name}</span>
+                {line.preparation ? (
+                  <span className="recipe-instruction-step-ingredient-prep">
+                    , {line.preparation}
+                  </span>
+                ) : null}
+                {amount ? (
+                  <span className="recipe-instruction-step-ingredient-amount">
+                    {" "}
+                    ({amount})
+                  </span>
+                ) : null}
+                {line.is_optional ? (
+                  <span className="recipe-instruction-step-ingredient-optional">
+                    {" "}
+                    (optional)
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function SortableInstructionRow({
   item,
   heading,
@@ -483,6 +637,9 @@ function SortableInstructionRow({
   disabled,
   completed,
   recipeName,
+  stepIngredients,
+  checkedStepIngredients,
+  onToggleStepIngredient,
   onHeadingChange,
   onCommitHeading,
   onBodyChange,
@@ -501,6 +658,9 @@ function SortableInstructionRow({
   disabled: boolean;
   completed: boolean;
   recipeName: string;
+  stepIngredients: RecipeIngredientRow[];
+  checkedStepIngredients: ReadonlySet<StepIngredientCheckKey>;
+  onToggleStepIngredient: (stepId: number, lineId: number) => void;
   onHeadingChange: (stepId: number, value: string) => void;
   onCommitHeading: (stepId: number, value: string) => void;
   onBodyChange: (stepId: number, value: string) => void;
@@ -687,6 +847,14 @@ function SortableInstructionRow({
                   </div>
                 ) : null
               ) : null}
+              {showBodyBlock && stepIngredients.length > 0 ? (
+                <StepIngredientsSublist
+                  stepId={item.id}
+                  ingredients={stepIngredients}
+                  checked={checkedStepIngredients}
+                  onToggle={onToggleStepIngredient}
+                />
+              ) : null}
             </>
           )}
         </div>
@@ -722,6 +890,9 @@ function InstructionSortableRows({
   disabled,
   completedSteps,
   recipeName,
+  stepIngredientsByStepId,
+  checkedStepIngredients,
+  onToggleStepIngredient,
   onHeadingChange,
   onCommitHeading,
   onBodyChange,
@@ -738,6 +909,9 @@ function InstructionSortableRows({
   disabled: boolean;
   completedSteps: Set<number>;
   recipeName: string;
+  stepIngredientsByStepId: Map<number, RecipeIngredientRow[]>;
+  checkedStepIngredients: ReadonlySet<StepIngredientCheckKey>;
+  onToggleStepIngredient: (stepId: number, lineId: number) => void;
   onHeadingChange: (stepId: number, value: string) => void;
   onCommitHeading: (stepId: number, value: string) => void;
   onBodyChange: (stepId: number, value: string) => void;
@@ -768,6 +942,9 @@ function InstructionSortableRows({
             disabled={disabled}
             completed={completedSteps.has(item.id)}
             recipeName={recipeName}
+            stepIngredients={stepIngredientsByStepId.get(item.id) ?? []}
+            checkedStepIngredients={checkedStepIngredients}
+            onToggleStepIngredient={onToggleStepIngredient}
             onHeadingChange={onHeadingChange}
             onCommitHeading={onCommitHeading}
             onBodyChange={onBodyChange}
@@ -785,7 +962,12 @@ function InstructionSortableRows({
   );
 }
 
-export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }: Props) {
+export function RecipeInstructionsEditor({
+  recipeId,
+  recipeName,
+  initialSteps,
+  recipeIngredients,
+}: Props) {
   const router = useRouter();
   const dndId = useId();
   const isEditing = useIsRecipeEditing();
@@ -794,6 +976,28 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(() => new Set());
+  // Per-step ingredient ticks. Local-only — purely a chef's checklist for the
+  // ingredients they've added during this step. Keyed by `${stepId}:${lineId}`
+  // so the same ingredient can be ticked independently in each step it
+  // appears in. Not synced with the main ingredients list.
+  const [checkedStepIngredients, setCheckedStepIngredients] = useState<
+    Set<StepIngredientCheckKey>
+  >(() => new Set());
+
+  const stepIngredientsByStepId = useMemo(
+    () => buildStepIngredientsMap(items, recipeIngredients ?? []),
+    [items, recipeIngredients],
+  );
+
+  const toggleStepIngredient = useCallback((stepId: number, lineId: number) => {
+    setCheckedStepIngredients((prev) => {
+      const next = new Set(prev);
+      const key = stepIngredientKey(stepId, lineId);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const toggleComplete = useCallback((stepId: number) => {
     setCompletedSteps((prev) => {
@@ -1007,6 +1211,9 @@ export function RecipeInstructionsEditor({ recipeId, recipeName, initialSteps }:
               disabled={disabled}
               completedSteps={completedSteps}
               recipeName={recipeName}
+              stepIngredientsByStepId={stepIngredientsByStepId}
+              checkedStepIngredients={checkedStepIngredients}
+              onToggleStepIngredient={toggleStepIngredient}
               onHeadingChange={changeHeading}
               onCommitHeading={commitHeading}
               onBodyChange={changeBody}

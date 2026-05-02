@@ -10448,6 +10448,88 @@ a.primary {
   cursor: pointer;
 }
 
+/* ── Per-step "ingredients used in this step" sub-list ──
+   Renders inside the body stack, so it naturally starts at the same x-position
+   as the step's instruction text. Each row is a small checkable pill with the
+   ingredient name (bold) + preparation + amount inline, e.g. "Cilantro,
+   chopped (1 cup)". Local-only checks — not bidirectional with the main
+   ingredients list. Hidden together with the body when the parent step is
+   marked complete (the row is only rendered then). */
+.recipe-instruction-step-ingredients {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recipe-instruction-step-ingredient-item {
+  margin: 0;
+  padding: 0;
+}
+
+.recipe-instruction-step-ingredient {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.recipe-instruction-step-ingredient-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ink, #0a0a0a);
+}
+
+.recipe-instruction-step-ingredient--checked .recipe-instruction-step-ingredient-icon {
+  color: var(--ink-faint);
+}
+
+.recipe-instruction-step-ingredient-label {
+  font-size: 14px;
+  line-height: 18px;
+  color: var(--ink-faint);
+  min-width: 0;
+}
+
+.recipe-instruction-step-ingredient-name {
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.recipe-instruction-step-ingredient-prep,
+.recipe-instruction-step-ingredient-amount,
+.recipe-instruction-step-ingredient-optional {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.recipe-instruction-step-ingredient--checked .recipe-instruction-step-ingredient-label,
+.recipe-instruction-step-ingredient--checked .recipe-instruction-step-ingredient-name,
+.recipe-instruction-step-ingredient--checked .recipe-instruction-step-ingredient-prep,
+.recipe-instruction-step-ingredient--checked .recipe-instruction-step-ingredient-amount,
+.recipe-instruction-step-ingredient--checked .recipe-instruction-step-ingredient-optional {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+
 /* Ingredient rows: tapping anywhere (except interactive controls) toggles
    the prep checkbox in view mode. */
 .recipe-ingredient-row--tap-toggle {

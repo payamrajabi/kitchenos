@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { CaretDown, CaretUp, Check } from "@phosphor-icons/react";
 import type { RecipeRow } from "@/types/database";
 import { primaryImageUrl, recipeImageFocusYPercent } from "@/lib/recipes";
+import { imageVariantUrl } from "@/lib/recipe-image-variants";
 import { normalizeMealTypesFromDb } from "@/lib/recipe-meal-types";
 import { RecipesTableMealTypeCell } from "@/components/recipes-table-meal-type-cell";
 
@@ -271,7 +272,7 @@ export function RecipesTableView({
         </thead>
         <tbody>
           {sortedRecipes.map((recipe) => {
-            const img = primaryImageUrl(recipe);
+            const img = imageVariantUrl(primaryImageUrl(recipe), "thumb");
             const focusY = recipeImageFocusYPercent(recipe);
             const href = linkBuilder
               ? linkBuilder(recipe)

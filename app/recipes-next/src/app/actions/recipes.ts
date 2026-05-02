@@ -497,30 +497,6 @@ async function insertRecipeIngredientLine(
   return { ok: true as const, row };
 }
 
-export async function createRecipeAndRedirectAction() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    redirect("/recipes");
-  }
-
-  const { data, error } = await supabase
-    .from("recipes")
-    .insert({ name: "New recipe" })
-    .select("id")
-    .single();
-
-  if (error || data?.id == null) {
-    redirect("/recipes");
-  }
-
-  const id = Number(data.id);
-  revalidatePath("/recipes");
-  redirect(`/recipes/${id}`);
-}
-
 export async function updateRecipeAction(
   recipeId: number,
   patch: Record<string, unknown>,

@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/recipes";
 import type { RecipeRow } from "@/types/database";
 import { primaryImageUrl, recipeImageFocusYPercent } from "@/lib/recipes";
+import { imageVariantUrl } from "@/lib/recipe-image-variants";
 import { useTruncatedElement } from "@/lib/use-truncated-element";
 
 export function CommunityRecipeCard({
@@ -23,7 +24,7 @@ export function CommunityRecipeCard({
   const { ref: titleRef, isTruncated } = useTruncatedElement<HTMLHeadingElement>(
     recipe.name,
   );
-  const img = primaryImageUrl(recipe);
+  const img = imageVariantUrl(primaryImageUrl(recipe), "medium");
   const focusY = recipeImageFocusYPercent(recipe);
 
   const [inLibrary, setInLibrary] = useState(!!inLibraryInitial);

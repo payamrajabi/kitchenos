@@ -1,6 +1,5 @@
 "use client";
 
-import { createRecipeAndRedirectAction } from "@/app/actions/recipes";
 import {
   importRecipeFromUrlAction,
   importRecipeFromUrlDirectAction,
@@ -9,13 +8,7 @@ import {
 import { useDraftImports } from "@/components/draft-imports-provider";
 import { useRecipeDetailDialog } from "@/components/recipe-detail-dialog";
 import { prepareImagesForRecipeImport } from "@/lib/recipe-import/prepare-image-for-import";
-import {
-  PencilLine,
-  Plus,
-  ArrowUp,
-  ShuffleAngular,
-  X,
-} from "@phosphor-icons/react";
+import { Plus, ArrowUp, ShuffleAngular, X } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -24,7 +17,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
   type ChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -80,15 +72,12 @@ const COLLAPSE_SCROLL_THRESHOLD = 80;
 type RecipeAddFabProps = {
   /** When set (recipe detail), imports refine this recipe and jump to draft review. */
   baseRecipeId?: number;
-  /** Gallery: show “blank recipe” pencil. Recipe detail: hide (refine uses the bar only). */
-  showManualButton?: boolean;
   /** When true, focus the textarea once the bar mounts (used by "Remix" entry point). */
   autoFocusOnMount?: boolean;
 };
 
 export function RecipeAddFab({
   baseRecipeId,
-  showManualButton = true,
   autoFocusOnMount = false,
 }: RecipeAddFabProps = {}) {
   const router = useRouter();
@@ -109,7 +98,6 @@ export function RecipeAddFab({
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
   const dragDepthRef = useRef(0);
-  const [isPending, startTransition] = useTransition();
   const [placeholder, setPlaceholder] = useState(PLACEHOLDER_WIDE);
 
   // Scroll-driven collapse: on recipe detail, once the user scrolls past
@@ -293,13 +281,6 @@ export function RecipeAddFab({
       return [];
     });
     setError(null);
-  }, []);
-
-  const handleFromScratch = useCallback(() => {
-    setError(null);
-    startTransition(async () => {
-      await createRecipeAndRedirectAction();
-    });
   }, []);
 
   const navigateToDraftWhenRefining = useCallback(
@@ -631,18 +612,6 @@ export function RecipeAddFab({
           )}
         </div>
 
-        {showManualButton ? (
-          <button
-            type="button"
-            className="recipe-ai-bar-manual"
-            onClick={handleFromScratch}
-            disabled={isPending}
-            aria-label="Create blank recipe"
-            title="Create blank recipe"
-          >
-            <PencilLine size={18} weight="regular" aria-hidden />
-          </button>
-        ) : null}
       </div>
 
       {canCollapse ? (

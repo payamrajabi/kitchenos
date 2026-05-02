@@ -7,22 +7,31 @@ import {
   ensureSuggestionChainAction,
   refillSuggestionPoolAction,
 } from "@/app/actions/meal-plan";
-import { SearchableSelect, type SelectOption } from "@/components/searchable-select";
 import { PlanEntryDeleteButton } from "@/components/plan-entry-delete-button";
 import { PlanEntryServingsControl } from "@/components/plan-entry-servings-control";
 import { PlanSuggestionAcceptButton } from "@/components/plan-suggestion-accept-button";
 import { PlanSuggestionCycleControl } from "@/components/plan-suggestion-cycle-control";
 import { PlanSuggestionDismissButton } from "@/components/plan-suggestion-dismiss-button";
 import { getPlanSlotTimeLabel, type PlanSlotKey } from "@/lib/meal-plan";
-import {
-  normalizeMealTypesFromDb,
-  planSlotPreferredRecipeTags,
-} from "@/lib/recipe-meal-types";
+import { planSlotPreferredRecipeTags } from "@/lib/recipe-meal-types";
 import {
   coerceNumericId,
   primaryImageUrl,
   recipeImageFocusYPercent,
 } from "@/lib/recipes";
+import { imageVariantUrl } from "@/lib/recipe-image-variants";
+
+/**
+ * Tapping a plan slot routes straight to the Recipes page filtered to the
+ * matching meal type, instead of opening an inline picker.
+ */
+function recipesHrefForSlot(slotKey: PlanSlotKey, planDate: string): string {
+  const [preferred] = planSlotPreferredRecipeTags(slotKey);
+  const params = new URLSearchParams();
+  if (preferred) params.set("meal", preferred);
+  params.set("for", `${planDate}:${slotKey}`);
+  return `/recipes?${params.toString()}`;
+}
 import type {
   MealPlanEntryRow,
   RecipeRow,
@@ -88,29 +97,6 @@ function planEntryRecipeMatch(
   );
 }
 
-function planPickerOptionsForSlot(
-  recipes: RecipeOption[],
-  ingredients: IngredientOption[],
-  slotKey: PlanSlotKey,
-): SelectOption[] {
-  const preferred = new Set(planSlotPreferredRecipeTags(slotKey));
-  const recipeOpts: SelectOption[] = recipes.map((recipe) => {
-    const tags = normalizeMealTypesFromDb(recipe.meal_types);
-    const matches = tags.some((t) => preferred.has(t));
-    return {
-      value: `r:${recipe.id}`,
-      label: recipe.name,
-      tier: matches ? 0 : 1,
-    };
-  });
-  const ingredientOpts: SelectOption[] = ingredients.map((ing) => ({
-    value: `i:${ing.id}`,
-    label: ing.name,
-    tier: 2,
-  }));
-  return [...recipeOpts, ...ingredientOpts];
-}
-
 export type PlanMealSlotProps = {
   day: DayColumn;
   slotKey: PlanSlotKey;
@@ -144,15 +130,11 @@ export function PlanMealSlot({
   isOpen,
   recipeById,
   recipeByNameLower,
-  recipes,
-  ingredients,
   pending,
   cellClassName = "",
   isRowHeightSample = false,
   onAssignOpenRef,
-  onOpen,
   onKeyDown,
-  commitPick,
   draggingId = null,
   onDragStartCard,
   onDragEndCard,
@@ -336,6 +318,19 @@ export function PlanMealSlot({
     .filter(Boolean)
     .join(" ");
 
+  const recipesHref = recipesHrefForSlot(slotKey, day.date);
+  const handleSlotActivate = () => {
+    router.push(recipesHref);
+  };
+  const handleSlotKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      router.push(recipesHref);
+      return;
+    }
+    onKeyDown(event);
+  };
+
   const handleCellDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!isDragging || !dragEnabled) return;
     event.preventDefault();
@@ -366,9 +361,9 @@ export function PlanMealSlot({
       data-plan-row-sample={isRowHeightSample ? slotKey : undefined}
       role="button"
       tabIndex={0}
-      aria-label={`Open ${slotLabel.toLowerCase()} at ${getPlanSlotTimeLabel(slotKey)} for ${day.label}`}
-      onClick={onOpen}
-      onKeyDown={onKeyDown}
+      aria-label={`Browse recipes for ${slotLabel.toLowerCase()} at ${getPlanSlotTimeLabel(slotKey)} on ${day.label}`}
+      onClick={handleSlotActivate}
+      onKeyDown={handleSlotKeyDown}
       onDragOver={dragEnabled ? handleCellDragOver : undefined}
       onDragLeave={dragEnabled ? handleCellDragLeave : undefined}
       onDrop={dragEnabled ? handleCellDrop : undefined}
@@ -417,7 +412,9 @@ export function PlanMealSlot({
                 ? coerceNumericId(resolvedRecipe.id)
                 : coerceNumericId(displayEntry.recipe_id);
             const imgUrl =
-              recipeForImage != null ? primaryImageUrl(recipeForImage) : null;
+              recipeForImage != null
+                ? imageVariantUrl(primaryImageUrl(recipeForImage), "medium")
+                : null;
             const focusY =
               recipeForImage != null ? recipeImageFocusYPercent(recipeForImage) : 50;
 
@@ -433,6 +430,8 @@ export function PlanMealSlot({
                       objectPosition: `center ${focusY}%`,
                     }}
                     draggable={false}
+                    loading="lazy"
+                    decoding="async"
                   />
                 ) : (
                   <span
@@ -593,31 +592,6 @@ export function PlanMealSlot({
         </div>
       ) : null}
 
-      {isOpen ? (
-        <div
-          className="plan-board-composer"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {recipes.length || ingredients.length ? (
-            <SearchableSelect
-              key={`${day.date}-${slotKey}-picker`}
-              defaultOpen
-              options={planPickerOptionsForSlot(recipes, ingredients, slotKey)}
-              value=""
-              onChange={commitPick}
-              disabled={pending}
-              className="plan-board-select"
-              aria-label="Search recipes and ingredients"
-              placeholder="Search recipes and ingredients"
-            />
-          ) : (
-            <p className="plan-board-composer-empty">
-              Add recipes on the Recipes page and ingredients in Inventory, then come back
-              here to plan your week.
-            </p>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }

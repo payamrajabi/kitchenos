@@ -1,12 +1,53 @@
 "use client";
 
 import { X } from "@phosphor-icons/react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RECIPE_MEAL_TYPES,
   normalizeMealTypesFromDb,
   type RecipeMealType,
 } from "@/lib/recipe-meal-types";
+import {
+  getPlanSlot,
+  planSlotOrder,
+  type PlanSlotKey,
+} from "@/lib/meal-plan";
+import { formatPlanDayLabel } from "@/lib/dates";
+
+function parseMealParam(raw: string | null): RecipeMealType | null {
+  if (!raw) return null;
+  const match = RECIPE_MEAL_TYPES.find(
+    (m) => m.toLowerCase() === raw.trim().toLowerCase(),
+  );
+  return match ?? null;
+}
+
+const PLAN_SLOT_KEYS = new Set<string>(planSlotOrder.map((s) => s.key));
+
+type AddToSlotContext = {
+  planDate: string;
+  slotKey: PlanSlotKey;
+  slotLabel: string;
+  dayLabel: string;
+};
+
+/** Parses `?for=YYYY-MM-DD:slotKey` from the Recipes page URL. */
+function parseForParam(raw: string | null): AddToSlotContext | null {
+  if (!raw) return null;
+  const [planDate, rawSlot] = raw.split(":");
+  if (!planDate || !rawSlot) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(planDate)) return null;
+  if (!PLAN_SLOT_KEYS.has(rawSlot)) return null;
+  const slotKey = rawSlot as PlanSlotKey;
+  return {
+    planDate,
+    slotKey,
+    slotLabel: getPlanSlot(slotKey).label,
+    dayLabel: formatPlanDayLabel(planDate),
+  };
+}
 import type { RecipeRow } from "@/types/database";
 import { RecipeCard } from "@/components/recipe-card";
 import { CommunityRecipeCard } from "@/components/community-recipe-card";
@@ -54,7 +95,16 @@ export function RecipesMealFilterSection({
   ingredientCounts,
   instructionCounts,
 }: Props) {
-  const [singleMeal, setSingleMeal] = useState<RecipeMealType | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialMeal = parseMealParam(searchParams?.get("meal") ?? null);
+  const [singleMeal, setSingleMeal] = useState<RecipeMealType | null>(
+    initialMeal,
+  );
+  const addToSlot = useMemo(
+    () => parseForParam(searchParams?.get("for") ?? null),
+    [searchParams],
+  );
   const [communityOn, setCommunityOn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<RecipesViewMode>("grid");
@@ -67,6 +117,14 @@ export function RecipesMealFilterSection({
     new Map(),
   );
   const collapseTimer = useRef<number | null>(null);
+
+  // Keep the filter in sync if the URL ?meal= param changes (e.g. user taps a
+  // different meal slot on /plan, which routes here with a fresh meal type).
+  useEffect(() => {
+    const next = parseMealParam(searchParams?.get("meal") ?? null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- legitimate URL-to-state sync; ?meal= can change via cross-page navigation (e.g. from /plan) and the local pill must re-mirror it.
+    if (next !== null) setSingleMeal(next);
+  }, [searchParams]);
 
   const libraryIdSet = useMemo(() => new Set(libraryIds), [libraryIds]);
 
@@ -213,6 +271,30 @@ export function RecipesMealFilterSection({
 
   return (
     <>
+      {addToSlot ? (
+        <div
+          className="recipes-add-to-slot-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="recipes-add-to-slot-banner-text">
+            Tap a recipe to add it to{" "}
+            <strong>{addToSlot.slotLabel}</strong> on{" "}
+            <strong>{addToSlot.dayLabel}</strong>.
+          </span>
+          <Link
+            href="/plan"
+            className="recipes-add-to-slot-banner-cancel"
+            aria-label="Cancel and go back to the plan"
+            onClick={(e) => {
+              e.preventDefault();
+              router.push("/plan");
+            }}
+          >
+            Cancel
+          </Link>
+        </div>
+      ) : null}
       <div className="recipes-meal-filter-strip recipes-meal-filter-strip-with-toggle">
         <div
           ref={barRef}
@@ -350,7 +432,11 @@ export function RecipesMealFilterSection({
               inLibrary={libraryIdSet.has(recipe.id)}
             />
           ) : (
-            <RecipeCard key={recipe.id} recipe={recipe} />
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              addContext={addToSlot ?? undefined}
+            />
           ),
         )
       )}

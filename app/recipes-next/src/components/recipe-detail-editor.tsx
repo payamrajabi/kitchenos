@@ -5,6 +5,7 @@ import {
   updateRecipeAction,
 } from "@/app/actions/recipes";
 import { generateRecipeImageAction } from "@/app/actions/recipe-image";
+import { uploadRecipeImageAction } from "@/app/actions/recipe-image-upload";
 import { AiImagePlaceholder } from "@/components/ai-image-placeholder";
 import { RecipeIngredientsEditor } from "@/components/recipe-ingredients-editor";
 import { RecipeInstructionsEditor } from "@/components/recipe-instructions-editor";
@@ -18,15 +19,14 @@ import { RecipeDetailOverlayChrome } from "@/components/recipe-detail-overlay-ch
 import {
   isSupabaseConfigured,
   isVoiceModeConfiguredClient,
-  recipeImagesBucket,
 } from "@/lib/env";
-import { createClient } from "@/lib/supabase/client";
 import { applyMarkdownLinkPaste } from "@/lib/recipe-description-links";
 import {
   primaryImageUrl,
   recipeImageFocusYPercent,
   RECIPE_DESCRIPTION_MAX_LENGTH,
 } from "@/lib/recipes";
+import { imageVariantUrl } from "@/lib/recipe-image-variants";
 import type {
   RecipeIngredientRow,
   RecipeIngredientSectionRow,
@@ -102,11 +102,6 @@ type Props = {
 
 function str(v: string | null | undefined) {
   return v ?? "";
-}
-
-function normalizeImageUrls(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((u): u is string => typeof u === "string" && u.trim() !== "");
 }
 
 export function RecipeDetailEditor({
@@ -469,29 +464,13 @@ export function RecipeDetailEditor({
       setImageBusy(true);
       setImageMessage(null);
       try {
-        const supabase = createClient();
-        const ext = file.name.split(".").pop() || "jpg";
-        const path = `${initial.id}-${Date.now()}.${ext}`;
-        const bucket = recipeImagesBucket();
-        const { error: upErr } = await supabase.storage
-          .from(bucket)
-          .upload(path, file, {
-            contentType: file.type || "application/octet-stream",
-            upsert: false,
-          });
-        if (upErr) {
-          setImageMessage("Could not upload image.");
-          return;
-        }
-        const { data: pub } = supabase.storage.from(bucket).getPublicUrl(path);
-        const url = pub.publicUrl;
-        const existing = normalizeImageUrls(initial.image_urls);
-        const nextUrls = [url, ...existing.filter((u) => u !== url)];
-        const r = await updateRecipeAction(initial.id, {
-          image_url: url,
-          image_urls: nextUrls,
-          image_focus_y: 50,
-        });
+        // Upload runs through a server action so sharp can generate thumb +
+        // medium variants alongside the original before the recipe row is
+        // updated. Direct browser-to-storage uploads would skip that.
+        const formData = new FormData();
+        formData.append("recipeId", String(initial.id));
+        formData.append("file", file);
+        const r = await uploadRecipeImageAction(formData);
         if (!r.ok) {
           setImageMessage(r.error ?? "Could not save image.");
           return;
@@ -501,7 +480,7 @@ export function RecipeDetailEditor({
         setImageBusy(false);
       }
     },
-    [initial.id, initial.image_urls, router],
+    [initial.id, router],
   );
 
   const onImageFileChange = useCallback(
@@ -708,7 +687,14 @@ export function RecipeDetailEditor({
     [save],
   );
 
-  const img = primaryImageUrl(initial);
+  // The hero photo lives in the side aside on the standalone recipe page
+  // (capped around 240–320px wide) and goes full-bleed inside the modal
+  // (up to ~960px). Pick the smallest variant that still looks crisp at the
+  // current rendering size to keep grids and standalone pages cheap.
+  const img = imageVariantUrl(
+    primaryImageUrl(initial),
+    inModal ? "original" : "medium",
+  );
 
   // Compact nutrition summary for view mode — only show values that exist.
   // Servings is rendered separately (just above the Ingredients list) per the
@@ -996,7 +982,12 @@ export function RecipeDetailEditor({
       </RecipeIngredientUnitDisplayProvider>
       <section className="section">
         <h3>Instructions</h3>
-        <RecipeInstructionsEditor recipeId={initial.id} recipeName={initial.name} initialSteps={recipeInstructionSteps} />
+        <RecipeInstructionsEditor
+          recipeId={initial.id}
+          recipeName={initial.name}
+          initialSteps={recipeInstructionSteps}
+          recipeIngredients={recipeIngredients}
+        />
       </section>
       {(() => {
         const noteTypeLabels: Record<string, string> = {
@@ -1374,7 +1365,6 @@ export function RecipeDetailEditor({
       {!viewOnly && isRemixing ? (
         <RecipeAddFab
           baseRecipeId={Number(initial.id)}
-          showManualButton={false}
           autoFocusOnMount
         />
       ) : null}

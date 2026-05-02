@@ -460,7 +460,7 @@ The recipes index has:
 - A **Community / All** toggle (client-side; flips between `ownRecipes` and `allRecipes`).
 - A single-select **meal type filter** that animates: when active, the strip collapses into the active pill plus an X to clear.
 - A **grid / table** view toggle.
-- A **RecipeAddFab** that opens the import flow (URL / paste / images / manual).
+- A **RecipeAddFab** that opens the import flow (URL / paste / images).
 - The legacy “draft” cards: any in-flight or recently-finished AI imports show as draft chips at the top.
 
 ### 8.4 Recipe detail (the editor surface)
@@ -477,7 +477,7 @@ The editor includes:
 - **Yield**, **servings**, **times**, **macros** fields.
 - **Meal types** multi-select.
 - **Ingredients editor** with sections, drag-and-drop reorder (within and across sections), optional toggle, preparation note, and an `IngredientSearchControl` for picking or creating ingredients.
-- **Instructions editor** with a per-step kebab menu (split at cursor, delete, move), drag reorder, heading + text, and a timer field.
+- **Instructions editor** with a per-step kebab menu (split at cursor, delete, move), drag reorder, heading + text, and a timer field. In view mode, each step shows an indented "ingredients used in this step" sub-list — one tickable line per ingredient whose name appears in the step's heading or body, formatted inline as `Name, prep (amount)` (e.g. "Cilantro, finely chopped (1 cup)"). The ticks are local-only chef checkmarks: not bidirectional with the main ingredients list, not persisted across sessions. Marking the parent step complete collapses the sub-list along with the body.
 - A **Notes block** (typed: note / variation / storage / substitution).
 - An **overlay chrome** with a kebab that exposes Edit / Delete / **Remix** / Source URL.
 
@@ -493,13 +493,12 @@ The editor includes:
 The ingredients list has a toggle: **Original** (the recipe’s units) vs **Grams** (every line converted to grams using the ingredient’s `density_g_per_ml` and `canonical_unit_weight_g`). Lines that can’t be converted (no density, vague units) fall back to their original unit. This is purely a display toggle — nothing is written to the database.
 
 ### 8.7 Creating a recipe
-There are five entry points into recipe creation/import:
+There are four entry points into recipe creation/import:
 
-1. **Manual**: `RecipeAddFab` → manual button → creates `{ name: "New recipe" }` and redirects to its detail page.
-2. **From URL**: paste a URL. The system fetches it, runs the recipe parser, resolves ingredients, and **immediately writes the recipe** with no review step. A progress chip in the gallery shows "Importing from recipe link…" while it runs and disappears when the recipe lands. The user can edit anything afterwards from the recipe detail page.
-3. **From pasted text**: paste raw text, draft pipeline (review on `/recipe-draft` before commit).
-4. **From images**: upload one or more photos of a recipe (printed cookbook page, etc.). Draft pipeline (review on `/recipe-draft` before commit).
-5. **Refine / remix**: from the kebab on a recipe, “Remix” passes the existing recipe’s context to the parser and produces an *update* to the same recipe (or a new one). Even when started from a URL, refine flows use the draft pipeline so the user can compare the AI’s changes before committing them.
+1. **From URL**: paste a URL. The system fetches it, runs the recipe parser, resolves ingredients, and **immediately writes the recipe** with no review step. A progress chip in the gallery shows "Importing from recipe link…" while it runs and disappears when the recipe lands. The user can edit anything afterwards from the recipe detail page.
+2. **From pasted text**: paste raw text, draft pipeline (review on `/recipe-draft` before commit).
+3. **From images**: upload one or more photos of a recipe (printed cookbook page, etc.). Draft pipeline (review on `/recipe-draft` before commit).
+4. **Refine / remix**: from the kebab on a recipe, “Remix” passes the existing recipe’s context to the parser and produces an *update* to the same recipe (or a new one). Even when started from a URL, refine flows use the draft pipeline so the user can compare the AI’s changes before committing them.
 
 The draft pipeline (text, images, refine/remix):
 - Builds a `DraftRecipeData` (no DB writes) with the parsed structure and a resolution plan for each ingredient.
@@ -570,11 +569,14 @@ Each entry row carries:
 - **`suggestion_pool`** — a JSON array of alternative candidates the user can cycle through.
 
 ### 9.5 Adding meals
-Tapping an empty slot opens a composer with a `SearchableSelect` that lists:
-- **Recipes** (tier 1: tagged for this slot; tier 2: any). Stored as `r:123`.
-- **Ingredients** (tier 2). Stored as `i:456`. Picking an ingredient creates a label-only entry — no recipe.
+Tapping any plan slot (empty or not) routes to `/recipes?meal=<MealType>&for=<YYYY-MM-DD>:<slotKey>` — the Recipes page with the meal-type filter pre-applied to the slot's preferred type, plus a memory of which slot the user came from.
 
-Picking a candidate calls `addMealPlanEntryAction`, which finds or creates the week’s `meal_plans` row, computes the next `sort_order` in the slot, and inserts a row with `servings = 4`, `is_suggestion = false`, then clears any matching dismissal record.
+When the `for=` param is present, the Recipes page enters **"add to slot" mode**:
+- A banner at the top reads "Tap a recipe to add it to **<Slot>** on **<Day>**" with a **Cancel** link back to `/plan`.
+- In the grid view, tapping a recipe card no longer opens the recipe — it calls `addMealPlanEntryAction` for the originating day + slot, shows a success toast, and routes back to `/plan` so the new card is visible immediately.
+- The Community toggle and table view are not yet wired into this mode; cards there still navigate normally (see §21.3).
+
+`addMealPlanEntryAction` is still the underlying server action that adds an entry: it finds or creates the week's `meal_plans` row, computes the next `sort_order` in the slot, and inserts a row with `servings = 4`, `is_suggestion = false`, then clears any matching dismissal record.
 
 ### 9.6 Drag and drop
 Cards can be dragged across slots and days using **native HTML5** drag/drop (not `@dnd-kit` here, even though the library is used elsewhere):
@@ -1105,6 +1107,8 @@ This section is **the honest list**. Anything not yet finished, not yet wired up
 - **`use-plan-board-fit.ts`** is marked as backward-compatible; column constants live in `plan-week-board.tsx` and are duplicated.
 - `ensureSuggestionChainAction` runs from the client on mount, not from the server during render — there can be a brief empty-then-fill flicker.
 - `acceptMealPlanSuggestionAction` doesn’t revalidate; the client triggers the chain refresh and `router.refresh()` itself.
+- **Tap-slot → Recipes "add to slot" mode** only covers the **own-recipes grid view** of `/recipes`. When the user is in **Community** mode or in **table view**, cards still navigate to the recipe instead of adding to the originating slot. The banner stays visible in those modes but the cards don't honor it yet.
+- The legacy in-cell `SearchableSelect` composer and its ingredient-only quick-add path were removed when tap-slot was introduced, so there is currently **no UI** for adding an ingredient-only (label-only) plan entry — the underlying `addMealPlanEntryAction` still supports it.
 
 ### 21.4 Shopping list
 - The list is fully **computed**, not stored. There is no manual “add a custom item to the shopping list” UI.
