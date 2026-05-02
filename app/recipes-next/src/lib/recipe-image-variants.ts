@@ -52,7 +52,11 @@ export function imageVariantUrl(
   if (dotIdx === -1 || dotIdx < slashIdx) return url;
 
   const base = head.slice(0, dotIdx);
-  const ext = head.slice(dotIdx);
+  // Variants are always written as JPEG by the upload pipeline (see
+  // `uploadRecipeImageVariants`), regardless of the original's format. The
+  // URL helper has to match that, otherwise PNG/WebP originals would request
+  // `-medium.png` / `-medium.webp` files that don't exist.
+  const variantExt = ".jpg";
 
   // If the URL already carries a known variant suffix, swap it instead of
   // double-suffixing.
@@ -61,11 +65,11 @@ export function imageVariantUrl(
     RECIPE_IMAGE_VARIANT_SPECS.medium.suffix,
   ]) {
     if (base.endsWith(knownSuffix)) {
-      return `${base.slice(0, -knownSuffix.length)}${spec.suffix}${ext}${tail}`;
+      return `${base.slice(0, -knownSuffix.length)}${spec.suffix}${variantExt}${tail}`;
     }
   }
 
-  return `${base}${spec.suffix}${ext}${tail}`;
+  return `${base}${spec.suffix}${variantExt}${tail}`;
 }
 
 /**
