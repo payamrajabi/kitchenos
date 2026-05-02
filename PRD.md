@@ -496,15 +496,21 @@ The ingredients list has a toggle: **Original** (the recipe’s units) vs **Gram
 There are five entry points into recipe creation/import:
 
 1. **Manual**: `RecipeAddFab` → manual button → creates `{ name: "New recipe" }` and redirects to its detail page.
-2. **From URL**: paste a URL. The system fetches it, runs the recipe parser, and starts a **draft import** (in browser session storage) that the user reviews on `/recipe-draft`.
-3. **From pasted text**: paste raw text, same draft pipeline.
-4. **From images**: upload one or more photos of a recipe (printed cookbook page, etc.). Same draft pipeline.
-5. **Refine / remix**: from the kebab on a recipe, “Remix” passes the existing recipe’s context to the parser and produces an *update* to the same recipe (or a new one).
+2. **From URL**: paste a URL. The system fetches it, runs the recipe parser, resolves ingredients, and **immediately writes the recipe** with no review step. A progress chip in the gallery shows "Importing from recipe link…" while it runs and disappears when the recipe lands. The user can edit anything afterwards from the recipe detail page.
+3. **From pasted text**: paste raw text, draft pipeline (review on `/recipe-draft` before commit).
+4. **From images**: upload one or more photos of a recipe (printed cookbook page, etc.). Draft pipeline (review on `/recipe-draft` before commit).
+5. **Refine / remix**: from the kebab on a recipe, “Remix” passes the existing recipe’s context to the parser and produces an *update* to the same recipe (or a new one). Even when started from a URL, refine flows use the draft pipeline so the user can compare the AI’s changes before committing them.
 
-The draft pipeline:
+The draft pipeline (text, images, refine/remix):
 - Builds a `DraftRecipeData` (no DB writes) with the parsed structure and a resolution plan for each ingredient.
 - The user reviews on `/recipe-draft`, where they can remap ingredients (search existing or create new) and confirm.
-- On confirm: writes the recipe + sections + ingredient lines + instruction steps. For URL imports, attempts to attach a scraped source image; otherwise queues an AI image generation. New recipes redirect to `/recipes/{id}?gen=1` so the editor can show a placeholder while the image is generated.
+- On confirm: writes the recipe + sections + ingredient lines + instruction steps, then queues an AI image generation. New recipes redirect to `/recipes/{id}?gen=1` so the editor can show a placeholder while the image is generated.
+
+The direct URL pipeline (fresh-import-from-link only):
+- Same parse + ingredient resolution as the draft pipeline.
+- Writes the recipe + sections + ingredient lines + instruction steps in one server action (`importRecipeFromUrlDirectAction`).
+- Schedules an image attach via `after()`: tries to download a scraped hero image from the source page first, and falls back to AI image generation only if the source has no usable image.
+- The recipes gallery is revalidated and the progress chip is removed when the action returns; the user is **not** redirected — they can keep doing whatever they were doing and the new recipe appears in their library.
 
 ### 8.8 Recipe images
 Two paths to a cover image:

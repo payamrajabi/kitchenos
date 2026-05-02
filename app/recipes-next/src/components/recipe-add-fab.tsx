@@ -3,6 +3,7 @@
 import { createRecipeAndRedirectAction } from "@/app/actions/recipes";
 import {
   importRecipeFromUrlAction,
+  importRecipeFromUrlDirectAction,
   importRecipeFromIntakeAction,
 } from "@/app/actions/recipe-import";
 import { useDraftImports } from "@/components/draft-imports-provider";
@@ -91,7 +92,7 @@ export function RecipeAddFab({
   autoFocusOnMount = false,
 }: RecipeAddFabProps = {}) {
   const router = useRouter();
-  const { startImport, getDraftData } = useDraftImports();
+  const { startImport, startDirectImport, getDraftData } = useDraftImports();
   // When this component is rendered inside the recipe-detail <dialog>
   // (the intercepted route used when you tap a recipe from the gallery),
   // this context is non-null. We use that to switch the bar from a
@@ -356,11 +357,22 @@ export function RecipeAddFab({
 
     // Link-only submission: no images + single URL token.
     if (!attached.length && looksLikeUrl(trimmed)) {
-      startImport(
-        "Importing from recipe link…",
-        () => importRecipeFromUrlAction(trimmed, { baseRecipeId }),
-        importReadyOpts,
-      );
+      // Refining an existing recipe still goes through the draft review
+      // step so the user can see what the AI changed before committing.
+      // A fresh import skips review: parse + resolve + save + image attach
+      // happen in one server pass and the recipe just appears in the
+      // gallery when it lands.
+      if (baseRecipeId == null) {
+        startDirectImport("Importing from recipe link…", () =>
+          importRecipeFromUrlDirectAction(trimmed),
+        );
+      } else {
+        startImport(
+          "Importing from recipe link…",
+          () => importRecipeFromUrlAction(trimmed, { baseRecipeId }),
+          importReadyOpts,
+        );
+      }
       reset();
       return;
     }
@@ -395,7 +407,15 @@ export function RecipeAddFab({
       importReadyOpts,
     );
     reset();
-  }, [text, images, startImport, reset, baseRecipeId, importReadyOpts]);
+  }, [
+    text,
+    images,
+    startImport,
+    startDirectImport,
+    reset,
+    baseRecipeId,
+    importReadyOpts,
+  ]);
 
   const addImageFiles = useCallback((files: File[]) => {
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));

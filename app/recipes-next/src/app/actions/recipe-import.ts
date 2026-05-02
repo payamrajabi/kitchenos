@@ -209,6 +209,146 @@ export async function importRecipeFromUrlAction(
   });
 }
 
+/* ------------------------------------------------------------------ */
+/*  Direct URL import — parse, resolve, save, and image-attach inline */
+/* ------------------------------------------------------------------ */
+
+export type DirectImportResult =
+  | { ok: true; recipeId: number; recipeName: string }
+  | { ok: false; error: string };
+
+/**
+ * Skip-the-draft URL import. Builds the parsed recipe + ingredient
+ * resolutions, writes the recipe and its structure to the DB, and schedules
+ * the source-image-or-AI-image attach via `after()` — same machinery
+ * `confirmRecipeDraftAction` uses on the create path, just without the
+ * intermediate draft-review step. Returns the new recipe id so the caller
+ * can refresh the gallery.
+ */
+export async function importRecipeFromUrlDirectAction(
+  rawUrl: string,
+): Promise<DirectImportResult> {
+  const trimmedUrl = rawUrl.trim();
+  if (!trimmedUrl) return { ok: false, error: "Paste a recipe link first." };
+
+  const [fetchResult, scrapeResult] = await Promise.all([
+    fetchUrlContent(trimmedUrl),
+    scrapeRecipeImageCandidates(trimmedUrl),
+  ]);
+  if (!fetchResult.ok) return fetchResult;
+
+  const sourceImageCandidates =
+    scrapeResult.ok && scrapeResult.candidates.length > 0
+      ? scrapeResult.candidates
+      : undefined;
+
+  const draftResult = await buildDraft(fetchResult.content, {
+    sourceUrl: trimmedUrl,
+    sourceImageCandidates,
+  });
+  if (!draftResult.ok) return draftResult;
+
+  return persistDraftRecipeWithImageAttach(draftResult.draft);
+}
+
+async function persistDraftRecipeWithImageAttach(
+  draft: DraftRecipeData,
+): Promise<DirectImportResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Sign in first." };
+
+  const { parsed, resolutions, sourceImageCandidates } = draft;
+
+  const patch = recipePatchFromParsed(parsed);
+  const { data: newRecipe, error: recipeErr } = await supabase
+    .from("recipes")
+    .insert(patch)
+    .select("id")
+    .single();
+  if (recipeErr || !newRecipe) {
+    return {
+      ok: false,
+      error: recipeErr?.message ?? "Could not create recipe.",
+    };
+  }
+
+  const recipeId = Number(newRecipe.id);
+  const rollback = async () => {
+    await supabase.from("recipes").delete().eq("id", recipeId);
+  };
+
+  try {
+    const plan = { resolutions, needsConfirmation: false as const };
+    const planResult = await applyResolutionPlan(supabase, plan);
+    if (!planResult.ok) {
+      await rollback();
+      return { ok: false, error: planResult.error };
+    }
+
+    const resolvedByName = new Map<string, number>();
+    for (const applied of planResult.applied) {
+      resolvedByName.set(applied.recipeName, applied.ingredientId);
+      if (applied.wasCreated) void maybeAutofillNutrition(applied.ingredientId);
+    }
+
+    const inserted = await insertParsedRecipeStructure(
+      supabase,
+      recipeId,
+      parsed,
+      resolvedByName,
+      rollback,
+    );
+    if (!inserted.ok) return { ok: false, error: inserted.error };
+
+    after(async () => {
+      try {
+        if (sourceImageCandidates?.length) {
+          const attached = await attachSourceImageToRecipe(
+            recipeId,
+            sourceImageCandidates,
+          );
+          if (attached.ok) {
+            console.log(
+              "[recipe-image] direct import attached source image",
+              recipeId,
+              attached.sourceUrl,
+            );
+            return;
+          }
+          console.warn(
+            "[recipe-image] direct import source-scrape failed, falling back to AI",
+            recipeId,
+          );
+        }
+
+        const result = await generateAndAttachRecipeImage(recipeId);
+        if (!result.ok) {
+          console.warn(
+            "[recipe-image] direct import auto-gen failed",
+            recipeId,
+            result.stage,
+            result.error,
+          );
+        }
+      } catch (e) {
+        console.error("[recipe-image] direct import auto-gen threw", recipeId, e);
+      }
+    });
+
+    revalidateAfterImport(recipeId);
+    return { ok: true, recipeId, recipeName: parsed.name };
+  } catch (err) {
+    await rollback();
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Import failed.",
+    };
+  }
+}
+
 async function blobsToBase64DataUrls(
   blobs: Blob[],
 ): Promise<{ base64DataUrl: string }[]> {

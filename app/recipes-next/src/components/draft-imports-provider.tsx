@@ -1,6 +1,7 @@
 "use client";
 
 import type { DraftRecipeData } from "@/lib/recipe-import/types";
+import { useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -29,6 +30,10 @@ type DraftResult =
   | { ok: true; draft: DraftRecipeData }
   | { ok: false; error: string };
 
+type DirectImportResult =
+  | { ok: true; recipeId: number; recipeName: string }
+  | { ok: false; error: string };
+
 export type StartImportOptions = {
   /** Called after a successful import, before state settles (same tick as storage write). */
   onReady?: (draftId: string) => void;
@@ -40,6 +45,16 @@ type DraftImportsContextType = {
     label: string,
     importFn: () => Promise<DraftResult>,
     options?: StartImportOptions,
+  ) => void;
+  /**
+   * Same on-screen progress chip as `startImport`, but the import function
+   * writes the recipe to the DB itself (no draft review). On success the
+   * chip is removed and the route tree is refreshed so the new recipe
+   * surfaces in the gallery; on error the chip flips to the error state.
+   */
+  startDirectImport: (
+    label: string,
+    importFn: () => Promise<DirectImportResult>,
   ) => void;
   removeDraft: (id: string) => void;
   getDraftData: (id: string) => DraftRecipeData | null;
@@ -100,6 +115,7 @@ export function useDraftImports() {
 /* ------------------------------------------------------------------ */
 
 export function DraftImportsProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [drafts, setDrafts] = useState<DraftImport[]>([]);
   const dataRef = useRef(new Map<string, DraftRecipeData>());
 
@@ -188,13 +204,60 @@ export function DraftImportsProvider({ children }: { children: ReactNode }) {
     removeDraftFromStorage(id);
   }, []);
 
+  const startDirectImport = useCallback(
+    (label: string, importFn: () => Promise<DirectImportResult>) => {
+      const id = crypto.randomUUID();
+      setDrafts((prev) => [{ id, status: "importing", label }, ...prev]);
+
+      importFn()
+        .then((result) => {
+          if (result.ok) {
+            // Recipe is already saved to the DB. Drop the chip and ask
+            // the router to refresh so the gallery surfaces the new
+            // recipe (revalidatePath was called server-side too).
+            setDrafts((prev) => prev.filter((d) => d.id !== id));
+            router.refresh();
+          } else {
+            setDrafts((prev) =>
+              prev.map((d) =>
+                d.id === id
+                  ? { ...d, status: "error" as const, error: result.error }
+                  : d,
+              ),
+            );
+          }
+        })
+        .catch((err: unknown) => {
+          setDrafts((prev) =>
+            prev.map((d) =>
+              d.id === id
+                ? {
+                    ...d,
+                    status: "error" as const,
+                    error:
+                      err instanceof Error ? err.message : "Import failed.",
+                  }
+                : d,
+            ),
+          );
+        });
+    },
+    [router],
+  );
+
   const getDraftData = useCallback((id: string): DraftRecipeData | null => {
     return dataRef.current.get(id) ?? null;
   }, []);
 
   return (
     <DraftImportsContext.Provider
-      value={{ drafts, startImport, removeDraft, getDraftData }}
+      value={{
+        drafts,
+        startImport,
+        startDirectImport,
+        removeDraft,
+        getDraftData,
+      }}
     >
       {children}
     </DraftImportsContext.Provider>
