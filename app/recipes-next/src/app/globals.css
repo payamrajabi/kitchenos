@@ -6228,6 +6228,15 @@ input.recipe-detail-title-input:not([type="checkbox"]):not([type="radio"]):not([
   align-items: start;
 }
 
+/* View mode: anchor the prep circle and amount to the FIRST line of the
+   ingredient name. Without this they vertically center to the row, and an
+   "Out of stock" badge wrapping onto a second line inside the name cell
+   drags them down with it. The first-line text and the 20px circle button
+   share the same 20px line-height, so a top-anchor lines them up cleanly. */
+.recipe-detail--view .recipe-ingredients-line-list > .recipe-ingredient-row {
+  align-items: start;
+}
+
 .recipe-detail--edit .recipe-instructions-line-list > .recipe-instruction-row,
 .recipe-detail--edit .recipe-instructions-line-stack > .recipe-instruction-add-row {
   align-items: start;
@@ -10309,8 +10318,13 @@ a.primary {
    recipe isn't represented in the viewer's inventory. Styled to match the
    amber draft-badge pattern already used elsewhere in the app. */
 .recipe-ingredient-out-of-stock-badge {
-  display: inline-block;
-  margin-left: var(--space-6);
+  /* Block + fit-content forces the badge onto its own line beneath the
+     ingredient name (instead of wrapping inline next to it), so the circle
+     and amount can stay anchored to the first line of the name. */
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  margin-left: 0;
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 700;
